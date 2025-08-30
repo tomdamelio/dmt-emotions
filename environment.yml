@@ -1,0 +1,19 @@
+name: dmt-emotions
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - mne
+  - neurokit2
+  - numpy
+  - scipy
+  - pandas
+  - matplotlib
+  - seaborn
+  - scikit-learn
+  - statsmodels
+  - joblib
+  - cvxopt
+  - pyjulia
+  - jpype1
+
