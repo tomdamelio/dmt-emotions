@@ -160,3 +160,12 @@ julia-1.9.4/
 # Backup files
 *.bak
 *.backup
+
+# Figures
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.ico
