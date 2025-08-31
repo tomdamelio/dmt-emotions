@@ -6,12 +6,22 @@ EDA preprocessed data analysis and visualization
 This script performs statistical analysis and generates visualizations of 
 previously processed EDA (SCL - Skin Conductance Level) data.
 
-Input: CSV files in ../data/derivatives/preprocessing/SCL/
+UPDATED FEATURES:
+- Loads individual subject files from new preprocess_eda.py output structure
+- Respects TEST_MODE from config.py (processes only S04 in test mode)
+- Uses config-based sampling rate and subject lists
+- Combines individual EDA_Tonic signals into high/low dose groups for analysis
+
+Input: Individual CSV files in derivatives/phys/eda/dmt_high/ and dmt_low/
+       - Format: {subject}_{dmt/rs}_{session}_{high/low}.csv
+       - Uses EDA_Tonic column for statistical analysis
 Output: Time series plots, statistical tests and FDR analysis
 
 Prerequisite: Run preprocess_eda.py first to generate the CSV files
+Test mode: If TEST_MODE=True in config.py, only processes subject S04
 """
 import os
+import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,46 +30,158 @@ from scipy import stats
 import statsmodels.stats.multitest as st
 from joblib import Parallel, delayed
 
-# Configuración de rutas siguiendo estándares BIDS
-ROOT_DATA = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'data'))
-DERIVATIVES_DATA = os.path.join(ROOT_DATA, 'derivatives', 'preprocessing')
+# Add parent directory to path to import config
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+try:
+    from config import (DERIVATIVES_DATA, SUJETOS_VALIDOS, SUJETOS_TEST, 
+                       TEST_MODE, NEUROKIT_PARAMS, DOSIS)
+except ImportError:
+    print("❌ Could not import config. Make sure config.py exists in parent directory.")
+    sys.exit(1)
 
 #%% 
-medida = 'SCL'
-preproc_dir = os.path.join(DERIVATIVES_DATA, medida)
-os.makedirs(preproc_dir, exist_ok=True)
+print("🔄 Loading EDA preprocessed data...")
 
-#%% Leer los archivos preprocesados (o crearlos si no existen)
+# Determine which subjects to process
+subjects_to_process = SUJETOS_TEST if TEST_MODE else SUJETOS_VALIDOS
+print(f"📊 Processing subjects: {subjects_to_process} (TEST_MODE: {TEST_MODE})")
 
-# Verificar si los archivos preprocesados existen
-csv_files = [
-    f'{medida}_dmt_alta.csv',
-    f'{medida}_dmt_baja.csv'
-]
+# New data paths following preprocess_eda.py structure
+eda_dirs = {
+    'dmt_high': os.path.join(DERIVATIVES_DATA, 'phys', 'eda', 'dmt_high'),
+    'dmt_low': os.path.join(DERIVATIVES_DATA, 'phys', 'eda', 'dmt_low')
+}
 
-files_exist = all(os.path.exists(os.path.join(preproc_dir, csv_file)) for csv_file in csv_files)
+def load_subject_data(subject, condition_dir, condition_name):
+    """
+    Load EDA data for a specific subject and condition
+    
+    Args:
+        subject: Subject ID (e.g., 'S04')
+        condition_dir: Directory path for the condition
+        condition_name: Name for logging ('dmt_high' or 'dmt_low')
+    
+    Returns:
+        tuple: (dmt_data, rs_data) or (None, None) if files not found
+    """
+    # Get session info from DOSIS DataFrame
+    subject_dosis = DOSIS[DOSIS['Subject'] == subject]
+    
+    if subject_dosis.empty:
+        print(f"⚠️  Subject {subject} not found in DOSIS config")
+        return None, None
+    
+    # Determine session based on condition
+    if 'high' in condition_name:
+        # Find which session has 'Alta' dose
+        if subject_dosis['Dosis_Sesion_1'].iloc[0] == 'Alta':
+            session = 'session1'
+        else:
+            session = 'session2'
+    else:  # 'low' condition
+        # Find which session has 'Baja' dose  
+        if subject_dosis['Dosis_Sesion_1'].iloc[0] == 'Baja':
+            session = 'session1'
+        else:
+            session = 'session2'
+    
+    # File paths
+    dmt_file = os.path.join(condition_dir, f"{subject}_dmt_{session}_{condition_name.split('_')[1]}.csv")
+    rs_file = os.path.join(condition_dir, f"{subject}_rs_{session}_{condition_name.split('_')[1]}.csv")
+    
+    dmt_data = rs_data = None
+    
+    # Load DMT file
+    if os.path.exists(dmt_file):
+        dmt_data = pd.read_csv(dmt_file)
+        print(f"   ✅ Loaded DMT {condition_name}: {subject} ({len(dmt_data)} samples)")
+    else:
+        print(f"   ❌ Missing DMT file: {dmt_file}")
+    
+    # Load RS file  
+    if os.path.exists(rs_file):
+        rs_data = pd.read_csv(rs_file)
+        print(f"   ✅ Loaded RS {condition_name}: {subject} ({len(rs_data)} samples)")
+    else:
+        print(f"   ❌ Missing RS file: {rs_file}")
+    
+    return dmt_data, rs_data
+
+# Load data for all subjects
+print(f"\n📁 Loading data from: {eda_dirs}")
+
+all_data = {
+    'dmt_high': {'dmt': [], 'rs': [], 'subjects': []},
+    'dmt_low': {'dmt': [], 'rs': [], 'subjects': []}
+}
+
+files_loaded = 0
+total_expected = len(subjects_to_process) * 4  # 2 conditions × 2 session types
+
+for subject in subjects_to_process:
+    print(f"\n🔍 Loading subject: {subject}")
+    
+    for condition_name, condition_dir in eda_dirs.items():
+        dmt_data, rs_data = load_subject_data(subject, condition_dir, condition_name)
+        
+        if dmt_data is not None and rs_data is not None:
+            # Extract EDA_Tonic for analysis (main signal of interest)
+            if 'EDA_Tonic' in dmt_data.columns and 'EDA_Tonic' in rs_data.columns:
+                all_data[condition_name]['dmt'].append(dmt_data['EDA_Tonic'])
+                all_data[condition_name]['rs'].append(rs_data['EDA_Tonic'])
+                all_data[condition_name]['subjects'].append(subject)
+                files_loaded += 2
+            else:
+                print(f"   ⚠️  EDA_Tonic column not found in {subject} {condition_name}")
+
+print(f"\n📊 Data loading summary:")
+print(f"   Files loaded: {files_loaded}/{total_expected}")
+print(f"   High dose subjects: {len(all_data['dmt_high']['subjects'])}")
+print(f"   Low dose subjects: {len(all_data['dmt_low']['subjects'])}")
+
+# Check if we have enough data to proceed
+files_exist = files_loaded > 0
 
 if not files_exist:
-    print("Preprocessed files do not exist. Run preprocess_eda.py first.")
-    print("Or verify that the data structure is correct:")
-    print(f"- Processed files will be saved in: {preproc_dir}")
+    print("\n❌ No preprocessed files found. Run preprocess_eda.py first.")
+    print("Expected structure:")
+    for condition_name, condition_dir in eda_dirs.items():
+        print(f"- {condition_dir}")
     scl_alta_combined = scl_baja_combined = None
+    tiempo_alta = tiempo_baja = None
 else:
-    # Leer archivos CSV combinados (tiempo + señal tónica)
-    scl_alta_combined = pd.read_csv(os.path.join(preproc_dir, f'{medida}_dmt_alta.csv'))
-    scl_baja_combined = pd.read_csv(os.path.join(preproc_dir, f'{medida}_dmt_baja.csv'))
+    print("\n✅ Converting to analysis format...")
     
-    # Separar columnas de tiempo y señal
-    tiempo_alta = scl_alta_combined['time']
-    tiempo_baja = scl_baja_combined['time']
-    
-    # Extraer solo las columnas de señal tónica (todas excepto 'time')
-    scl_alta = scl_alta_combined.drop(columns=['time'])
-    scl_baja = scl_baja_combined.drop(columns=['time'])
-    
-    print("Preprocessed files loaded successfully.")
-    print(f"- High dose: {scl_alta.shape[1]} subjects, {scl_alta.shape[0]} time points")
-    print(f"- Low dose: {scl_baja.shape[1]} subjects, {scl_baja.shape[0]} time points")
+    # Convert to DataFrame format expected by rest of script
+    # Combine DMT data for each condition
+    if len(all_data['dmt_high']['dmt']) > 0:
+        scl_alta_combined = pd.concat(all_data['dmt_high']['dmt'], axis=1, ignore_index=True)
+        scl_alta_combined.columns = [f"Subject_{subj}" for subj in all_data['dmt_high']['subjects']]
+        # Add time column (assuming consistent sampling rate)
+        sampling_rate = NEUROKIT_PARAMS['sampling_rate_default']
+        tiempo_alta = pd.Series(np.arange(len(scl_alta_combined)) / sampling_rate)
+        scl_alta_combined.insert(0, 'time', tiempo_alta)
+        
+        # Separate time and signal for compatibility
+        scl_alta = scl_alta_combined.drop(columns=['time'])
+        print(f"   High dose combined: {scl_alta.shape[1]} subjects, {scl_alta.shape[0]} time points")
+    else:
+        scl_alta_combined = scl_alta = tiempo_alta = None
+        
+    if len(all_data['dmt_low']['dmt']) > 0:
+        scl_baja_combined = pd.concat(all_data['dmt_low']['dmt'], axis=1, ignore_index=True)
+        scl_baja_combined.columns = [f"Subject_{subj}" for subj in all_data['dmt_low']['subjects']]
+        # Add time column (assuming consistent sampling rate)
+        sampling_rate = NEUROKIT_PARAMS['sampling_rate_default']
+        tiempo_baja = pd.Series(np.arange(len(scl_baja_combined)) / sampling_rate)
+        scl_baja_combined.insert(0, 'time', tiempo_baja)
+        
+        # Separate time and signal for compatibility
+        scl_baja = scl_baja_combined.drop(columns=['time'])
+        print(f"   Low dose combined: {scl_baja.shape[1]} subjects, {scl_baja.shape[0]} time points")
+    else:
+        scl_baja_combined = scl_baja = tiempo_baja = None
 
 #%% Ploteo de promedio con sombreado de error
 
@@ -201,8 +323,8 @@ if pvalores is not None:
     # Divido en regiones de los valores que cumplen para poder dibujar eso en el grafico
     regiones = np.split(indices_p_pos, np.where(np.diff(indices_p_pos) != 1)[0] + 1)
 
-    #frec_sampleo = int(info_eda_baja_dmt['sampling_rate'])
-    frec_sampleo = 250.0
+    # Use sampling rate from config
+    frec_sampleo = NEUROKIT_PARAMS['sampling_rate_default']
 else:
     print("No hay p-valores para análisis FDR.")
     regiones = []
