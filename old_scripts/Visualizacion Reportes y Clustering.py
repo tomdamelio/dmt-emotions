@@ -8,7 +8,7 @@ from  sklearn.cluster import KMeans
 #%%
 
 # Load the data
-ROOT_DATA = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data'))
+ROOT_DATA = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'data'))
 cluster_dir = os.path.join(ROOT_DATA, 'Data Cluster')
 data_path = os.path.join(cluster_dir, 'Datos_reportes_para_clusterizar_sin_reposo.csv')
 data = np.loadtxt(data_path, skiprows=1, delimiter=",", dtype=float)
@@ -194,6 +194,8 @@ plt.ylabel("Inertia (WCSS)", fontsize=14)
 plt.xticks(cluster_range)
 plt.grid(True)
 plt.show()
+
+#%%
 
 
 

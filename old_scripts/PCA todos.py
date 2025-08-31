@@ -21,7 +21,7 @@ from sklearn.preprocessing import scale
 import os
 
 # Define el directorio que quieres leer
-ROOT_DATA = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data'))
+ROOT_DATA = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'data'))
 directorio = os.path.join(ROOT_DATA, 'resampled')
 
 # Obtiene la lista de archivos en el directorio y los ordena alfabeticamente
@@ -492,7 +492,7 @@ pvalores = test(maximo_baja, maximo_alta)
 print(pd.DataFrame.from_dict(pvalores, orient = 'index'))
 
 
-
+#%%
 
     
     

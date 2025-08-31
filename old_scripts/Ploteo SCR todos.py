@@ -554,7 +554,7 @@ plt.tight_layout()
 
 arr_pvalores = np.array(pvalores)
 # Calculo con fdr los pvalores nuevos
-# rtas, pval_fdr = st.fdrcorrection(arr_pvalores)
+rtas, pval_fdr = st.fdrcorrection(arr_pvalores)
 
 # Indices de los pvalores que son menores que el 0.05
 indices_p_pos = (np.where(arr_pvalores < 0.05))[0]
@@ -614,4 +614,4 @@ plt.xlabel('Tiempo(s)')
 plt.legend()
 plt.tight_layout()
 
-
+# %%

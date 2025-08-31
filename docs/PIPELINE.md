@@ -1,11 +1,7 @@
-## Pipeline de análisis y generación de resultados
+# Pipeline de análisis y generación de resultados
 
 Este documento describe, en orden de ejecución, los scripts necesarios para reproducir los análisis y figuras del proyecto, desde el procesamiento de datos hasta la creación de las figuras finales. Para cada paso se indica: entradas esperadas, qué hace el script y qué produce como salida.
 
-Notas generales
-- Los datos de fisiología se leen mayormente desde archivos BrainVision (`.vhdr`) organizados por sujeto y sesión en la carpeta `../data/original/physiology/` con subcarpetas `DMT_1`, `DMT_2`, `Reposo_1`, `Reposo_2` y `SXX/` para cada sujeto.
-- Los autorreportes se cargan desde archivos `.mat` en `../data/original/reports/resampled/` o `../data/original/reports/resampled - con el s12/` (cada archivo contiene la matriz `dimensions` con 15 dimensiones, 300 puntos por sujeto, y metadatos en el nombre para identificar sujeto y condición).
-- Varios scripts guardan CSVs intermedios en `../data/old/Preprocesado/<MEDIDA>/` para facilitar análisis posteriores.
 
 ## Estructura actual de los datos
 
@@ -55,7 +51,7 @@ Cada carpeta contiene archivos `.mat` con el patrón de nomenclatura:
 14. **Temporality** - Alteraciones en la experiencia subjetiva del tiempo
 15. **General_Intensity** - Intensidad general subjetiva de los efectos del DMT
 
-### 📁 **Datos procesados** (`../data/old/`)
+### 📁 **Datos "old" procesados** (`../data/old/`)
 
 #### **Datos preprocesados** (`../data/old/Preprocesado/`)
 CSVs generados por los scripts del pipeline, organizados por modalidad fisiológica:
@@ -74,13 +70,15 @@ Cada modalidad contiene 4 archivos:
 - `Datos_reportes_para_clusterizar_sin_reposo.csv` - Dataset concatenado de autorreportes (solo condiciones DMT, excluyendo reposo) preparado para análisis multivariado
 
 ### 📁 **Derivatives** (`../data/derivatives/`)
-Carpeta preparada para procesamientos futuros siguiendo estándar BIDS-Derivatives (actualmente vacía).
+
+Directorio que seguirá el estándar **BIDS-Derivatives** para almacenar datos procesados de fisiología. La estructura propuesta organizará los outputs de preprocesamiento por modalidad y pipeline:
 
 
 ### 1) Preprocesamiento de señales fisiológicas (por modalidad)
 
 #### 1.1) SCL (EDA tónica)
-- Script: `scripts/Ploteo EDA promedio.py`
+- Script: `scripts/process_eda.py`
+- Script adaptado: `old_scripts/Ploteo EDA promedio.py`
 - Input:
   - BrainVision `.vhdr` por sujeto en: `../data/original/physiology/DMT_1`, `DMT_2`, `Reposo_1`, `Reposo_2` (canal `GSR`).
   - Tabla de dosis embebida en el script para mapear qué sesión es alta/baja por sujeto.

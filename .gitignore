@@ -96,12 +96,6 @@ cython_debug/
 *.pickle
 *.pkl
 
-# Large data directories
-data/
-results/
-figures/
-plots/
-
 # OS generated files
 .DS_Store
 .DS_Store?
@@ -138,11 +132,6 @@ julia-1.9.4/
 *.asv
 *.m~
 
-# R
-.Rhistory
-.Rapp.history
-.RData
-.Ruserdata
 
 # Brain imaging formats
 *.eeg

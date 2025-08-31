@@ -23,7 +23,7 @@ import statsmodels.stats.multitest as st
 
 import os
 
-ROOT_DATA = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data'))
+ROOT_DATA = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'data'))
 
 # Define el directorio que quieres leer
 directorio = os.path.join(ROOT_DATA, "resampled")
@@ -139,3 +139,4 @@ df_concatenados.to_csv(os.path.join(cluster_dir, csv), index=False)
 #%%
 
 df_concat = pd.read_csv(os.path.join(cluster_dir, csv))
+#%%
