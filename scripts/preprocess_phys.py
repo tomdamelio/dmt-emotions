@@ -38,8 +38,8 @@ import json
 import datetime
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from config import (
-    PHYSIOLOGY_DATA, DERIVATIVES_DATA, DOSIS, SUJETOS_VALIDOS, SUJETOS_TEST, TEST_MODE,
-    PATRONES_ARCHIVOS, DURACIONES_ESPERADAS, NEUROKIT_PARAMS, CANALES,
+    PHYSIOLOGY_DATA, DERIVATIVES_DATA, DOSIS, SUJETOS_VALIDOS, SUJETOS_TEST, TODOS_LOS_SUJETOS,
+    TEST_MODE, PROCESSING_MODE, PATRONES_ARCHIVOS, DURACIONES_ESPERADAS, NEUROKIT_PARAMS, CANALES,
     TOLERANCIA_DURACION, get_nombre_archivo, get_duracion_esperada
 )
 
@@ -255,9 +255,14 @@ if TEST_MODE:
     print(f"🧪 TEST MODE: Processing {len(subjects)} test subjects:")
     print(f"   {subjects}")
 else:
-    subjects = SUJETOS_VALIDOS.copy()
-    print(f"📋 COMPLETE MODE: Processing {len(subjects)} valid subjects:")
-    print(f"   {subjects}")
+    if PROCESSING_MODE == 'ALL':
+        subjects = TODOS_LOS_SUJETOS.copy()
+        print(f"📋 ALL SUBJECTS MODE: Processing {len(subjects)} subjects (S01-S20, except S14):")
+        print(f"   {subjects}")
+    else:  # PROCESSING_MODE == 'VALID'
+        subjects = SUJETOS_VALIDOS.copy()
+        print(f"📋 VALID SUBJECTS MODE: Processing {len(subjects)} valid subjects:")
+        print(f"   {subjects}")
 
 print(f"📊 Dose configuration loaded from config.py")
 

@@ -59,17 +59,18 @@ SUJETOS_INDICES = ['S01', 'S02', 'S03', 'S04', 'S05', 'S06', 'S07', 'S08', 'S09'
 # Crear DataFrame de dosis
 DOSIS = pd.DataFrame(DOSIS_RAW, columns=COLUMNAS_DOSIS, index=SUJETOS_INDICES)
 
-# Lista completa de todos los sujetos
-TODOS_LOS_SUJETOS = SUJETOS_INDICES.copy()
+# Lista completa de todos los sujetos (S01-S20, excepto S14) - 19 sujetos total
+TODOS_LOS_SUJETOS = SUJETOS_INDICES.copy()  # ['S01', 'S02', ..., 'S13', 'S15', ..., 'S20']
 
-# Sujetos con datos válidos disponibles (los que actualmente se procesan)
+# Sujetos con datos válidos disponibles (subconjunto verificado previamente)
 SUJETOS_VALIDOS = ['S04', 'S05', 'S06', 'S07', 'S09', 'S13', 'S16', 'S17', 'S18', 'S19', 'S20']
 
 # Sujetos para testing rápido (subconjunto pequeño para pruebas)
 SUJETOS_TEST = ['S04']
 
-# Modo de ejecución: configurar para testing o procesamiento completo
-TEST_MODE = True  # Cambiar a False para procesar todos los sujetos válidos
+# Configuración de modo de ejecución
+TEST_MODE = False  # True = solo SUJETOS_TEST, False = procesar según PROCESSING_MODE
+PROCESSING_MODE = 'ALL'  # 'VALID' = solo sujetos válidos, 'ALL' = todos los sujetos disponibles
 
 # Sujetos con señal de EDA problemática (documentado para referencia)
 SUJETOS_EDA_PROBLEMATICA = {

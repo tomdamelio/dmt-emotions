@@ -38,7 +38,10 @@ from pathlib import Path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 try:
-    from config import DERIVATIVES_DATA, SUJETOS_TEST, TEST_MODE, NEUROKIT_PARAMS, DURACIONES_ESPERADAS
+    from config import (
+        DERIVATIVES_DATA, SUJETOS_TEST, SUJETOS_VALIDOS, TODOS_LOS_SUJETOS,
+        TEST_MODE, PROCESSING_MODE, DURACIONES_ESPERADAS, NEUROKIT_PARAMS
+    )
 except ImportError:
     print("❌ Could not import config. Make sure config.py exists in parent directory.")
     sys.exit(1)
@@ -269,14 +272,21 @@ def test_physiological_preprocessing():
     print("🧪 Starting physiological preprocessing validation test")
     print("=" * 60)
     
-    # Check if we're in test mode
-    if not TEST_MODE:
-        print("⚠️  TEST_MODE is False in config.py")
-        print("   Set TEST_MODE = True and run preprocess_phys.py first")
-        return
+    # Determine which subjects were processed and should be tested
+    if TEST_MODE:
+        subjects_to_test = SUJETOS_TEST
+        print(f"🔬 Testing in TEST MODE with subjects: {subjects_to_test}")
+    else:
+        if PROCESSING_MODE == 'ALL':
+            subjects_to_test = TODOS_LOS_SUJETOS
+            print(f"🔬 Testing ALL SUBJECTS MODE: {len(subjects_to_test)} subjects")
+            print(f"📋 Will validate files for all subjects: {subjects_to_test}")
+        else:
+            subjects_to_test = SUJETOS_VALIDOS
+            print(f"🔬 Testing VALID SUBJECTS MODE: {len(subjects_to_test)} subjects")
     
-    # Get test subject
-    test_subject = SUJETOS_TEST[0] if SUJETOS_TEST else 'S04'
+    # Use first subject for detailed plotting (to avoid too many plots)
+    test_subject = subjects_to_test[0]
     print(f"🎯 Testing physiological data for subject: {test_subject}")
     
     # Define expected file paths for all signal types
