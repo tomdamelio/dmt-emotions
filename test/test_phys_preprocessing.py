@@ -32,7 +32,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import neurokit2 as nk
 import numpy as np
+import json
 from pathlib import Path
+from datetime import datetime
 
 # Add parent directory to path to import from scripts and config
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -45,6 +47,281 @@ try:
 except ImportError:
     print("❌ Could not import config. Make sure config.py exists in parent directory.")
     sys.exit(1)
+
+def load_validation_log():
+    """Carga el archivo de validación manual"""
+    validation_path = 'validation_log.json'
+    
+    if not os.path.exists(validation_path):
+        print(f"⚠️  Archivo de validación no encontrado: {validation_path}")
+        return None
+    
+    try:
+        with open(validation_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"❌ Error cargando archivo de validación: {e}")
+        return None
+
+def save_validation_log(validation_data):
+    """Guarda el archivo de validación manual actualizado"""
+    validation_path = 'validation_log.json'
+    
+    try:
+        with open(validation_path, 'w', encoding='utf-8') as f:
+            json.dump(validation_data, f, indent=2, ensure_ascii=False)
+        print(f"✅ Archivo de validación actualizado: {validation_path}")
+    except Exception as e:
+        print(f"❌ Error guardando archivo de validación: {e}")
+
+def update_file_existence_info(validation_data, subject, signal_type, file_key, file_path, file_exists):
+    """
+    Actualiza la información de existencia de archivo en el log de validación
+    
+    Args:
+        validation_data: Datos del archivo de validación
+        subject: Código del sujeto
+        signal_type: Tipo de señal
+        file_key: Clave del archivo
+        file_path: Ruta del archivo
+        file_exists: Si el archivo existe
+    """
+    if validation_data is None:
+        return
+    
+    try:
+        # Asegurar que existe la estructura (nueva jerarquía: subject -> file_key -> signal_type)
+        if 'subjects' not in validation_data:
+            validation_data['subjects'] = {}
+        if subject not in validation_data['subjects']:
+            validation_data['subjects'][subject] = {}
+        if file_key not in validation_data['subjects'][subject]:
+            validation_data['subjects'][subject][file_key] = {}
+        if signal_type not in validation_data['subjects'][subject][file_key]:
+            validation_data['subjects'][subject][file_key][signal_type] = {
+                'category': '',
+                'notes': '',
+                'file_exists': None,
+                'file_path': ''
+            }
+        
+        # Actualizar información de existencia
+        file_entry = validation_data['subjects'][subject][file_key][signal_type]
+        file_entry['file_exists'] = file_exists
+        file_entry['file_path'] = file_path
+            
+        # Agregar nota automática si el archivo no existe
+        if not file_exists:
+            existing_notes = file_entry.get('notes', '').strip()
+            auto_note = "⚠️ Archivo no encontrado"
+            if auto_note not in existing_notes:
+                if existing_notes:
+                    file_entry['notes'] = f"{existing_notes} | {auto_note}"
+                else:
+                    file_entry['notes'] = auto_note
+                    
+    except Exception as e:
+        print(f"⚠️  Error actualizando información de archivo {subject}/{file_key}/{signal_type}: {e}")
+
+def collect_manual_validation_input(subject, signal_type, file_key, file_exists, plot_title):
+    """
+    Recolecta input manual del usuario para validación de señales
+    
+    Args:
+        subject: Código del sujeto
+        signal_type: Tipo de señal
+        file_key: Clave del archivo
+        file_exists: Si el archivo existe
+        plot_title: Título del plot para contexto
+        
+    Returns:
+        tuple: (category, notes) - input del usuario
+    """
+    print(f"\n{'='*60}")
+    print(f"📋 VALIDACIÓN MANUAL - {plot_title}")
+    print(f"{'='*60}")
+    
+    if not file_exists:
+        print(f"⚠️  ARCHIVO NO ENCONTRADO - No se puede validar la calidad de la señal")
+        category = "bad"
+        notes = "Archivo no encontrado"
+        print(f"   Categoría asignada automáticamente: {category}")
+        print(f"   Notas: {notes}")
+        return category, notes
+    
+    print(f"📊 Archivo: {subject}/{file_key}/{signal_type}")
+    print(f"📈 Se generó el plot para revisar la calidad de la señal")
+    print(f"\n📝 Opciones de categoría:")
+    print(f"   good      - Señal de buena calidad, lista para análisis")
+    print(f"   acceptable - Señal usable con algunas limitaciones") 
+    print(f"   bad       - Señal no usable para análisis")
+    
+    # Solicitar categoría
+    while True:
+        category = input(f"\n🔍 Categoría para {signal_type.upper()} [{subject}/{file_key}] (good/acceptable/bad): ").strip().lower()
+        if category in ['good', 'acceptable', 'bad']:
+            break
+        print("❌ Por favor ingresa: good, acceptable, o bad")
+    
+    # Solicitar notas
+    print(f"\n📝 Notas cualitativas para {signal_type.upper()} (opcional, presiona Enter para omitir):")
+    print(f"   Ejemplo: 'Artefactos al inicio', 'Señal estable', 'Ruido en minuto 5-8', etc.")
+    notes = input(f"💬 Notas: ").strip()
+    
+    print(f"✅ Registrado - {signal_type.upper()}: {category}" + (f" | {notes}" if notes else ""))
+    
+    return category, notes
+
+def update_manual_validation_info(validation_data, subject, signal_type, file_key, category, notes):
+    """
+    Actualiza los campos manuales (category y notes) en el log de validación
+    
+    Args:
+        validation_data: Datos del archivo de validación
+        subject: Código del sujeto
+        signal_type: Tipo de señal
+        file_key: Clave del archivo
+        category: Categoría de validación (good/acceptable/bad)
+        notes: Notas cualitativas del usuario
+    """
+    if validation_data is None:
+        return
+    
+    try:
+        # Asegurar que existe la estructura
+        if 'subjects' not in validation_data:
+            validation_data['subjects'] = {}
+        if subject not in validation_data['subjects']:
+            validation_data['subjects'][subject] = {}
+        if file_key not in validation_data['subjects'][subject]:
+            validation_data['subjects'][subject][file_key] = {}
+        if signal_type not in validation_data['subjects'][subject][file_key]:
+            validation_data['subjects'][subject][file_key][signal_type] = {
+                'category': '',
+                'notes': '',
+                'file_exists': None,
+                'file_path': ''
+            }
+        
+        # Actualizar campos manuales
+        file_entry = validation_data['subjects'][subject][file_key][signal_type]
+        file_entry['category'] = category
+        
+        # Manejar notas: preservar notas automáticas existentes y agregar las manuales
+        existing_notes = file_entry.get('notes', '').strip()
+        if notes:
+            if existing_notes and not existing_notes.startswith("⚠️"):
+                # Si hay notas existentes no automáticas, combinar
+                file_entry['notes'] = f"{existing_notes} | {notes}"
+            elif existing_notes.startswith("⚠️"):
+                # Si hay notas automáticas, agregar las manuales
+                file_entry['notes'] = f"{existing_notes} | {notes}"
+            else:
+                # Solo notas manuales
+                file_entry['notes'] = notes
+        # Si no hay notas manuales, mantener las existentes (automáticas)
+                    
+    except Exception as e:
+        print(f"⚠️  Error actualizando validación manual {subject}/{file_key}/{signal_type}: {e}")
+
+def parse_file_description_to_validation_key(description, subject, file_path):
+    """
+    Convierte la descripción de archivo del test a la clave usada en validation_log
+    
+    Args:
+        description: Descripción como "EDA DMT High Dose" o "RESP Resting Low Dose"
+        subject: Código del sujeto
+        file_path: Ruta del archivo para extraer información adicional
+        
+    Returns:
+        str: file_key como "dmt_session1_high" o None si no se puede parsear
+    """
+    try:
+        # Las descripciones reales son:
+        # "EDA DMT High Dose" -> necesitamos extraer session del filename
+        # "EDA Resting Low Dose" -> necesitamos extraer session del filename
+        
+        # Extraer información del filename (ej: "S01_dmt_session2_low.csv")
+        filename = os.path.basename(file_path)
+        filename_no_ext = os.path.splitext(filename)[0]
+        parts = filename_no_ext.split('_')
+        
+        if len(parts) >= 4:
+            # parts = ["S01", "dmt", "session2", "low"]
+            session_type = parts[1]  # "dmt" o "rs"
+            session_full = parts[2]  # "session1" o "session2"
+            condition = parts[3]     # "high" o "low"
+            
+            file_key = f"{session_type}_{session_full}_{condition}"
+            return file_key
+        else:
+            print(f"⚠️  No se pudo parsear el filename: {filename}")
+            return None
+        
+    except Exception as e:
+        print(f"⚠️  Error parseando descripción '{description}' con archivo '{file_path}': {e}")
+        return None
+
+def create_plot_title_from_filename(file_path, signal_type, subject):
+    """
+    Crea un título estructurado para los plots basado en el nombre del archivo
+    
+    Args:
+        file_path: Ruta del archivo como "path/S01_dmt_session2_low.csv"
+        signal_type: Tipo de señal ('eda', 'ecg', 'resp')
+        subject: Código del sujeto
+        
+    Returns:
+        str: Título formateado como "S01 - EDA - DMT - ses02 - low"
+    """
+    try:
+        # Extraer el nombre del archivo sin la extensión
+        filename = os.path.basename(file_path)
+        filename_no_ext = os.path.splitext(filename)[0]
+        
+        # Ejemplo: "S01_dmt_session2_low" -> ["S01", "dmt", "session2", "low"]
+        parts = filename_no_ext.split('_')
+        
+        if len(parts) >= 4:
+            # parts[0] = subject (ej: "S01")
+            # parts[1] = session_type (ej: "dmt" o "rs")
+            # parts[2] = session (ej: "session1" o "session2") 
+            # parts[3] = condition (ej: "high" o "low")
+            
+            file_subject = parts[0]
+            session_type = parts[1]
+            session_full = parts[2]
+            condition = parts[3]
+            
+            # Convertir session_type a nombre legible
+            if session_type == "dmt":
+                condition_type = "DMT"
+            elif session_type == "rs":
+                condition_type = "Rest"
+            else:
+                condition_type = session_type.upper()
+            
+            # Convertir session a formato ses##
+            if session_full == "session1":
+                session = "ses01"
+            elif session_full == "session2":
+                session = "ses02"
+            else:
+                session = session_full
+            
+            # Crear título estructurado
+            title = f"{file_subject} - {signal_type.upper()} - {condition_type} - {session} - {condition}"
+            return title
+            
+        else:
+            # Fallback si no se puede parsear
+            print(f"⚠️  No se pudo parsear el nombre del archivo: {filename}")
+            return f"{subject} - {signal_type.upper()} - {filename_no_ext}"
+        
+    except Exception as e:
+        print(f"⚠️  Error creando título desde filename '{file_path}': {e}")
+        # Fallback al título básico
+        return f"{subject} - {signal_type.upper()} - {os.path.basename(file_path)}"
 
 def test_duration_and_sampling_rate(signal_df, time_series, expected_duration_sec, file_description):
     """
@@ -151,45 +428,51 @@ def load_physiological_data(file_path, signal_type):
     
     return signal_df, time_series
 
-def plot_physiological_signals(signal_df, time_series, title, signal_type, sampling_rate=None):
+def plot_physiological_signals(signal_df, time_series, file_path, signal_type, subject, sampling_rate=None):
     """
     Plot physiological signals using appropriate NeuroKit functions
     
     Args:
         signal_df: DataFrame with signal variables
         time_series: Time series data
-        title: Plot title
+        file_path: Path to the file being plotted
         signal_type: Type of signal ('eda', 'ecg', 'resp')
+        subject: Subject code
         sampling_rate: Sampling rate (Hz), defaults to config value if None
     """
+    # Create structured title from filename
+    plot_title = create_plot_title_from_filename(file_path, signal_type, subject)
+    
     if sampling_rate is None:
         sampling_rate = NEUROKIT_PARAMS['sampling_rate_default']
+    
+    print(f"   📊 Using sampling rate: {sampling_rate} Hz for plotting")
     if signal_df is None or time_series is None:
-        print(f"⚠️  Cannot plot {title} - data not available")
+        print(f"⚠️  Cannot plot {plot_title} - data not available")
         return
     
     try:
         # Create a figure with custom size
         fig, axes = plt.subplots(figsize=(15, 10))
         
-        # Use appropriate NeuroKit plot function based on signal type
+        # Use appropriate NeuroKit plot function based on signal type with correct sampling rate
         if signal_type == 'eda':
-            nk.eda_plot(signal_df)
+            nk.eda_plot(signal_df, sampling_rate=sampling_rate)
         elif signal_type == 'ecg':
-            nk.ecg_plot(signal_df)
+            nk.ecg_plot(signal_df, sampling_rate=sampling_rate)
         elif signal_type == 'resp':
-            nk.rsp_plot(signal_df)
+            nk.rsp_plot(signal_df, sampling_rate=sampling_rate)
         else:
             raise ValueError(f"Unknown signal type: {signal_type}")
         
-        # Customize the plot
-        plt.suptitle(f'{signal_type.upper()} Analysis - {title}', fontsize=16, fontweight='bold')
+        # Customize the plot with structured title
+        plt.suptitle(plot_title, fontsize=16, fontweight='bold')
         plt.tight_layout()
         
-        # Save plot
+        # Save plot with structured filename
         plot_dir = os.path.join('test', 'plots')
         os.makedirs(plot_dir, exist_ok=True)
-        plot_filename = f"{signal_type}_test_{title.lower().replace(' ', '_').replace(':', '')}.png"
+        plot_filename = f"{plot_title.lower().replace(' ', '_').replace('-', '_').replace(':', '')}.png"
         plot_path = os.path.join(plot_dir, plot_filename)
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         
@@ -199,9 +482,9 @@ def plot_physiological_signals(signal_df, time_series, title, signal_type, sampl
         plt.show()
         
     except Exception as e:
-        print(f"❌ Error plotting {signal_type.upper()} {title}: {str(e)}")
+        print(f"❌ Error plotting {signal_type.upper()} {plot_title}: {str(e)}")
         # Fallback: create a simple plot
-        create_simple_signal_plot(signal_df, time_series, title, signal_type)
+        create_simple_signal_plot(signal_df, time_series, plot_title, signal_type)
 
 def create_simple_signal_plot(signal_df, time_series, title, signal_type):
     """
@@ -214,7 +497,7 @@ def create_simple_signal_plot(signal_df, time_series, title, signal_type):
         signal_type (str): Type of signal ('eda', 'ecg', 'resp')
     """
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-    fig.suptitle(f'{signal_type.upper()} Signals - {title}', fontsize=16, fontweight='bold')
+    fig.suptitle(title, fontsize=16, fontweight='bold')
     
     # Define signal-specific components to plot
     signal_components = {
@@ -258,7 +541,7 @@ def create_simple_signal_plot(signal_df, time_series, title, signal_type):
     # Save plot
     plot_dir = os.path.join('test', 'plots')
     os.makedirs(plot_dir, exist_ok=True)
-    plot_filename = f"{signal_type}_simple_{title.lower().replace(' ', '_').replace(':', '')}.png"
+    plot_filename = f"{title.lower().replace(' ', '_').replace('-', '_').replace(':', '')}_simple.png"
     plot_path = os.path.join(plot_dir, plot_filename)
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
     
@@ -271,6 +554,10 @@ def test_physiological_preprocessing():
     """
     print("🧪 Starting physiological preprocessing validation test")
     print("=" * 60)
+    
+    # Load validation log for updating
+    print("📋 Loading validation log for updating...")
+    validation_data = load_validation_log()
     
     # Determine which subjects were processed and should be tested
     if TEST_MODE:
@@ -330,6 +617,22 @@ def test_physiological_preprocessing():
             # Load data
             signal_df, time_series = load_physiological_data(file_path, signal_type)
             
+            # Update validation log with file existence info
+            if validation_data is not None:
+                # Parse description to get validation key
+                file_key = parse_file_description_to_validation_key(description, test_subject, file_path)
+                print(f"   🔍 Parsed file_key: '{file_key}' from description: '{description}'")
+                if file_key:
+                    update_file_existence_info(
+                        validation_data, test_subject, signal_type, file_key, 
+                        file_path, signal_df is not None
+                    )
+                    print(f"   ✅ Updated validation log for {test_subject}/{file_key}/{signal_type}")
+                else:
+                    print(f"   ❌ Could not parse file_key from description: '{description}'")
+            else:
+                print(f"   ⚠️  Validation data is None - cannot update validation log")
+            
             if signal_df is not None:
                 # Determine expected duration based on file type
                 if 'DMT' in description:
@@ -353,10 +656,30 @@ def test_physiological_preprocessing():
                 
                 # Generate plot
                 print(f"   📊 Generating {signal_type.upper()} plot for {description}...")
-                plot_physiological_signals(signal_df, time_series, description, signal_type)
+                plot_physiological_signals(signal_df, time_series, file_path, signal_type, test_subject)
+                
+                # Collect manual validation input after showing the plot
+                if validation_data is not None and file_key:
+                    plot_title = create_plot_title_from_filename(file_path, signal_type, test_subject)
+                    category, notes = collect_manual_validation_input(
+                        test_subject, signal_type, file_key, True, plot_title
+                    )
+                    update_manual_validation_info(
+                        validation_data, test_subject, signal_type, file_key, category, notes
+                    )
                 
             else:
                 signal_results[description] = {'success': False}
+                
+                # Collect manual validation input even for missing files
+                if validation_data is not None and file_key:
+                    plot_title = f"{test_subject} - {signal_type.upper()} - {description}"
+                    category, notes = collect_manual_validation_input(
+                        test_subject, signal_type, file_key, False, plot_title
+                    )
+                    update_manual_validation_info(
+                        validation_data, test_subject, signal_type, file_key, category, notes
+                    )
         
         all_results[signal_type] = signal_results
     
@@ -459,11 +782,18 @@ def test_physiological_preprocessing():
                     print(f"      ❌ {desc}")
         print(f"\n💡 Run preprocess_phys.py in TEST_MODE first to generate the data")
     
+    # Save updated validation log
+    if validation_data is not None:
+        save_validation_log(validation_data)
+    
     print(f"\n🎯 Test completed!")
     if total_successful > 0:
         plot_dir = os.path.join('test', 'plots')
         print(f"📊 Plots saved in: {plot_dir}")
         print(f"📊 Generated plots for {len(signal_types)} signal types: {', '.join([s.upper() for s in signal_types])}")
+    
+    if validation_data is not None:
+        print(f"📝 Validation log updated with file existence information")
 
 if __name__ == "__main__":
     test_physiological_preprocessing()
