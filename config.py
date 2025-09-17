@@ -24,6 +24,18 @@ DERIVATIVES_DATA = os.path.join(DATA_ROOT, 'derivatives', 'preprocessing')
 REPORTS_DATA = os.path.join(DATA_ROOT, 'resampled')
 
 # =============================================================================
+# CONFIGURACIÓN DE ANÁLISIS EDA
+# =============================================================================
+
+# Configuración de qué análisis de EDA ejecutar
+# Activa/desactiva cada método según necesidades del proyecto
+EDA_ANALYSIS_CONFIG = {
+    'neurokit': True,    # Análisis estándar NeuroKit2 (siempre requerido)
+    'emotiphai': True,   # Método emotiphai SCR de BioSPPy
+    'cvx': True          # Descomposición CVX de BioSPPy (EDR, SMNA, EDL)
+}
+
+# =============================================================================
 # CONFIGURACIÓN DE SUJETOS Y DOSIS
 # =============================================================================
 

@@ -16,4 +16,7 @@ dependencies:
   - cvxopt
   - pyjulia
   - jpype1
+  - pip
+  - pip:
+      - biosppy
 

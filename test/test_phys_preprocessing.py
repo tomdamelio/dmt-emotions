@@ -29,12 +29,18 @@ Usage:
 import os
 import sys
 import pandas as pd
+import matplotlib
+matplotlib.use('TkAgg')  # Use TkAgg backend for better Windows compatibility
 import matplotlib.pyplot as plt
 import neurokit2 as nk
 import numpy as np
 import json
 from pathlib import Path
 from datetime import datetime
+import time
+
+# Configure matplotlib for better plot display
+plt.ion()  # Turn on interactive mode
 
 # Add parent directory to path to import from scripts and config
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -74,7 +80,7 @@ def save_validation_log(validation_data):
     except Exception as e:
         print(f"❌ Error guardando archivo de validación: {e}")
 
-def update_file_existence_info(validation_data, subject, signal_type, file_key, file_path, file_exists):
+def update_file_existence_info(validation_data, subject, signal_type, file_key, file_path, file_exists, extra_fields=None):
     """
     Actualiza la información de existencia de archivo en el log de validación
     
@@ -109,6 +115,11 @@ def update_file_existence_info(validation_data, subject, signal_type, file_key, 
         file_entry = validation_data['subjects'][subject][file_key][signal_type]
         file_entry['file_exists'] = file_exists
         file_entry['file_path'] = file_path
+        
+        # Agregar campos extra opcionales (p. ej., rutas derivadas)
+        if isinstance(extra_fields, dict):
+            for k, v in extra_fields.items():
+                file_entry[k] = v
             
         # Agregar nota automática si el archivo no existe
         if not file_exists:
@@ -150,18 +161,20 @@ def collect_manual_validation_input(subject, signal_type, file_key, file_exists,
         return category, notes
     
     print(f"📊 Archivo: {subject}/{file_key}/{signal_type}")
-    print(f"📈 Se generó el plot para revisar la calidad de la señal")
+    print(f"📈 Revisa el plot interactivo (ventana abierta) y evalúa la calidad de la señal")
+    print(f"   💡 Puedes interactuar con el plot (zoom, pan) mientras anotas")
     print(f"\n📝 Opciones de categoría:")
-    print(f"   good      - Señal de buena calidad, lista para análisis")
-    print(f"   acceptable - Señal usable con algunas limitaciones") 
-    print(f"   bad       - Señal no usable para análisis")
+    print(f"   good       - Señal de buena calidad, lista para análisis")
+    print(f"   acceptable  - Señal usable con algunas limitaciones") 
+    print(f"   maybe      - Señal dudosa; revisar más adelante")
+    print(f"   bad        - Señal no usable para análisis")
     
     # Solicitar categoría
     while True:
-        category = input(f"\n🔍 Categoría para {signal_type.upper()} [{subject}/{file_key}] (good/acceptable/bad): ").strip().lower()
-        if category in ['good', 'acceptable', 'bad']:
+        category = input(f"\n🔍 Categoría para {signal_type.upper()} [{subject}/{file_key}] (good/acceptable/maybe/bad): ").strip().lower()
+        if category in ['good', 'acceptable', 'maybe', 'bad']:
             break
-        print("❌ Por favor ingresa: good, acceptable, o bad")
+        print("❌ Por favor ingresa: good, acceptable, maybe, o bad")
     
     # Solicitar notas
     print(f"\n📝 Notas cualitativas para {signal_type.upper()} (opcional, presiona Enter para omitir):")
@@ -169,6 +182,19 @@ def collect_manual_validation_input(subject, signal_type, file_key, file_exists,
     notes = input(f"💬 Notas: ").strip()
     
     print(f"✅ Registrado - {signal_type.upper()}: {category}" + (f" | {notes}" if notes else ""))
+    
+    # Ask if user wants to close the plot
+    while True:
+        close_plot = input(f"\n🔍 ¿Cerrar la ventana del plot? (si/no): ").strip().lower()
+        if close_plot in ['si', 'no']:
+            break
+        print("❌ Por favor responde: si o no")
+    
+    if close_plot == 'si':
+        plt.close('all')
+        print(f"   🔒 Plot cerrado")
+    else:
+        print(f"   📊 Plot permanece abierto")
     
     return category, notes
 
@@ -181,7 +207,7 @@ def update_manual_validation_info(validation_data, subject, signal_type, file_ke
         subject: Código del sujeto
         signal_type: Tipo de señal
         file_key: Clave del archivo
-        category: Categoría de validación (good/acceptable/bad)
+        category: Categoría de validación (good/acceptable/maybe/bad)
         notes: Notas cualitativas del usuario
     """
     if validation_data is None:
@@ -401,6 +427,40 @@ def test_duration_and_sampling_rate(signal_df, time_series, expected_duration_se
     
     return results
 
+def load_physiological_info(file_path, signal_type):
+    """
+    Load NeuroKit2 info dictionary from JSON file corresponding to CSV data
+    
+    Args:
+        file_path (str): Path to the CSV file (will derive JSON path from this)
+        signal_type (str): Type of signal ('eda', 'ecg', 'resp')
+    
+    Returns:
+        dict: NeuroKit info dictionary or None if not found
+    """
+    try:
+        # Derive info JSON path from CSV path
+        # Example: S01_dmt_session2_low.csv -> S01_dmt_session2_low_info.json
+        csv_dir = os.path.dirname(file_path)
+        csv_filename = os.path.basename(file_path)
+        csv_name_no_ext = os.path.splitext(csv_filename)[0]
+        info_filename = f"{csv_name_no_ext}_info.json"
+        info_path = os.path.join(csv_dir, info_filename)
+        
+        if not os.path.exists(info_path):
+            print(f"   ⚠️  Info file not found: {info_filename}")
+            return None
+        
+        with open(info_path, 'r', encoding='utf-8') as f:
+            info_dict = json.load(f)
+        
+        print(f"   📋 Loaded {signal_type.upper()} info: {info_filename}")
+        return info_dict
+        
+    except Exception as e:
+        print(f"   ❌ Error loading info file: {e}")
+        return None
+
 def load_physiological_data(file_path, signal_type):
     """
     Load physiological data from CSV file and separate time from signal variables
@@ -410,11 +470,11 @@ def load_physiological_data(file_path, signal_type):
         signal_type (str): Type of signal ('eda', 'ecg', 'resp')
     
     Returns:
-        tuple: (signal_df, time_series) where signal_df contains only physiological variables
+        tuple: (signal_df, time_series, info_dict) where signal_df contains only physiological variables
     """
     if not os.path.exists(file_path):
         print(f"⚠️  File not found: {file_path}")
-        return None, None
+        return None, None, None
     
     # Load complete data
     df_complete = pd.read_csv(file_path)
@@ -426,11 +486,15 @@ def load_physiological_data(file_path, signal_type):
     print(f"✅ Loaded {os.path.basename(file_path)}: {len(signal_df)} samples, {len(signal_df.columns)} {signal_type.upper()} variables")
     print(f"   {signal_type.upper()} columns: {list(signal_df.columns)}")
     
-    return signal_df, time_series
+    # Load corresponding info dictionary
+    info_dict = load_physiological_info(file_path, signal_type)
+    
+    return signal_df, time_series, info_dict
 
-def plot_physiological_signals(signal_df, time_series, file_path, signal_type, subject, sampling_rate=None):
+def plot_physiological_signals(signal_df, time_series, file_path, signal_type, subject, sampling_rate=None, info_dict=None):
     """
-    Plot physiological signals using appropriate NeuroKit functions
+    Plot physiological signals using appropriate NeuroKit functions with proper info dict
+    Returns True if plot was displayed successfully, False otherwise
     
     Args:
         signal_df: DataFrame with signal variables
@@ -439,6 +503,10 @@ def plot_physiological_signals(signal_df, time_series, file_path, signal_type, s
         signal_type: Type of signal ('eda', 'ecg', 'resp')
         subject: Subject code
         sampling_rate: Sampling rate (Hz), defaults to config value if None
+        info_dict: NeuroKit info dictionary for proper plotting
+        
+    Returns:
+        bool: True if plot was successfully displayed, False otherwise
     """
     # Create structured title from filename
     plot_title = create_plot_title_from_filename(file_path, signal_type, subject)
@@ -449,104 +517,174 @@ def plot_physiological_signals(signal_df, time_series, file_path, signal_type, s
     print(f"   📊 Using sampling rate: {sampling_rate} Hz for plotting")
     if signal_df is None or time_series is None:
         print(f"⚠️  Cannot plot {plot_title} - data not available")
-        return
+        return False
     
     try:
-        # Create a figure with custom size
-        fig, axes = plt.subplots(figsize=(15, 10))
-        
-        # Use appropriate NeuroKit plot function based on signal type with correct sampling rate
-        if signal_type == 'eda':
-            nk.eda_plot(signal_df, sampling_rate=sampling_rate)
-        elif signal_type == 'ecg':
-            nk.ecg_plot(signal_df, sampling_rate=sampling_rate)
-        elif signal_type == 'resp':
-            nk.rsp_plot(signal_df, sampling_rate=sampling_rate)
+        # Try using NeuroKit2 plotting functions with info dict if available
+        if info_dict:
+            print(f"   📋 Using NeuroKit2 plotting with info dict (sampling_rate: {sampling_rate} Hz)")
+            try:
+                # Close any existing plots first
+                plt.close('all')
+                
+                # Create the plot
+                if signal_type == 'eda':
+                    nk.eda_plot(signal_df, info_dict)
+                elif signal_type == 'ecg':
+                    nk.ecg_plot(signal_df, info_dict)
+                elif signal_type == 'resp':
+                    nk.rsp_plot(signal_df, info_dict)
+                else:
+                    raise ValueError(f"Unknown signal type: {signal_type}")
+                
+                # Customize the plot with structured title
+                plt.suptitle(plot_title, fontsize=16, fontweight='bold')
+                plt.tight_layout()
+                
+                # Save plot with structured filename
+                plot_dir = os.path.join('test', 'plots')
+                os.makedirs(plot_dir, exist_ok=True)
+                plot_filename = f"{plot_title.lower().replace(' ', '_').replace('-', '_').replace(':', '')}.png"
+                plot_path = os.path.join(plot_dir, plot_filename)
+                plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+                
+                print(f"📊 {signal_type.upper()} plot saved: {plot_path}")
+                
+                # Display the interactive plot without blocking
+                print(f"🖥️  Mostrando plot interactivo de NeuroKit2...")
+                print(f"   💡 El plot permanecerá abierto mientras haces las anotaciones")
+                
+                # Ensure the plot is rendered and displayed
+                plt.draw()
+                plt.pause(0.1)
+                
+                # Check if we have figures to display
+                current_figs = plt.get_fignums()
+                print(f"   🔍 Figuras creadas: {len(current_figs)}")
+                
+                if current_figs:
+                    # Try to bring window to front on Windows
+                    try:
+                        fig = plt.figure(current_figs[0])
+                        # Windows-specific: bring to front
+                        if hasattr(fig.canvas.manager, 'window'):
+                            fig.canvas.manager.window.wm_attributes('-topmost', 1)
+                            fig.canvas.manager.window.wm_attributes('-topmost', 0)
+                    except Exception as e:
+                        print(f"   ⚠️  No se pudo traer la ventana al frente: {e}")
+                    
+                    # Show plot without blocking - allows annotation while viewing
+                    plt.show(block=False)
+                    plt.pause(0.5)  # Give time for window to appear
+                    
+                    print(f"   📊 NeuroKit2 plot mostrado - puedes revisar el plot mientras anotas")
+                else:
+                    print(f"   ❌ No se crearon figuras - error en NeuroKit2 plotting")
+                    return False
+                
+                # Don't close plots here - let them stay open during annotation
+                return True  # Success with NeuroKit2
+                
+            except Exception as e:
+                print(f"   ⚠️  NeuroKit2 plotting failed: {e}")
+                plt.close('all')  # Clean up any partial plots
+                return False
         else:
-            raise ValueError(f"Unknown signal type: {signal_type}")
-        
-        # Customize the plot with structured title
-        plt.suptitle(plot_title, fontsize=16, fontweight='bold')
-        plt.tight_layout()
-        
-        # Save plot with structured filename
-        plot_dir = os.path.join('test', 'plots')
-        os.makedirs(plot_dir, exist_ok=True)
-        plot_filename = f"{plot_title.lower().replace(' ', '_').replace('-', '_').replace(':', '')}.png"
-        plot_path = os.path.join(plot_dir, plot_filename)
-        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-        
-        print(f"📊 {signal_type.upper()} plot saved: {plot_path}")
-        
-        # Show plot
-        plt.show()
+            print(f"   ⚠️  No info dict available - cannot create NeuroKit2 plots")
+            return False
         
     except Exception as e:
         print(f"❌ Error plotting {signal_type.upper()} {plot_title}: {str(e)}")
-        # Fallback: create a simple plot
-        create_simple_signal_plot(signal_df, time_series, plot_title, signal_type)
+        plt.close('all')  # Clean up any partial plots
+        return False
 
-def create_simple_signal_plot(signal_df, time_series, title, signal_type):
-    """
-    Create a simple signal plot as fallback if specific plot function fails
-    
-    Args:
-        signal_df (pd.DataFrame): DataFrame with signal variables
-        time_series (pd.Series): Time series
-        title (str): Title for the plot
-        signal_type (str): Type of signal ('eda', 'ecg', 'resp')
-    """
-    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-    fig.suptitle(title, fontsize=16, fontweight='bold')
-    
-    # Define signal-specific components to plot
-    signal_components = {
-        'eda': [
-            ('EDA_Clean', 'EDA Clean Signal', 'EDA (µS)'),
-            ('EDA_Tonic', 'EDA Tonic (SCL)', 'EDA (µS)'),
-            ('EDA_Phasic', 'EDA Phasic (SCR)', 'EDA (µS)'),
-            ('SCR_Peaks', 'SCR Peaks', 'Peak Detection')
-        ],
-        'ecg': [
-            ('ECG_Clean', 'ECG Clean Signal', 'ECG (mV)'),
-            ('ECG_R_Peaks', 'R Peaks', 'Peak Detection'),
-            ('HRV_RMSSD', 'HRV RMSSD', 'HRV (ms)'),
-            ('ECG_Rate', 'Heart Rate', 'BPM')
-        ],
-        'resp': [
-            ('RSP_Clean', 'RESP Clean Signal', 'Respiration'),
-            ('RSP_Rate', 'Respiratory Rate', 'BPM'),
-            ('RSP_Amplitude', 'Respiratory Amplitude', 'Amplitude'),
-            ('RSP_Peaks', 'Respiratory Peaks', 'Peak Detection')
-        ]
-    }
-    
-    components = signal_components.get(signal_type, [])
-    axes_positions = [(0, 0), (0, 1), (1, 0), (1, 1)]
-    
-    for i, (col_name, plot_title, ylabel) in enumerate(components[:4]):
-        if i < len(axes_positions) and col_name in signal_df.columns:
-            ax = axes[axes_positions[i]]
-            ax.plot(time_series, signal_df[col_name])
-            ax.set_title(plot_title)
-            ax.set_xlabel('Time (s)')
-            ax.set_ylabel(ylabel)
-            ax.grid(True, alpha=0.3)
-        elif i < len(axes_positions):
-            # Hide empty subplot
-            axes[axes_positions[i]].set_visible(False)
-    
-    plt.tight_layout()
-    
-    # Save plot
-    plot_dir = os.path.join('test', 'plots')
-    os.makedirs(plot_dir, exist_ok=True)
-    plot_filename = f"{title.lower().replace(' ', '_').replace('-', '_').replace(':', '')}_simple.png"
-    plot_path = os.path.join(plot_dir, plot_filename)
-    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-    
-    print(f"📊 Simple {signal_type.upper()} plot saved: {plot_path}")
-    plt.show()
+
+# Emotiphai per-event plot removed by request; events are shown over CVX EDR only
+
+
+def plot_cvx_exploratory(eda_csv_path, subject):
+    """Create exploratory plot for CVX decomposition (EDR/SMNA/EDL) and overlay Emotiphai SCR events."""
+    try:
+        cvx_path = eda_csv_path.replace('.csv', '_cvx_decomposition.csv')
+        if not os.path.exists(cvx_path):
+            print(f"   ⚠️  CVX file not found: {os.path.basename(cvx_path)}")
+            return False
+
+        df_cvx = pd.read_csv(cvx_path)
+        if 'time' in df_cvx.columns:
+            t = df_cvx['time'].values
+        else:
+            t = np.arange(len(df_cvx)) / NEUROKIT_PARAMS['sampling_rate_default']
+        sr = NEUROKIT_PARAMS['sampling_rate_default']
+
+        # Try load Emotiphai events
+        emotiphai_path = eda_csv_path.replace('.csv', '_emotiphai_scr.csv')
+        df_emo = None
+        if os.path.exists(emotiphai_path):
+            df_emo = pd.read_csv(emotiphai_path)
+        else:
+            print(f"   ⚠️  Emotiphai file not found for overlay: {os.path.basename(emotiphai_path)}")
+
+        plt.figure(figsize=(10, 6))
+        plt.suptitle(create_plot_title_from_filename(cvx_path, 'eda', subject) + " - CVX (EDR/SMNA/EDL) + Emotiphai SCR", fontsize=12)
+
+        # EDR
+        ax1 = plt.subplot(3, 1, 1)
+        edr = df_cvx.get('EDR', np.zeros(len(t))).values
+        ax1.plot(t, edr, lw=0.8)
+        ax1.set_ylabel('EDR')
+
+        # Overlay Emotiphai events on EDR
+        if df_emo is not None and len(df_emo) > 0:
+            onset_idx = df_emo.get('SCR_Onsets_Emotiphai', pd.Series([], dtype=int)).astype(int).to_numpy()
+            peak_idx = df_emo.get('SCR_Peaks_Emotiphai', pd.Series([], dtype=int)).astype(int).to_numpy()
+            amplitudes = df_emo.get('SCR_Amplitudes_Emotiphai', pd.Series([], dtype=float)).astype(float).to_numpy()
+
+            # Convert to time (seconds)
+            onset_t = onset_idx / sr
+            peak_t = peak_idx / sr
+
+            # Safe clip indices to EDR length
+            onset_idx_clip = np.clip(onset_idx, 0, len(edr) - 1)
+            peak_idx_clip = np.clip(peak_idx, 0, len(edr) - 1)
+            edr_on = edr[onset_idx_clip]
+            edr_pk = edr[peak_idx_clip]
+
+            ax1.scatter(onset_t, edr_on, s=12, c='tab:blue', label='Onset (Emotiphai)', zorder=3)
+            ax1.scatter(peak_t, edr_pk, s=12, c='tab:red', label='Peak (Emotiphai)', zorder=3)
+
+            # Amplitude as vertical bar descending from the peak
+            for x_pt, y_pk, amp in zip(peak_t, edr_pk, amplitudes):
+                ax1.vlines(x_pt, y_pk - amp, y_pk, colors='tab:purple', alpha=0.7, linewidth=1)
+
+            ax1.legend(loc='upper right', fontsize=8)
+
+        # SMNA
+        ax2 = plt.subplot(3, 1, 2, sharex=ax1)
+        ax2.plot(t, df_cvx.get('SMNA', np.zeros(len(t))), color='orange', lw=0.8)
+        ax2.set_ylabel('SMNA')
+
+        # EDL
+        ax3 = plt.subplot(3, 1, 3, sharex=ax1)
+        ax3.plot(t, df_cvx.get('EDL', np.zeros(len(t))), color='green', lw=0.8)
+        ax3.set_ylabel('EDL')
+        ax3.set_xlabel('Time (s)')
+
+        plt.tight_layout()
+
+        # Save exploratory plot
+        plot_dir = os.path.join('test', 'plots')
+        os.makedirs(plot_dir, exist_ok=True)
+        plot_filename = os.path.basename(cvx_path).replace('.csv', '.png')
+        plt.savefig(os.path.join(plot_dir, plot_filename), dpi=200, bbox_inches='tight')
+
+        plt.show(block=False)
+        plt.pause(0.3)
+        print(f"   📊 CVX exploratory plot shown and saved: {plot_filename}")
+        return True
+    except Exception as e:
+        print(f"   ⚠️  CVX exploratory plotting failed: {e}")
+        return False
 
 def test_physiological_preprocessing():
     """
@@ -615,7 +753,7 @@ def test_physiological_preprocessing():
             print(f"   Path: {file_path}")
             
             # Load data
-            signal_df, time_series = load_physiological_data(file_path, signal_type)
+            signal_df, time_series, info_dict = load_physiological_data(file_path, signal_type)
             
             # Update validation log with file existence info
             if validation_data is not None:
@@ -623,9 +761,18 @@ def test_physiological_preprocessing():
                 file_key = parse_file_description_to_validation_key(description, test_subject, file_path)
                 print(f"   🔍 Parsed file_key: '{file_key}' from description: '{description}'")
                 if file_key:
+                    # Compose derived paths for auxiliary files (EDA only)
+                    extra = None
+                    if signal_type == 'eda':
+                        emotiphai_path = file_path.replace('.csv', '_emotiphai_scr.csv')
+                        cvx_path = file_path.replace('.csv', '_cvx_decomposition.csv')
+                        extra = {
+                            'file_path_emotiphai_scr': emotiphai_path,
+                            'file_path_cvx_decomposition': cvx_path,
+                        }
                     update_file_existence_info(
-                        validation_data, test_subject, signal_type, file_key, 
-                        file_path, signal_df is not None
+                        validation_data, test_subject, signal_type, file_key,
+                        file_path, signal_df is not None, extra_fields=extra
                     )
                     print(f"   ✅ Updated validation log for {test_subject}/{file_key}/{signal_type}")
                 else:
@@ -656,11 +803,25 @@ def test_physiological_preprocessing():
                 
                 # Generate plot
                 print(f"   📊 Generating {signal_type.upper()} plot for {description}...")
-                plot_physiological_signals(signal_df, time_series, file_path, signal_type, test_subject)
+                plot_success = plot_physiological_signals(signal_df, time_series, file_path, signal_type, test_subject, None, info_dict)
+
+                # For EDA, also show CVX exploratory plot with Emotiphai overlays (after NeuroKit)
+                if signal_type == 'eda':
+                    try:
+                        cvx_ok = plot_cvx_exploratory(file_path, test_subject)
+                        if cvx_ok:
+                            print("   📊 CVX + Emotiphai overlay displayed")
+                    except Exception as e:
+                        print(f"   ⚠️  Failed to display CVX/Emotiphai overlay plot: {e}")
                 
-                # Collect manual validation input after showing the plot
+                # Collect manual validation input ONLY after plot was displayed and closed
                 if validation_data is not None and file_key:
                     plot_title = create_plot_title_from_filename(file_path, signal_type, test_subject)
+                    if plot_success:
+                        print(f"📈 Se generó y mostró el plot para revisar la calidad de la señal")
+                    else:
+                        print(f"⚠️  No se pudo generar el plot - evalúa basándote en la información disponible")
+                    
                     category, notes = collect_manual_validation_input(
                         test_subject, signal_type, file_key, True, plot_title
                     )
@@ -794,6 +955,13 @@ def test_physiological_preprocessing():
     
     if validation_data is not None:
         print(f"📝 Validation log updated with file existence information")
+    
+    # Final cleanup of any remaining plots
+    remaining_figs = plt.get_fignums()
+    if remaining_figs:
+        print(f"\n🧹 Cerrando {len(remaining_figs)} ventanas de plots restantes...")
+        plt.close('all')
+        print(f"   ✅ Todas las ventanas cerradas")
 
 if __name__ == "__main__":
     test_physiological_preprocessing()
