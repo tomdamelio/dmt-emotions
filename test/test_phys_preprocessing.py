@@ -134,7 +134,7 @@ def update_file_existence_info(validation_data, subject, signal_type, file_key, 
     except Exception as e:
         print(f"⚠️  Error actualizando información de archivo {subject}/{file_key}/{signal_type}: {e}")
 
-def collect_manual_validation_input(subject, signal_type, file_key, file_exists, plot_title):
+def collect_manual_validation_input(validation_data, subject, signal_type, file_key, file_exists, plot_title):
     """
     Recolecta input manual del usuario para validación de señales
     
@@ -152,13 +152,26 @@ def collect_manual_validation_input(subject, signal_type, file_key, file_exists,
     print(f"📋 VALIDACIÓN MANUAL - {plot_title}")
     print(f"{'='*60}")
     
-    if not file_exists:
+    # Cargar valores previos como defaults si existen
+    default_category = ""
+    default_notes = ""
+    if validation_data is not None:
+        try:
+            prev_entry = (
+                validation_data.get('subjects', {})
+                .get(subject, {})
+                .get(file_key, {})
+                .get(signal_type, {})
+            )
+            default_category = (prev_entry.get('category') or "").strip()
+            default_notes = (prev_entry.get('notes') or "").strip()
+        except Exception:
+            pass
+
+    if not file_exists and not default_category and not default_notes:
         print(f"⚠️  ARCHIVO NO ENCONTRADO - No se puede validar la calidad de la señal")
-        category = "bad"
-        notes = "Archivo no encontrado"
-        print(f"   Categoría asignada automáticamente: {category}")
-        print(f"   Notas: {notes}")
-        return category, notes
+        default_category = "bad"
+        default_notes = "Archivo no encontrado"
     
     print(f"📊 Archivo: {subject}/{file_key}/{signal_type}")
     print(f"📈 Revisa el plot interactivo (ventana abierta) y evalúa la calidad de la señal")
@@ -169,25 +182,46 @@ def collect_manual_validation_input(subject, signal_type, file_key, file_exists,
     print(f"   maybe      - Señal dudosa; revisar más adelante")
     print(f"   bad        - Señal no usable para análisis")
     
-    # Solicitar categoría
+    # Mostrar defaults si existen
+    if default_category or default_notes:
+        print(f"\n🗂️  Valores previos detectados (se usarán si respondes 'ok'):")
+        if default_category:
+            print(f"   Categoría previa: {default_category}")
+        if default_notes:
+            print(f"   Notas previas: {default_notes}")
+
+    # Solicitar categoría (permitiendo 'ok' para mantener)
     while True:
-        category = input(f"\n🔍 Categoría para {signal_type.upper()} [{subject}/{file_key}] (good/acceptable/maybe/bad): ").strip().lower()
-        if category in ['good', 'acceptable', 'maybe', 'bad']:
+        extra = "/ok=mantener" if default_category else ""
+        cat_in = input(f"\n🔍 Categoría para {signal_type.upper()} [{subject}/{file_key}] (good/acceptable/maybe/bad{extra}): ").strip().lower()
+        if cat_in == 'ok' and default_category:
+            category = default_category
+            category_changed = False
             break
-        print("❌ Por favor ingresa: good, acceptable, maybe, o bad")
+        if cat_in in ['good', 'acceptable', 'maybe', 'bad']:
+            category = cat_in
+            category_changed = (category != default_category)
+            break
+        print("❌ Por favor ingresa: good, acceptable, maybe, bad" + (" o ok" if default_category else ""))
     
-    # Solicitar notas (usar 'Q' para omitir en lugar de Enter)
-    print(f"\n📝 Notas cualitativas para {signal_type.upper()} (opcional, presiona Q para omitir):")
+    # Solicitar notas (Q=omitir, ok=mantener)
+    print(f"\n📝 Notas cualitativas para {signal_type.upper()} (Q=omitir, ok=mantener):")
     print(f"   Ejemplo: 'Artefactos al inicio', 'Señal estable', 'Ruido en minuto 5-8', etc.")
     while True:
-        raw_notes = input(f"💬 Notas (Q para omitir): ").strip()
+        raw_notes = input(f"💬 Notas (Q para omitir, ok para mantener): ").strip()
+        if raw_notes.lower() == 'ok' and (default_notes or default_notes == ""):
+            notes = default_notes
+            notes_changed = False
+            break
         if raw_notes.lower() == 'q':
             notes = ""
+            notes_changed = (notes != default_notes)
             break
         if raw_notes == "":
-            print("❌ Por favor escribe alguna nota o presiona Q para omitir")
+            print("❌ Por favor escribe alguna nota, o usa Q para omitir, u ok para mantener")
             continue
         notes = raw_notes
+        notes_changed = (notes != default_notes)
         break
     
     print(f"✅ Registrado - {signal_type.upper()}: {category}" + (f" | {notes}" if notes else ""))
@@ -205,7 +239,8 @@ def collect_manual_validation_input(subject, signal_type, file_key, file_exists,
     else:
         print(f"   📊 Plot permanece abierto")
     
-    return category, notes
+    changed = category_changed or notes_changed
+    return category, notes, changed
 
 def update_manual_validation_info(validation_data, subject, signal_type, file_key, category, notes):
     """
@@ -706,60 +741,58 @@ def test_physiological_preprocessing():
     print("📋 Loading validation log for updating...")
     validation_data = load_validation_log()
     
-    # Determine which subjects were processed and should be tested
+    # Determine which subjects to test (per requested behavior)
     if TEST_MODE:
-        subjects_to_test = SUJETOS_TEST
-        print(f"🔬 Testing in TEST MODE with subjects: {subjects_to_test}")
+        subjects_to_test = TODOS_LOS_SUJETOS
+        print(f"🔬 TEST_MODE=True: validating ALL subjects ({len(subjects_to_test)})")
     else:
-        if PROCESSING_MODE == 'ALL':
-            subjects_to_test = TODOS_LOS_SUJETOS
-            print(f"🔬 Testing ALL SUBJECTS MODE: {len(subjects_to_test)} subjects")
-            print(f"📋 Will validate files for all subjects: {subjects_to_test}")
-        else:
-            subjects_to_test = SUJETOS_VALIDOS
-            print(f"🔬 Testing VALID SUBJECTS MODE: {len(subjects_to_test)} subjects")
-    
-    # Use first subject for detailed plotting (to avoid too many plots)
-    test_subject = subjects_to_test[0]
-    print(f"🎯 Testing physiological data for subject: {test_subject}")
-    
-    # Define expected file paths for all signal types
+        subjects_to_test = SUJETOS_TEST
+        print(f"🔬 TEST_MODE=False: validating test subject(s): {subjects_to_test}")
+
+    # Signal types and aggregator for results
     signal_types = ['eda', 'ecg', 'resp']
-    signal_dirs = {}
-    for signal in signal_types:
-        signal_dirs[signal] = {
-            'dmt_high': os.path.join(DERIVATIVES_DATA, 'phys', signal, 'dmt_high'),
-            'dmt_low': os.path.join(DERIVATIVES_DATA, 'phys', signal, 'dmt_low')
-        }
-    
-    # Generate expected files for all signal types
-    expected_files = {}
-    for signal in signal_types:
-        expected_files[signal] = {
-            f'{signal.upper()} DMT High Dose': os.path.join(signal_dirs[signal]['dmt_high'], f'{test_subject}_dmt_session1_high.csv'),
-            f'{signal.upper()} Resting High Dose': os.path.join(signal_dirs[signal]['dmt_high'], f'{test_subject}_rs_session1_high.csv'),
-            f'{signal.upper()} DMT Low Dose': os.path.join(signal_dirs[signal]['dmt_low'], f'{test_subject}_dmt_session2_low.csv'),
-            f'{signal.upper()} Resting Low Dose': os.path.join(signal_dirs[signal]['dmt_low'], f'{test_subject}_rs_session2_low.csv')
-        }
-    
-    print(f"\n📁 Expected output directories:")
-    for signal in signal_types:
-        print(f"   📂 {signal.upper()}:")
-        for condition, path in signal_dirs[signal].items():
-            exists = "✅" if os.path.exists(path) else "❌"
-            print(f"      {exists} {condition}: {path}")
-    
-    print(f"\n📄 Testing physiological files:")
-    
-    # Load and test each signal type
     all_results = {}
-    for signal_type in signal_types:
-        print(f"\n🧬 Testing {signal_type.upper()} signals:")
-        signal_results = {}
-        
-        for description, file_path in expected_files[signal_type].items():
-            print(f"\n🔍 Testing: {description}")
-            print(f"   Path: {file_path}")
+
+    print(f"\n📄 Testing physiological files:")
+
+    # Iterate over selected subjects
+    for test_subject in subjects_to_test:
+        print(f"\n🎯 Testing physiological data for subject: {test_subject}")
+
+        # Define expected output directories per signal
+        signal_dirs = {}
+        for signal in signal_types:
+            signal_dirs[signal] = {
+                'dmt_high': os.path.join(DERIVATIVES_DATA, 'phys', signal, 'dmt_high'),
+                'dmt_low': os.path.join(DERIVATIVES_DATA, 'phys', signal, 'dmt_low')
+            }
+
+        print(f"\n📁 Expected output directories for {test_subject}:")
+        for signal in signal_types:
+            print(f"   📂 {signal.upper()}:")
+            for condition, path in signal_dirs[signal].items():
+                exists = "✅" if os.path.exists(path) else "❌"
+                print(f"      {exists} {condition}: {path}")
+
+        # Generate expected files for this subject
+        expected_files = {}
+        for signal in signal_types:
+            expected_files[signal] = {
+                f'{signal.upper()} DMT High Dose': os.path.join(signal_dirs[signal]['dmt_high'], f'{test_subject}_dmt_session1_high.csv'),
+                f'{signal.upper()} Resting High Dose': os.path.join(signal_dirs[signal]['dmt_high'], f'{test_subject}_rs_session1_high.csv'),
+                f'{signal.upper()} DMT Low Dose': os.path.join(signal_dirs[signal]['dmt_low'], f'{test_subject}_dmt_session2_low.csv'),
+                f'{signal.upper()} Resting Low Dose': os.path.join(signal_dirs[signal]['dmt_low'], f'{test_subject}_rs_session2_low.csv')
+            }
+
+        # Load and test each signal type for this subject
+        for signal_type in signal_types:
+            if signal_type not in all_results:
+                all_results[signal_type] = {}
+            print(f"\n🧬 Testing {signal_type.upper()} signals:")
+
+            for description, file_path in expected_files[signal_type].items():
+                print(f"\n🔍 Testing: {description}")
+                print(f"   Path: {file_path}")
             
             # Load data
             signal_df, time_series, info_dict = load_physiological_data(file_path, signal_type)
@@ -798,11 +831,12 @@ def test_physiological_preprocessing():
                 
                 # Test duration and sampling rate
                 duration_test_results = test_duration_and_sampling_rate(
-                    signal_df, time_series, expected_duration_sec, description
+                    signal_df, time_series, expected_duration_sec, f"{test_subject} - {description}"
                 )
                 
                 # Store results for summary
-                signal_results[description] = {
+                result_key = f"{test_subject} - {description}"
+                all_results[signal_type][result_key] = {
                     'samples': len(signal_df),
                     'duration_min': len(signal_df) / NEUROKIT_PARAMS['sampling_rate_default'] / 60,
                     'variables': len(signal_df.columns),
@@ -831,27 +865,28 @@ def test_physiological_preprocessing():
                     else:
                         print(f"⚠️  No se pudo generar el plot - evalúa basándote en la información disponible")
                     
-                    category, notes = collect_manual_validation_input(
-                        test_subject, signal_type, file_key, True, plot_title
+                    category, notes, changed = collect_manual_validation_input(
+                        validation_data, test_subject, signal_type, file_key, True, plot_title
                     )
-                    update_manual_validation_info(
-                        validation_data, test_subject, signal_type, file_key, category, notes
-                    )
+                    if changed:
+                        update_manual_validation_info(
+                            validation_data, test_subject, signal_type, file_key, category, notes
+                        )
                 
             else:
-                signal_results[description] = {'success': False}
+                result_key = f"{test_subject} - {description}"
+                all_results[signal_type][result_key] = {'success': False}
                 
                 # Collect manual validation input even for missing files
                 if validation_data is not None and file_key:
                     plot_title = f"{test_subject} - {signal_type.upper()} - {description}"
-                    category, notes = collect_manual_validation_input(
-                        test_subject, signal_type, file_key, False, plot_title
+                    category, notes, changed = collect_manual_validation_input(
+                        validation_data, test_subject, signal_type, file_key, False, plot_title
                     )
-                    update_manual_validation_info(
-                        validation_data, test_subject, signal_type, file_key, category, notes
-                    )
-        
-        all_results[signal_type] = signal_results
+                    if changed:
+                        update_manual_validation_info(
+                            validation_data, test_subject, signal_type, file_key, category, notes
+                        )
     
     # Summary
     print(f"\n📋 VALIDATION SUMMARY")
