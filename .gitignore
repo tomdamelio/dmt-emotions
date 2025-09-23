@@ -92,7 +92,6 @@ cython_debug/
 *.mat
 *.xlsx
 *.xls
-*.json
 *.pickle
 *.pkl
 

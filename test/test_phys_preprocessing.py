@@ -176,10 +176,19 @@ def collect_manual_validation_input(subject, signal_type, file_key, file_exists,
             break
         print("❌ Por favor ingresa: good, acceptable, maybe, o bad")
     
-    # Solicitar notas
-    print(f"\n📝 Notas cualitativas para {signal_type.upper()} (opcional, presiona Enter para omitir):")
+    # Solicitar notas (usar 'Q' para omitir en lugar de Enter)
+    print(f"\n📝 Notas cualitativas para {signal_type.upper()} (opcional, presiona Q para omitir):")
     print(f"   Ejemplo: 'Artefactos al inicio', 'Señal estable', 'Ruido en minuto 5-8', etc.")
-    notes = input(f"💬 Notas: ").strip()
+    while True:
+        raw_notes = input(f"💬 Notas (Q para omitir): ").strip()
+        if raw_notes.lower() == 'q':
+            notes = ""
+            break
+        if raw_notes == "":
+            print("❌ Por favor escribe alguna nota o presiona Q para omitir")
+            continue
+        notes = raw_notes
+        break
     
     print(f"✅ Registrado - {signal_type.upper()}: {category}" + (f" | {notes}" if notes else ""))
     

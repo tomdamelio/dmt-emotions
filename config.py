@@ -81,7 +81,7 @@ SUJETOS_VALIDOS = ['S04', 'S05', 'S06', 'S07', 'S09', 'S13', 'S16', 'S17', 'S18'
 SUJETOS_TEST = ['S04']
 
 # Configuración de modo de ejecución
-TEST_MODE = False  # True = solo SUJETOS_TEST, False = procesar según PROCESSING_MODE
+TEST_MODE = True  # True = solo SUJETOS_TEST, False = procesar según PROCESSING_MODE
 PROCESSING_MODE = 'ALL'  # 'VALID' = solo sujetos válidos, 'ALL' = todos los sujetos disponibles
 
 # Sujetos con señal de EDA problemática (documentado para referencia)

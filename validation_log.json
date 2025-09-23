@@ -1,0 +1,1579 @@
+{
+  "metadata": {
+    "created_date": "2025-09-10",
+    "description": "Log de validación manual de señales fisiológicas preprocesadas",
+    "version": "1.1",
+    "annotator": "Tomi",
+    "categories": {
+      "good": "Señal de buena calidad, lista para análisis",
+      "acceptable": "Señal usable con algunas limitaciones",
+      "bad": "Señal no usable para análisis"
+    },
+    "instructions": "Para cada archivo, asignar una categoría (good/acceptable/bad) y agregar anotaciones cualitativas detalladas",
+    "automatic_fields": {
+      "file_exists": "Se completa automáticamente - indica si el archivo existe",
+      "file_path": "Se completa automáticamente - ruta completa del archivo"
+    },
+    "structure_note": "Jerarquía: subjects -> subject_id -> condition -> signal_type"
+  },
+  "subjects": {
+    "S01": {
+      "dmt_session1_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S02": {
+      "dmt_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S03": {
+      "dmt_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S04": {
+      "dmt_session1_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S05": {
+      "dmt_session1_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S06": {
+      "dmt_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S07": {
+      "dmt_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S08": {
+      "dmt_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "⚠️ Revisar - sujeto con EDA problemática conocida",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "⚠️ Revisar - DMT_2 tiene señal muerta según config",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S09": {
+      "dmt_session1_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S10": {
+      "dmt_session1_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_low": {
+        "eda": {
+          "category": "",
+          "notes": "⚠️ Revisar - DMT_2 tiene señal muerta según config",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S11": {
+      "dmt_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "⚠️ Revisar - DMT_2 tiene señal muerta según config",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S12": {
+      "dmt_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "⚠️ Revisar - DMT_2 tiene señal muerta según config",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S13": {
+      "dmt_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S15": {
+      "dmt_session1_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_low": {
+        "eda": {
+          "category": "",
+          "notes": "⚠️ Revisar - DMT_2 tiene señal muerta según config",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S16": {
+      "dmt_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S17": {
+      "dmt_session1_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S18": {
+      "dmt_session1_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S19": {
+      "dmt_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    },
+    "S20": {
+      "dmt_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session1_low": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "dmt_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      },
+      "rs_session2_high": {
+        "eda": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "ecg": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        },
+        "resp": {
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
+        }
+      }
+    }
+  }
+}
