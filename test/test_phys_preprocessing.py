@@ -516,9 +516,22 @@ def load_physiological_data(file_path, signal_type):
     Returns:
         tuple: (signal_df, time_series, info_dict) where signal_df contains only physiological variables
     """
+    # Normalize path to avoid accidental artifacts
+    file_path = os.path.normpath(file_path)
     if not os.path.exists(file_path):
-        print(f"⚠️  File not found: {file_path}")
-        return None, None, None
+        # Try to auto-correct common path typos observed in runs
+        alt_path = (
+            file_path
+            .replace(os.path.join('dmt_highh'), os.path.join('dmt_high'))
+            .replace(os.path.join('dmt_higgh'), os.path.join('dmt_high'))
+            .replace(os.path.join('dmt_loww'), os.path.join('dmt_low'))
+        )
+        if alt_path != file_path and os.path.exists(alt_path):
+            print(f"⚠️  Path normalized from '{file_path}' to '{alt_path}'")
+            file_path = alt_path
+        else:
+            print(f"⚠️  File not found: {file_path}")
+            return None, None, None
     
     # Load complete data
     df_complete = pd.read_csv(file_path)
@@ -743,11 +756,11 @@ def test_physiological_preprocessing():
     
     # Determine which subjects to test (per requested behavior)
     if TEST_MODE:
-        subjects_to_test = TODOS_LOS_SUJETOS
-        print(f"🔬 TEST_MODE=True: validating ALL subjects ({len(subjects_to_test)})")
-    else:
         subjects_to_test = SUJETOS_TEST
-        print(f"🔬 TEST_MODE=False: validating test subject(s): {subjects_to_test}")
+        print(f"🔬 TEST_MODE=True: validating TEST subjects: {subjects_to_test}")
+    else:
+        subjects_to_test = TODOS_LOS_SUJETOS
+        print(f"🔬 TEST_MODE=False: validating ALL subjects in order ({len(subjects_to_test)})")
 
     # Signal types and aggregator for results
     signal_types = ['eda', 'ecg', 'resp']
@@ -774,14 +787,16 @@ def test_physiological_preprocessing():
                 exists = "✅" if os.path.exists(path) else "❌"
                 print(f"      {exists} {condition}: {path}")
 
-        # Generate expected files for this subject
+        # Generate expected files for this subject (force clean subfolder names)
         expected_files = {}
         for signal in signal_types:
+            dmt_high_dir = os.path.join(DERIVATIVES_DATA, 'phys', signal, 'dmt_high')
+            dmt_low_dir = os.path.join(DERIVATIVES_DATA, 'phys', signal, 'dmt_low')
             expected_files[signal] = {
-                f'{signal.upper()} DMT High Dose': os.path.join(signal_dirs[signal]['dmt_high'], f'{test_subject}_dmt_session1_high.csv'),
-                f'{signal.upper()} Resting High Dose': os.path.join(signal_dirs[signal]['dmt_high'], f'{test_subject}_rs_session1_high.csv'),
-                f'{signal.upper()} DMT Low Dose': os.path.join(signal_dirs[signal]['dmt_low'], f'{test_subject}_dmt_session2_low.csv'),
-                f'{signal.upper()} Resting Low Dose': os.path.join(signal_dirs[signal]['dmt_low'], f'{test_subject}_rs_session2_low.csv')
+                f'{signal.upper()} DMT High Dose': os.path.join(dmt_high_dir, f'{test_subject}_dmt_session1_high.csv'),
+                f'{signal.upper()} Resting High Dose': os.path.join(dmt_high_dir, f'{test_subject}_rs_session1_high.csv'),
+                f'{signal.upper()} DMT Low Dose': os.path.join(dmt_low_dir, f'{test_subject}_dmt_session2_low.csv'),
+                f'{signal.upper()} Resting Low Dose': os.path.join(dmt_low_dir, f'{test_subject}_rs_session2_low.csv')
             }
 
         # Load and test each signal type for this subject
@@ -793,100 +808,90 @@ def test_physiological_preprocessing():
             for description, file_path in expected_files[signal_type].items():
                 print(f"\n🔍 Testing: {description}")
                 print(f"   Path: {file_path}")
-            
-            # Load data
-            signal_df, time_series, info_dict = load_physiological_data(file_path, signal_type)
-            
-            # Update validation log with file existence info
-            if validation_data is not None:
-                # Parse description to get validation key
-                file_key = parse_file_description_to_validation_key(description, test_subject, file_path)
-                print(f"   🔍 Parsed file_key: '{file_key}' from description: '{description}'")
-                if file_key:
-                    # Compose derived paths for auxiliary files (EDA only)
-                    extra = None
-                    if signal_type == 'eda':
-                        emotiphai_path = file_path.replace('.csv', '_emotiphai_scr.csv')
-                        cvx_path = file_path.replace('.csv', '_cvx_decomposition.csv')
-                        extra = {
-                            'file_path_emotiphai_scr': emotiphai_path,
-                            'file_path_cvx_decomposition': cvx_path,
-                        }
-                    update_file_existence_info(
-                        validation_data, test_subject, signal_type, file_key,
-                        file_path, signal_df is not None, extra_fields=extra
-                    )
-                    print(f"   ✅ Updated validation log for {test_subject}/{file_key}/{signal_type}")
-                else:
-                    print(f"   ❌ Could not parse file_key from description: '{description}'")
-            else:
-                print(f"   ⚠️  Validation data is None - cannot update validation log")
-            
-            if signal_df is not None:
-                # Determine expected duration based on file type
-                if 'DMT' in description:
-                    expected_duration_sec = DURACIONES_ESPERADAS['DMT']  # Both DMT sessions have same duration
-                else:  # Resting
-                    expected_duration_sec = DURACIONES_ESPERADAS['Reposo']  # Both Resting sessions have same duration
                 
-                # Test duration and sampling rate
-                duration_test_results = test_duration_and_sampling_rate(
-                    signal_df, time_series, expected_duration_sec, f"{test_subject} - {description}"
-                )
+                # Load data
+                signal_df, time_series, info_dict = load_physiological_data(file_path, signal_type)
                 
-                # Store results for summary
-                result_key = f"{test_subject} - {description}"
-                all_results[signal_type][result_key] = {
-                    'samples': len(signal_df),
-                    'duration_min': len(signal_df) / NEUROKIT_PARAMS['sampling_rate_default'] / 60,
-                    'variables': len(signal_df.columns),
-                    'success': True,
-                    'duration_test': duration_test_results
-                }
-                
-                # Generate plot
-                print(f"   📊 Generating {signal_type.upper()} plot for {description}...")
-                plot_success = plot_physiological_signals(signal_df, time_series, file_path, signal_type, test_subject, None, info_dict)
-
-                # For EDA, also show CVX exploratory plot with Emotiphai overlays (after NeuroKit)
-                if signal_type == 'eda':
-                    try:
-                        cvx_ok = plot_cvx_exploratory(file_path, test_subject)
-                        if cvx_ok:
-                            print("   📊 CVX + Emotiphai overlay displayed")
-                    except Exception as e:
-                        print(f"   ⚠️  Failed to display CVX/Emotiphai overlay plot: {e}")
-                
-                # Collect manual validation input ONLY after plot was displayed and closed
-                if validation_data is not None and file_key:
-                    plot_title = create_plot_title_from_filename(file_path, signal_type, test_subject)
-                    if plot_success:
-                        print(f"📈 Se generó y mostró el plot para revisar la calidad de la señal")
+                # Update validation log with file existence info
+                if validation_data is not None:
+                    # Parse description to get validation key
+                    file_key = parse_file_description_to_validation_key(description, test_subject, file_path)
+                    print(f"   🔍 Parsed file_key: '{file_key}' from description: '{description}'")
+                    if file_key:
+                        # Compose derived paths for auxiliary files (EDA only)
+                        extra = None
+                        if signal_type == 'eda':
+                            emotiphai_path = file_path.replace('.csv', '_emotiphai_scr.csv')
+                            cvx_path = file_path.replace('.csv', '_cvx_decomposition.csv')
+                            extra = {
+                                'file_path_emotiphai_scr': emotiphai_path,
+                                'file_path_cvx_decomposition': cvx_path,
+                            }
+                        update_file_existence_info(
+                            validation_data, test_subject, signal_type, file_key,
+                            file_path, signal_df is not None, extra_fields=extra
+                        )
+                        print(f"   ✅ Updated validation log for {test_subject}/{file_key}/{signal_type}")
                     else:
-                        print(f"⚠️  No se pudo generar el plot - evalúa basándote en la información disponible")
+                        print(f"   ❌ Could not parse file_key from description: '{description}'")
+                else:
+                    print(f"   ⚠️  Validation data is None - cannot update validation log")
+                
+                if signal_df is not None:
+                    # Determine expected duration based on file type
+                    if 'DMT' in description:
+                        expected_duration_sec = DURACIONES_ESPERADAS['DMT']  # Both DMT sessions have same duration
+                    else:  # Resting
+                        expected_duration_sec = DURACIONES_ESPERADAS['Reposo']  # Both Resting sessions have same duration
                     
-                    category, notes, changed = collect_manual_validation_input(
-                        validation_data, test_subject, signal_type, file_key, True, plot_title
+                    # Test duration and sampling rate
+                    duration_test_results = test_duration_and_sampling_rate(
+                        signal_df, time_series, expected_duration_sec, f"{test_subject} - {description}"
                     )
-                    if changed:
-                        update_manual_validation_info(
-                            validation_data, test_subject, signal_type, file_key, category, notes
+                    
+                    # Store results for summary
+                    result_key = f"{test_subject} - {description}"
+                    all_results[signal_type][result_key] = {
+                        'samples': len(signal_df),
+                        'duration_min': len(signal_df) / NEUROKIT_PARAMS['sampling_rate_default'] / 60,
+                        'variables': len(signal_df.columns),
+                        'success': True,
+                        'duration_test': duration_test_results
+                    }
+                    
+                    # Generate plot
+                    print(f"   📊 Generating {signal_type.upper()} plot for {description}...")
+                    plot_success = plot_physiological_signals(signal_df, time_series, file_path, signal_type, test_subject, None, info_dict)
+
+                    # For EDA, also show CVX exploratory plot with Emotiphai overlays (after NeuroKit)
+                    if signal_type == 'eda':
+                        try:
+                            cvx_ok = plot_cvx_exploratory(file_path, test_subject)
+                            if cvx_ok:
+                                print("   📊 CVX + Emotiphai overlay displayed")
+                        except Exception as e:
+                            print(f"   ⚠️  Failed to display CVX/Emotiphai overlay plot: {e}")
+                    
+                    # Collect manual validation input ONLY after plot was displayed and closed
+                    if validation_data is not None and file_key:
+                        plot_title = create_plot_title_from_filename(file_path, signal_type, test_subject)
+                        if plot_success:
+                            print(f"📈 Se generó y mostró el plot para revisar la calidad de la señal")
+                        else:
+                            print(f"⚠️  No se pudo generar el plot - evalúa basándote en la información disponible")
+                        
+                        category, notes, changed = collect_manual_validation_input(
+                            validation_data, test_subject, signal_type, file_key, True, plot_title
                         )
-                
-            else:
-                result_key = f"{test_subject} - {description}"
-                all_results[signal_type][result_key] = {'success': False}
-                
-                # Collect manual validation input even for missing files
-                if validation_data is not None and file_key:
-                    plot_title = f"{test_subject} - {signal_type.upper()} - {description}"
-                    category, notes, changed = collect_manual_validation_input(
-                        validation_data, test_subject, signal_type, file_key, False, plot_title
-                    )
-                    if changed:
-                        update_manual_validation_info(
-                            validation_data, test_subject, signal_type, file_key, category, notes
-                        )
+                        if changed:
+                            update_manual_validation_info(
+                                validation_data, test_subject, signal_type, file_key, category, notes
+                            )
+                    
+                else:
+                    result_key = f"{test_subject} - {description}"
+                    all_results[signal_type][result_key] = {'success': False}
+                    # Skip manual validation for missing files; existence already logged
     
     # Summary
     print(f"\n📋 VALIDATION SUMMARY")

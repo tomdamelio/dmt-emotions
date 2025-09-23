@@ -20,90 +20,82 @@
     "S01": {
       "dmt_session1_high": {
         "eda": {
-          "category": "bad",
-          "notes": "⚠️ Archivo no encontrado | Archivo no encontrado",
-          "file_exists": false,
-          "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_high\\S01_dmt_session1_high.csv",
-          "file_path_emotiphai_scr": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_high\\S01_dmt_session1_high_emotiphai_scr.csv",
-          "file_path_cvx_decomposition": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_high\\S01_dmt_session1_high_cvx_decomposition.csv"
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
         },
         "ecg": {
-          "category": "bad",
-          "notes": "⚠️ Archivo no encontrado | Archivo no encontrado",
-          "file_exists": false,
-          "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\ecg\\dmt_high\\S01_dmt_session1_high.csv"
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
         },
         "resp": {
-          "category": "bad",
-          "notes": "⚠️ Archivo no encontrado | Archivo no encontrado",
-          "file_exists": false,
-          "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\resp\\dmt_high\\S01_dmt_session1_high.csv"
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
         }
       },
       "rs_session1_high": {
         "eda": {
-          "category": "bad",
-          "notes": "⚠️ Archivo no encontrado | Archivo no encontrado",
-          "file_exists": false,
-          "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_high\\S01_rs_session1_high.csv",
-          "file_path_emotiphai_scr": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_high\\S01_rs_session1_high_emotiphai_scr.csv",
-          "file_path_cvx_decomposition": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_high\\S01_rs_session1_high_cvx_decomposition.csv"
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
         },
         "ecg": {
-          "category": "bad",
-          "notes": "⚠️ Archivo no encontrado | Archivo no encontrado",
-          "file_exists": false,
-          "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\ecg\\dmt_high\\S01_rs_session1_high.csv"
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
         },
         "resp": {
-          "category": "bad",
-          "notes": "⚠️ Archivo no encontrado | Archivo no encontrado",
-          "file_exists": false,
-          "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\resp\\dmt_high\\S01_rs_session1_high.csv"
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
         }
       },
       "dmt_session2_low": {
         "eda": {
-          "category": "good",
+          "category": "",
           "notes": "",
-          "file_exists": true,
-          "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_low\\S01_dmt_session2_low.csv",
-          "file_path_emotiphai_scr": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_low\\S01_dmt_session2_low_emotiphai_scr.csv",
-          "file_path_cvx_decomposition": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_low\\S01_dmt_session2_low_cvx_decomposition.csv"
+          "file_exists": null,
+          "file_path": ""
         },
         "ecg": {
-          "category": "good",
+          "category": "",
           "notes": "",
-          "file_exists": true,
-          "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\ecg\\dmt_low\\S01_dmt_session2_low.csv"
+          "file_exists": null,
+          "file_path": ""
         },
         "resp": {
-          "category": "good",
-          "notes": "Los primeros dos minutos son ruidosos, pero tal vez esto es tipico luego de terminar de fumar. Chequear luego.",
-          "file_exists": true,
-          "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\resp\\dmt_low\\S01_dmt_session2_low.csv"
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
         }
       },
       "rs_session2_low": {
         "eda": {
-          "category": "good",
-          "notes": "La deteccion de SCRs con los algoritmos por default de neurokit2 funcionan muy mal",
-          "file_exists": true,
-          "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_low\\S01_rs_session2_low.csv",
-          "file_path_emotiphai_scr": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_low\\S01_rs_session2_low_emotiphai_scr.csv",
-          "file_path_cvx_decomposition": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_low\\S01_rs_session2_low_cvx_decomposition.csv"
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
         },
         "ecg": {
-          "category": "good",
+          "category": "",
           "notes": "",
-          "file_exists": true,
-          "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\ecg\\dmt_low\\S01_rs_session2_low.csv"
+          "file_exists": null,
+          "file_path": ""
         },
         "resp": {
-          "category": "good",
-          "notes": "Arefacto luego del segundo 420",
-          "file_exists": true,
-          "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\resp\\dmt_low\\S01_rs_session2_low.csv"
+          "category": "",
+          "notes": "",
+          "file_exists": null,
+          "file_path": ""
         }
       }
     },
