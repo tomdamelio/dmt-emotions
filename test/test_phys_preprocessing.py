@@ -48,7 +48,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 try:
     from config import (
         DERIVATIVES_DATA, SUJETOS_TEST, SUJETOS_VALIDOS, TODOS_LOS_SUJETOS,
-        TEST_MODE, PROCESSING_MODE, DURACIONES_ESPERADAS, NEUROKIT_PARAMS
+        TEST_MODE, PROCESSING_MODE, DURACIONES_ESPERADAS, NEUROKIT_PARAMS,
+        get_dosis_sujeto
     )
 except ImportError:
     print("❌ Could not import config. Make sure config.py exists in parent directory.")
@@ -759,8 +760,9 @@ def test_physiological_preprocessing():
         subjects_to_test = SUJETOS_TEST
         print(f"🔬 TEST_MODE=True: validating TEST subjects: {subjects_to_test}")
     else:
-        subjects_to_test = TODOS_LOS_SUJETOS
-        print(f"🔬 TEST_MODE=False: validating ALL subjects in order ({len(subjects_to_test)})")
+        subjects_to_test = SUJETOS_VALIDOS if PROCESSING_MODE == 'VALID' else TODOS_LOS_SUJETOS
+        mode_label = 'VALID' if PROCESSING_MODE == 'VALID' else 'ALL'
+        print(f"🔬 TEST_MODE=False: validating {mode_label} subjects in order ({len(subjects_to_test)})")
 
     # Signal types and aggregator for results
     signal_types = ['eda', 'ecg', 'resp']
@@ -792,11 +794,23 @@ def test_physiological_preprocessing():
         for signal in signal_types:
             dmt_high_dir = os.path.join(DERIVATIVES_DATA, 'phys', signal, 'dmt_high')
             dmt_low_dir = os.path.join(DERIVATIVES_DATA, 'phys', signal, 'dmt_low')
+            # Determine which session is High/Low for this subject using config
+            try:
+                dose_session1 = get_dosis_sujeto(test_subject, 1)  # 'Alta' or 'Baja'
+            except Exception:
+                dose_session1 = 'Alta'  # Fallback to default assumption
+            if dose_session1 == 'Alta':
+                high_session = 'session1'
+                low_session = 'session2'
+            else:
+                high_session = 'session2'
+                low_session = 'session1'
+
             expected_files[signal] = {
-                f'{signal.upper()} DMT High Dose': os.path.join(dmt_high_dir, f'{test_subject}_dmt_session1_high.csv'),
-                f'{signal.upper()} Resting High Dose': os.path.join(dmt_high_dir, f'{test_subject}_rs_session1_high.csv'),
-                f'{signal.upper()} DMT Low Dose': os.path.join(dmt_low_dir, f'{test_subject}_dmt_session2_low.csv'),
-                f'{signal.upper()} Resting Low Dose': os.path.join(dmt_low_dir, f'{test_subject}_rs_session2_low.csv')
+                f'{signal.upper()} DMT High Dose': os.path.join(dmt_high_dir, f'{test_subject}_dmt_{high_session}_high.csv'),
+                f'{signal.upper()} Resting High Dose': os.path.join(dmt_high_dir, f'{test_subject}_rs_{high_session}_high.csv'),
+                f'{signal.upper()} DMT Low Dose': os.path.join(dmt_low_dir, f'{test_subject}_dmt_{low_session}_low.csv'),
+                f'{signal.upper()} Resting Low Dose': os.path.join(dmt_low_dir, f'{test_subject}_rs_{low_session}_low.csv')
             }
 
         # Load and test each signal type for this subject
