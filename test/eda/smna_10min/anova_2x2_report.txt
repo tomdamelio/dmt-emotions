@@ -1,0 +1,225 @@
+N subjects: 11
+Repeated-measures ANOVA via statsmodels:
+             F Value  Num DF  Den DF    Pr > F
+Task       15.944464     1.0    10.0  0.002547
+Dose        2.466369     1.0    10.0  0.147380
+Task:Dose   3.827696     1.0    10.0  0.078900
+RS Low vs High (paired t): t=0.903, p=0.38764067982476313
+DMT Low vs High (paired t): t=-1.932, p=0.08215921366087087
+Main effect Task (RS vs DMT): t=-3.993, p=0.002546722416580709
+
+Cell means (AUC):
+Dose        Low       High
+Task                      
+RS     6.215586   3.900022
+DMT   16.114737  27.588006
+
+Repeated-measures ANOVA 2x2 per minute window (first 10 minutes)
+Design: Within-subjects (Task: RS vs DMT) × (Dose: Low vs High)
+========================================================================
+
+--- Minute window 00:00–00:59 ---
+N subjects: 11
+             F Value  Num DF  Den DF    Pr > F
+Task       18.889724     1.0    10.0  0.001452
+Dose        0.463022     1.0    10.0  0.511661
+Task:Dose   0.371157     1.0    10.0  0.555962
+RS Low vs High (paired t): t=1.306, p=0.2207534106376744
+DMT Low vs High (paired t): t=0.083, p=0.9351992020806572
+Main effect Task (RS vs DMT): t=-4.346, p=0.0014521243843468377
+Cell means (AUC):
+Dose       Low      High
+Task                    
+RS    1.300503  0.820886
+DMT   3.371527  3.317708
+Effect sizes per-minute:
+  RS High–Low: d_z=-0.394, 95% CI [-0.850, 0.175]
+  DMT High–Low: d_z=-0.025, 95% CI [-0.684, 0.647]
+  Holm-corrected p (interaction, across minutes): 0.2462
+
+--- Minute window 01:00–01:59 ---
+N subjects: 11
+             F Value  Num DF  Den DF    Pr > F
+Task       11.848625     1.0    10.0  0.006308
+Dose        0.258733     1.0    10.0  0.622025
+Task:Dose   0.924425     1.0    10.0  0.358988
+RS Low vs High (paired t): t=0.723, p=0.4861404413748516
+DMT Low vs High (paired t): t=-0.760, p=0.464894374276104
+Main effect Task (RS vs DMT): t=-3.442, p=0.006308282707049649
+Cell means (AUC):
+Dose       Low      High
+Task                    
+RS    0.761596  0.518670
+DMT   3.267543  4.127692
+Effect sizes per-minute:
+  RS High–Low: d_z=-0.218, 95% CI [-0.897, 0.347]
+  DMT High–Low: d_z=0.229, 95% CI [-0.434, 0.831]
+  Holm-corrected p (interaction, across minutes): 0.2462
+
+--- Minute window 02:00–02:59 ---
+N subjects: 11
+            F Value  Num DF  Den DF    Pr > F
+Task       9.484238     1.0    10.0  0.011648
+Dose       0.838958     1.0    10.0  0.381252
+Task:Dose  3.827714     1.0    10.0  0.078899
+RS Low vs High (paired t): t=1.581, p=0.14497589855476314
+DMT Low vs High (paired t): t=-1.510, p=0.16207747299674002
+Main effect Task (RS vs DMT): t=-3.080, p=0.011647636590088486
+Cell means (AUC):
+Dose       Low      High
+Task                    
+RS    0.838310  0.334783
+DMT   2.254228  3.681012
+Effect sizes per-minute:
+  RS High–Low: d_z=-0.477, 95% CI [-1.190, 0.071]
+  DMT High–Low: d_z=0.455, 95% CI [-0.120, 1.233]
+  Holm-corrected p (interaction, across minutes): 0.2462
+
+--- Minute window 03:00–03:59 ---
+N subjects: 11
+             F Value  Num DF  Den DF    Pr > F
+Task       15.803436     1.0    10.0  0.002621
+Dose        0.948649     1.0    10.0  0.353034
+Task:Dose   2.149747     1.0    10.0  0.173320
+RS Low vs High (paired t): t=0.794, p=0.4455725056754666
+DMT Low vs High (paired t): t=-1.287, p=0.2272105336538232
+Main effect Task (RS vs DMT): t=-3.975, p=0.002620566388852946
+Cell means (AUC):
+Dose       Low      High
+Task                    
+RS    0.445437  0.207053
+DMT   1.814334  2.976474
+Effect sizes per-minute:
+  RS High–Low: d_z=-0.239, 95% CI [-0.822, 0.376]
+  DMT High–Low: d_z=0.388, 95% CI [-0.196, 1.355]
+  Holm-corrected p (interaction, across minutes): 0.2462
+
+--- Minute window 04:00–04:59 ---
+N subjects: 11
+             F Value  Num DF  Den DF    Pr > F
+Task       12.942813     1.0    10.0  0.004867
+Dose        5.863329     1.0    10.0  0.035973
+Task:Dose   3.721840     1.0    10.0  0.082543
+RS Low vs High (paired t): t=0.282, p=0.783663184238085
+DMT Low vs High (paired t): t=-2.480, p=0.03256195428485378
+Main effect Task (RS vs DMT): t=-3.598, p=0.004867168231053152
+Cell means (AUC):
+Dose       Low      High
+Task                    
+RS    0.591855  0.458310
+DMT   1.352166  3.206698
+Effect sizes per-minute:
+  RS High–Low: d_z=-0.085, 95% CI [-0.728, 0.482]
+  DMT High–Low: d_z=0.748, 95% CI [0.288, 1.426]
+  Holm-corrected p (interaction, across minutes): 0.2462
+
+--- Minute window 05:00–05:59 ---
+N subjects: 11
+            F Value  Num DF  Den DF    Pr > F
+Task       5.921103     1.0    10.0  0.035249
+Dose       5.590185     1.0    10.0  0.039657
+Task:Dose  3.512249     1.0    10.0  0.090397
+RS Low vs High (paired t): t=-1.502, p=0.16388730789687753
+DMT Low vs High (paired t): t=-2.210, p=0.05155179858026374
+Main effect Task (RS vs DMT): t=-2.433, p=0.03524876268250766
+Cell means (AUC):
+Dose       Low      High
+Task                    
+RS    0.130067  0.401297
+DMT   1.107663  2.562393
+Effect sizes per-minute:
+  RS High–Low: d_z=0.453, 95% CI [-0.473, 0.918]
+  DMT High–Low: d_z=0.666, 95% CI [0.263, 1.196]
+  Holm-corrected p (interaction, across minutes): 0.2462
+
+--- Minute window 06:00–06:59 ---
+N subjects: 11
+             F Value  Num DF  Den DF    Pr > F
+Task       20.373854     1.0    10.0  0.001119
+Dose        1.422554     1.0    10.0  0.260515
+Task:Dose   3.092043     1.0    10.0  0.109183
+RS Low vs High (paired t): t=0.849, p=0.4158450031041253
+DMT Low vs High (paired t): t=-1.815, p=0.09955855192936128
+Main effect Task (RS vs DMT): t=-4.514, p=0.0011191032523809625
+Cell means (AUC):
+Dose       Low      High
+Task                    
+RS    0.707594  0.374355
+DMT   0.989116  2.035202
+Effect sizes per-minute:
+  RS High–Low: d_z=-0.256, 95% CI [-0.670, 0.462]
+  DMT High–Low: d_z=0.547, 95% CI [-0.018, 1.284]
+  Holm-corrected p (interaction, across minutes): 0.2462
+
+--- Minute window 07:00–07:59 ---
+N subjects: 11
+            F Value  Num DF  Den DF    Pr > F
+Task       8.666329     1.0    10.0  0.014688
+Dose       4.876233     1.0    10.0  0.051716
+Task:Dose  2.014726     1.0    10.0  0.186191
+RS Low vs High (paired t): t=0.575, p=0.5777634106407549
+DMT Low vs High (paired t): t=-1.818, p=0.09902793909847535
+Main effect Task (RS vs DMT): t=-2.944, p=0.01468809470631331
+Cell means (AUC):
+Dose       Low      High
+Task                    
+RS    0.575144  0.288070
+DMT   0.812486  2.250178
+Effect sizes per-minute:
+  RS High–Low: d_z=-0.173, 95% CI [-0.600, 0.645]
+  DMT High–Low: d_z=0.548, 95% CI [0.125, 1.039]
+  Holm-corrected p (interaction, across minutes): 0.2462
+
+--- Minute window 08:00–08:59 ---
+N subjects: 11
+            F Value  Num DF  Den DF    Pr > F
+Task       4.154969     1.0    10.0  0.068834
+Dose       8.984264     1.0    10.0  0.013404
+Task:Dose  6.983388     1.0    10.0  0.024623
+RS Low vs High (paired t): t=0.231, p=0.8221074076513486
+DMT Low vs High (paired t): t=-3.072, p=0.011794414294550064
+Main effect Task (RS vs DMT): t=-2.038, p=0.0688342719989365
+Cell means (AUC):
+Dose       Low      High
+Task                    
+RS    0.280904  0.251129
+DMT   0.574192  1.432886
+Effect sizes per-minute:
+  RS High–Low: d_z=-0.070, 95% CI [-0.648, 0.671]
+  DMT High–Low: d_z=0.926, 95% CI [0.533, 1.783]
+  Holm-corrected p (interaction, across minutes): 0.2462
+
+--- Minute window 09:00–09:59 ---
+N subjects: 11
+            F Value  Num DF  Den DF    Pr > F
+Task       4.961129     1.0    10.0  0.050066
+Dose       3.031653     1.0    10.0  0.112273
+Task:Dose  4.845582     1.0    10.0  0.052329
+RS Low vs High (paired t): t=1.082, p=0.3045877654235134
+DMT Low vs High (paired t): t=-2.205, p=0.05202242654843236
+Main effect Task (RS vs DMT): t=-2.227, p=0.05006613960036578
+Cell means (AUC):
+Dose       Low      High
+Task                    
+RS    0.584105  0.245306
+DMT   0.570326  1.996578
+Effect sizes per-minute:
+  RS High–Low: d_z=-0.326, 95% CI [-0.820, 0.553]
+  DMT High–Low: d_z=0.665, 95% CI [0.227, 1.256]
+  Holm-corrected p (interaction, across minutes): 0.2462
+========================================
+Repeated-measures ANOVA 2x2 for first 5 minutes (0:00–4:59)
+========================================
+N subjects: 11
+             F Value  Num DF  Den DF    Pr > F
+Task       20.184539     1.0    10.0  0.001156
+Dose        0.923666     1.0    10.0  0.359176
+Task:Dose   2.877497     1.0    10.0  0.120680
+RS Low vs High (paired t): t=1.091, p=0.300890681367551
+DMT Low vs High (paired t): t=-1.444, p=0.1793968956830841
+Main effect Task (RS vs DMT): t=-4.493, p=0.001156040773620328
+Cell means (AUC):
+Dose        Low       High
+Task                      
+RS     3.937763   2.339706
+DMT   12.060010  17.310589

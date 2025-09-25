@@ -94,6 +94,25 @@ SUJETOS_EDA_PROBLEMATICA = {
 }
 
 # =============================================================================
+# SUJETOS VALIDADOS POR SEÑAL (basado en validation_log.json + dmt_bad_subjects.json)
+# =============================================================================
+# Criterio: sujetos con los 4 archivos (DMT_1, DMT_2, Reposo_1, Reposo_2)
+# en categoría 'good' o 'acceptable' para cada señal.
+
+SUJETOS_VALIDADOS_EDA = [
+    'S04', 'S05', 'S06', 'S07', 'S09', 'S13', 'S16', 'S17', 'S18', 'S19', 'S20'
+] # 11 sujetos
+
+SUJETOS_VALIDADOS_ECG = [
+    'S04', 'S05', 'S06', 'S07', 'S08', 'S09', 'S10', 'S11', 'S12', 'S13',
+    'S15', 'S16', 'S18', 'S19', 'S20'
+] # 15 sujetos 
+
+SUJETOS_VALIDADOS_RESP = [
+    'S04', 'S05', 'S06', 'S07', 'S09', 'S13', 'S15', 'S16', 'S17', 'S18', 'S19', 'S20'
+] # 12 sujetos
+
+# =============================================================================
 # CONFIGURACIÓN DE EXPERIMENTOS
 # =============================================================================
 

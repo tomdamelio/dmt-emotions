@@ -162,7 +162,7 @@
           "file_path_cvx_decomposition": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_high\\S02_dmt_session2_high_cvx_decomposition.csv"
         },
         "ecg": {
-          "category": "maybe",
+          "category": "acceptable",
           "notes": "luego de los 100s los  datos estan muy bien, y de hecho el HR acompaña la farmacodinamia de la droga. Pero antes de eso hay mucho ruido. Revisar luego si se incorpora o no",
           "file_exists": true,
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\ecg\\dmt_high\\S02_dmt_session2_high.csv"
@@ -184,7 +184,7 @@
           "file_path_cvx_decomposition": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_high\\S02_rs_session2_high_cvx_decomposition.csv"
         },
         "ecg": {
-          "category": "maybe",
+          "category": "acceptable",
           "notes": "Hay bastante ruido desde el segundo 210 hasta el segundo 310. Si esto lo vamos a utilizar, entre estos tiempos hay que tratar de alguna forma particular estos datos (e.g. intepolar en estos tiempos, o algo parecido)",
           "file_exists": true,
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\ecg\\dmt_high\\S02_rs_session2_high.csv"
@@ -304,7 +304,7 @@
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\ecg\\dmt_high\\S04_dmt_session1_high.csv"
         },
         "resp": {
-          "category": "maybe",
+          "category": "acceptable",
           "notes": "Tiene bastante ruido, pero tal vez es comun en este tipo de datos. Rechequear luego.",
           "file_exists": true,
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\resp\\dmt_high\\S04_dmt_session1_high.csv"
@@ -348,7 +348,7 @@
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\ecg\\dmt_low\\S04_dmt_session2_low.csv"
         },
         "resp": {
-          "category": "maybe",
+          "category": "acceptable",
           "notes": "bastante ruido, pero capaz normal en este tipo de datos",
           "file_exists": true,
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\resp\\dmt_low\\S04_dmt_session2_low.csv"
@@ -484,7 +484,7 @@
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\ecg\\dmt_low\\S06_dmt_session1_low.csv"
         },
         "resp": {
-          "category": "maybe",
+          "category": "acceptable",
           "notes": "hay poca fluctuacion, pero me parece que igual la data es valida",
           "file_exists": true,
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\resp\\dmt_low\\S06_dmt_session1_low.csv"
@@ -596,7 +596,7 @@
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\ecg\\dmt_low\\S07_rs_session1_low.csv"
         },
         "resp": {
-          "category": "maybe",
+          "category": "acceptable",
           "notes": "tiene basante ruido, y es en la condicion rest. ademas tiene 0 padding. chequear luego si usarlo o no",
           "file_exists": true,
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\resp\\dmt_low\\S07_rs_session1_low.csv"
@@ -694,8 +694,8 @@
       },
       "dmt_session2_high": {
         "eda": {
-          "category": "maybe",
-          "notes": "⚠️ Revisar - DMT_2 tiene señal muerta según config | por algun motivo no me abrio la señal de neurokit2, asi que solo lo estoy viendo con el segundo plot. solo viendo esto veo que SMNA tiene valores bajos (todos menores a 0.8), siendo en la condicion high dmt me parece raro. Seguro sea necesario excluirlo, pero verlo despues",
+          "category": "bad",
+          "notes": "⚠️ La señal tiene demasiado ruido, deberia descartarlo. Neurokit me tiro problema de length mismatch",
           "file_exists": true,
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_high\\S08_dmt_session2_high.csv",
           "file_path_emotiphai_scr": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_high\\S08_dmt_session2_high_emotiphai_scr.csv",
@@ -852,8 +852,8 @@
       },
       "rs_session1_high": {
         "eda": {
-          "category": "maybe",
-          "notes": "revisar despues estos datos, pero no pude revisar lo de neurokit2 porque no me generom el plot (dice NeuroKit2 plotting failed: Length of values (30) does not match length of index (29)). Pero tal vez se pueda aceptar y no pierdo un sujeto",
+          "category": "good",
+          "notes": "revisar despues estos datos, pero no pude revisar lo de neurokit2 porque no me generom el plot (dice NeuroKit2 plotting failed: Length of values (30) does not match length of index (29)). Pero tal vez se pueda aceptar y no pierdo un sujeto. Recien lo revise y efectivamente la data es buena, asi que lo mantenemos.",
           "file_exists": true,
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_high\\S10_rs_session1_high.csv",
           "file_path_emotiphai_scr": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_high\\S10_rs_session1_high_emotiphai_scr.csv",
@@ -934,8 +934,8 @@
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\ecg\\dmt_low\\S11_dmt_session1_low.csv"
         },
         "resp": {
-          "category": "maybe",
-          "notes": "menos ruido que antes, no me queda claro que sea aceptable",
+          "category": "acceptable",
+          "notes": "bastante ruido, pero creo que es acceptable",
           "file_exists": true,
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\resp\\dmt_low\\S11_dmt_session1_low.csv"
         }
@@ -956,8 +956,8 @@
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\ecg\\dmt_low\\S11_rs_session1_low.csv"
         },
         "resp": {
-          "category": "maybe",
-          "notes": "no estoy seguro si la calidad de los datos es suficiente",
+          "category": "acceptable",
+          "notes": "no estoy seguro si la calidad de los datos es suficiente, pero por ahora lo marco como acceptable",
           "file_exists": true,
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\resp\\dmt_low\\S11_rs_session1_low.csv"
         }
@@ -1145,7 +1145,7 @@
       "dmt_session2_high": {
         "eda": {
           "category": "good",
-          "notes": "por algun motivo no se genero el por los indices de neurokit, rever despues. pero la data esta bien",
+          "notes": "por algun motivo no se genero el por los indices de neurokit, rever despues. Pero la data esta bien, ya lo revise.",
           "file_exists": true,
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_high\\S13_dmt_session2_high.csv",
           "file_path_emotiphai_scr": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_high\\S13_dmt_session2_high_emotiphai_scr.csv",
@@ -1234,8 +1234,8 @@
       },
       "dmt_session2_low": {
         "eda": {
-          "category": "maybe",
-          "notes": "⚠️ Revisar - DMT_2 tiene señal muerta según config | realmente no me queda claro, porque no pude ver el plot de neurokit2, revisar individualmente estos plots",
+          "category": "bad",
+          "notes": "⚠️ Revisar - DMT_2 tiene señal muerta según config | realmente no me queda claro, porque no pude ver el plot de neurokit2, revisar individualmente estos plots. La data tiene demasiado ruido, deberia descartarlo",
           "file_exists": true,
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_low\\S15_dmt_session2_low.csv",
           "file_path_emotiphai_scr": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_low\\S15_dmt_session2_low_emotiphai_scr.csv",
@@ -1302,8 +1302,8 @@
       },
       "rs_session1_low": {
         "eda": {
-          "category": "maybe",
-          "notes": "chequear la señal prque me genera el problema de lenght of values",
+          "category": "acceptable",
+          "notes": "chequear la señal prque me genera el problema de lenght of values. Lo aceptamos aunque tiene un poco de ruido.",
           "file_exists": true,
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_low\\S16_rs_session1_low.csv",
           "file_path_emotiphai_scr": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_low\\S16_rs_session1_low_emotiphai_scr.csv",
@@ -1346,7 +1346,7 @@
       },
       "rs_session2_high": {
         "eda": {
-          "category": "maybe",
+          "category": "acceptable",
           "notes": "mucho ruido, pero quizas salvable",
           "file_exists": true,
           "file_path": "C:\\Users\\tdamelio\\Desktop\\dmt\\data\\derivatives\\preprocessing\\phys\\eda\\dmt_high\\S16_rs_session2_high.csv",
