@@ -1,0 +1,109 @@
+================================================================================
+LME ANALYSIS REPORT: SMNA AUC by Minute
+================================================================================
+
+Analysis date: 2025-09-26 10:56:40
+Dataset: 440 observations from 11 subjects
+
+DESIGN:
+  Within-subjects 2×2: Task (RS vs DMT) × Dose (Low vs High)
+  Time windows: 10 one-minute windows (0-9 minutes)
+  Dependent variable: AUC of SMNA signal
+
+MODEL SPECIFICATION:
+  Fixed effects: AUC ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c
+  Random effects: ~ 1 | subject
+  Where minute_c = minute - mean(minute) [centered time]
+
+MODEL FIT STATISTICS:
+  AIC: nan
+  BIC: nan
+  Log-likelihood: -810.62
+  N observations: 440
+  N subjects: 11
+  Random effects variance:           Group
+Group  1.709335
+  Residual variance: 2.077436
+
+✅ Model converged without warnings
+
+HYPOTHESIS TESTING RESULTS (with BH-FDR correction):
+============================================================
+
+FAMILY TASK:
+------------------------------
+  Task[T.DMT]:
+    β =   0.9898, SE = 0.1943
+    95% CI: [  0.6089,   1.3707]
+    p_raw = 0.0000, p_FDR = 0.0000 ***
+
+  Task[T.DMT]:minute_c:
+    β =  -0.2355, SE = 0.0478
+    95% CI: [ -0.3293,  -0.1418]
+    p_raw = 0.0000, p_FDR = 0.0000 ***
+
+
+FAMILY DOSE:
+------------------------------
+  Dose[T.High]:
+    β =  -0.2316, SE = 0.1943
+    95% CI: [ -0.6125,   0.1494]
+    p_raw = 0.2335, p_FDR = 0.2937 
+
+  Dose[T.High]:minute_c:
+    β =   0.0502, SE = 0.0478
+    95% CI: [ -0.0435,   0.1440]
+    p_raw = 0.2937, p_FDR = 0.2937 
+
+
+FAMILY INTERACTION:
+------------------------------
+  Task[T.DMT]:Dose[T.High]:
+    β =   1.3789, SE = 0.2749
+    95% CI: [  0.8402,   1.9176]
+    p_raw = 0.0000, p_FDR = 0.0000 ***
+
+
+CONDITIONAL CONTRASTS:
+------------------------------
+  High - Low within RS:
+    β =  -0.2316, SE = 0.1943, p = 0.2335 
+
+  (High - Low within DMT) - (High - Low within RS):
+    β =   1.3789, SE = 0.2749, p = 0.0000 ***
+
+
+DATA SUMMARY:
+------------------------------
+Cell means (AUC by Task × Dose):
+           count    mean     std
+Task Dose                       
+RS   Low     110  0.6216  1.2637
+     High    110  0.3900  0.7501
+DMT  Low     110  1.6114  2.0707
+     High    110  2.7587  3.0883
+
+Time trend (AUC by minute):
+        count    mean     std
+minute                       
+0          44  2.2027  2.2654
+1          44  2.1689  3.1791
+2          44  1.7771  2.7234
+3          44  1.3608  2.0881
+4          44  1.4023  2.1473
+5          44  1.0504  2.0371
+6          44  1.0266  1.6463
+7          44  0.9815  1.9942
+8          44  0.6348  1.2660
+9          44  0.8491  1.6374
+
+
+INTERPRETATION NOTES:
+- Positive β coefficients indicate higher AUC
+- Task[T.DMT]: DMT vs RS (reference = RS)
+- Dose[T.High]: High vs Low dose (reference = Low)
+- minute_c: Linear time trend (centered)
+- Interactions test differential effects
+- FDR correction applied within hypothesis families
+
+================================================================================
