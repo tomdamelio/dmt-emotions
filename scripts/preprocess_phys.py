@@ -8,7 +8,7 @@ preprocessed CSV files organized by experimental condition for subsequent analys
 
 Features:
 - Processes EDA, ECG, and RESP signals with all NeuroKit variables
-- Applies adaptive duration strategy (truncation/zero-padding)
+- Applies adaptive duration strategy (truncation/NaN-padding)
 - No baseline correction applied (preserves raw processed data)
 - Organizes output by dose condition (high/low) and signal type
 - JSON logging of all processing steps (hierarchical by signal)
@@ -355,18 +355,18 @@ def process_physiology(experiment, subject, fname):
                     signal_info['strategy_applied'] = 'truncated'
                     print(f"   ✂️  {signal_name.upper()}: Truncated to {expected_duration_sec/60:.1f} min")
                 else:
-                    # Zero padding until expected duration
+                    # NaN padding until expected duration
                     missing_samples = expected_samples - current_samples
                     
-                    # Create DataFrame with padding (all columns as 0)
+                    # Create DataFrame with padding (all columns as NaN)
                     padding_data = pd.DataFrame(
-                        {col: 0.0 for col in df_processed.columns}, 
+                        {col: np.nan for col in df_processed.columns}, 
                         index=range(len(df_processed), len(df_processed) + missing_samples)
                     )
                     
                     df_final = pd.concat([df_processed, padding_data], ignore_index=True)
-                    signal_info['strategy_applied'] = 'zero_padded'
-                    print(f"   📈 {signal_name.upper()}: Zero-padded with {missing_samples} samples")
+                    signal_info['strategy_applied'] = 'nan_padded'
+                    print(f"   📈 {signal_name.upper()}: NaN-padded with {missing_samples} samples")
                 
                 # Verify processing
                 final_samples = len(df_final)
@@ -436,11 +436,11 @@ def process_physiology(experiment, subject, fname):
                 elif len(cvx_data) < expected_samples:
                     missing_samples = expected_samples - len(cvx_data)
                     padding_data = pd.DataFrame(
-                        {col: 0.0 for col in cvx_data.columns}, 
+                        {col: np.nan for col in cvx_data.columns}, 
                         index=range(len(cvx_data), len(cvx_data) + missing_samples)
                     )
                     cvx_data = pd.concat([cvx_data, padding_data], ignore_index=True)
-                    print(f"   📈 CVX: Zero-padded with {missing_samples} samples")
+                    print(f"   📈 CVX: NaN-padded with {missing_samples} samples")
         elif not EDA_ANALYSIS_CONFIG['cvx']:
             print(f"   ⏭️  CVX decomposition analysis disabled in config")
         
