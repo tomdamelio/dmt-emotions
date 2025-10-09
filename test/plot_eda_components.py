@@ -231,7 +231,7 @@ def load_cvx_component(csv_path: str, component: str) -> Optional[Tuple[np.ndarr
         sr = NEUROKIT_PARAMS.get('sampling_rate_default', 250)
         t = np.arange(len(df)) / float(sr)
 
-    component_data = pd.to_numeric(df[component], errors='coerce').fillna(0.0).to_numpy()
+    component_data = pd.to_numeric(df[component], errors='coerce').to_numpy()
     return t, component_data
 
 
@@ -247,10 +247,16 @@ def compute_baseline_edl(t: np.ndarray, y: np.ndarray) -> float:
     """
     mask_first_sec = (t >= 0.0) & (t < 1.0)
     if not np.any(mask_first_sec):
-        # If no data in first second, use first available sample
-        return float(y[0]) if len(y) > 0 else 0.0
+        # If no data in first second, use first available non-NaN sample
+        valid_mask = ~np.isnan(y)
+        if not np.any(valid_mask):
+            return 0.0
+        return float(y[valid_mask][0])
     
-    return float(np.mean(y[mask_first_sec]))
+    y_first_sec = y[mask_first_sec]
+    # Use nanmean to handle potential NaN values in baseline period
+    baseline = np.nanmean(y_first_sec)
+    return float(baseline) if not np.isnan(baseline) else 0.0
 
 
 def apply_edl_baseline_correction(t: np.ndarray, y: np.ndarray, component: str) -> np.ndarray:
@@ -279,7 +285,9 @@ def compute_mean_value(y: np.ndarray, component: str = 'EDR', baseline_value: Op
         component: 'EDR' or 'EDL' 
         baseline_value: Deprecated, kept for compatibility
     """
-    return float(np.mean(y))
+    # Use nanmean to handle NaN values correctly
+    mean_val = np.nanmean(y)
+    return float(mean_val) if not np.isnan(mean_val) else 0.0
 
 
 def moving_average(x: np.ndarray, window_samples: int) -> np.ndarray:
@@ -295,16 +303,77 @@ def compute_envelope(y: np.ndarray, sr: float, window_sec: float = 1.0) -> np.nd
     return moving_average(y, window_samples)
 
 
+def validate_sufficient_data(t: np.ndarray, y: np.ndarray, duration_sec: float, min_valid_ratio: float = 0.5) -> bool:
+    """Validate that there's sufficient valid (non-NaN) data for the specified duration.
+    
+    Args:
+        t: Time array
+        y: Signal array
+        duration_sec: Required duration in seconds
+        min_valid_ratio: Minimum ratio of valid samples required (0.5 = 50%)
+        
+    Returns:
+        True if sufficient valid data exists
+    """
+    if len(t) == 0 or len(y) == 0:
+        return False
+    
+    # Find data within the required duration
+    mask_duration = (t >= 0.0) & (t <= duration_sec)
+    if not np.any(mask_duration):
+        return False
+    
+    y_duration = y[mask_duration]
+    valid_samples = np.sum(~np.isnan(y_duration))
+    total_samples = len(y_duration)
+    
+    if total_samples == 0:
+        return False
+    
+    valid_ratio = valid_samples / total_samples
+    return valid_ratio >= min_valid_ratio
+
+
 def _resample_to_grid(t: np.ndarray, y: np.ndarray, t_grid: np.ndarray) -> np.ndarray:
-    """Linearly resample y(t) to t_grid, guarding NaNs."""
+    """Linearly resample y(t) to t_grid, preserving NaNs."""
     t = np.asarray(t, dtype=float)
     y = np.asarray(y, dtype=float)
     if len(t) < 2:
         return np.full_like(t_grid, np.nan, dtype=float)
-    y = np.nan_to_num(y, nan=0.0)
-    # Clip grid to data span; fill outside with edge values
-    yg = np.interp(t_grid, t, y, left=y[0], right=y[-1])
+    
+    # Find valid (non-NaN) data points
+    valid_mask = ~np.isnan(y)
+    if not np.any(valid_mask):
+        return np.full_like(t_grid, np.nan, dtype=float)
+    
+    t_valid = t[valid_mask]
+    y_valid = y[valid_mask]
+    
+    # Only interpolate within the valid data range
+    yg = np.full_like(t_grid, np.nan, dtype=float)
+    valid_range_mask = (t_grid >= t_valid[0]) & (t_grid <= t_valid[-1])
+    
+    if np.any(valid_range_mask):
+        yg[valid_range_mask] = np.interp(t_grid[valid_range_mask], t_valid, y_valid)
+    
     return yg
+
+
+def _last_valid_timestamp_mmss(t: np.ndarray, y: np.ndarray) -> Optional[str]:
+    """Return mm:ss string for the last non-NaN sample; None if no valid sample."""
+    if t is None or y is None or len(t) == 0 or len(y) == 0:
+        return None
+    t = np.asarray(t, dtype=float)
+    y = np.asarray(y, dtype=float)
+    valid_mask = (~np.isnan(y)) & np.isfinite(t)
+    if not np.any(valid_mask):
+        return None
+    last_t = float(t[valid_mask][-1])
+    if last_t < 0.0:
+        last_t = 0.0
+    minutes = int(last_t // 60)
+    seconds = int(last_t % 60)
+    return f"{minutes:02d}:{seconds:02d}"
 
 
 def _plot_dmt_only_20min(out_path: str, component: str) -> bool:
@@ -317,8 +386,8 @@ def _plot_dmt_only_20min(out_path: str, component: str) -> bool:
         
     config = COMPONENT_CONFIG[component]
     
-    # Extended grid: 0..1200s (20 min), 2 Hz for readability
-    t_grid = np.arange(0.0, 1200.0, 0.5)
+    # Extended grid: 0..1150s (19:10), 2 Hz for readability
+    t_grid = np.arange(0.0, 1150.0, 0.5)
     
     high_curves = []
     low_curves = []
@@ -337,9 +406,9 @@ def _plot_dmt_only_20min(out_path: str, component: str) -> bool:
             yh = apply_edl_baseline_correction(th, yh, component)
             yl = apply_edl_baseline_correction(tl, yl, component)
             
-            # Trim to 20 minutes
-            mask_h = (th >= 0.0) & (th < 1200.0)
-            mask_l = (tl >= 0.0) & (tl < 1200.0)
+            # Trim to 19 minutes 10 seconds
+            mask_h = (th >= 0.0) & (th < 1150.0)
+            mask_l = (tl >= 0.0) & (tl < 1150.0)
             if not (np.any(mask_h) and np.any(mask_l)):
                 continue
             yh = yh[mask_h]; th = th[mask_h]
@@ -383,7 +452,7 @@ def _plot_dmt_only_20min(out_path: str, component: str) -> bool:
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
     
-    _beautify_axes(ax, title=f'DMT – {component} (mean ± SEM, full 20 min)', 
+    _beautify_axes(ax, title=f'DMT – {component} (mean ± SEM, first 19:10)', 
                   xlabel='Time (mm:ss)', ylabel=config['units'])
     
     # Add overall figure title
@@ -401,8 +470,8 @@ def _plot_combined_summary(out_path: str, component: str) -> bool:
     """Create a combined summary plot with DMT (left) and RS (right) subplots."""
     config = COMPONENT_CONFIG[component]
     
-    # Common grid: 0..600s, 2 Hz for readability
-    t_grid = np.arange(0.0, 600.0, 0.5)
+    # Common grid: 0..550s (9:10), 2 Hz for readability
+    t_grid = np.arange(0.0, 550.0, 0.5)
     
     # Collect data for both tasks
     task_data = {}
@@ -441,11 +510,13 @@ def _plot_combined_summary(out_path: str, component: str) -> bool:
                 yh = apply_edl_baseline_correction(th, yh, component)
                 yl = apply_edl_baseline_correction(tl, yl, component)
                 
-                # Trim to 10 minutes
-                mask_h = (th >= 0.0) & (th < 600.0)
-                mask_l = (tl >= 0.0) & (tl < 600.0)
-                if not (np.any(mask_h) and np.any(mask_l)):
+                # Validate sufficient data for 9:10
+                if not (validate_sufficient_data(th, yh, 550.0) and validate_sufficient_data(tl, yl, 550.0)):
                     continue
+                
+                # Trim to 9:10
+                mask_h = (th >= 0.0) & (th < 550.0)
+                mask_l = (tl >= 0.0) & (tl < 550.0)
                 yh = yh[mask_h]; th = th[mask_h]
                 yl = yl[mask_l]; tl = tl[mask_l]
 
@@ -498,7 +569,7 @@ def _plot_combined_summary(out_path: str, component: str) -> bool:
     legend1.get_frame().set_facecolor('white')
     legend1.get_frame().set_alpha(0.9)
     
-    _beautify_axes(ax1, title=f'DMT – {component} (mean ± SEM, first 10 min)', 
+    _beautify_axes(ax1, title=f'DMT – {component} (mean ± SEM, first 9:10)', 
                   xlabel='Time (mm:ss)', ylabel=config['units'])
     
     # RS subplot (right)
@@ -516,7 +587,7 @@ def _plot_combined_summary(out_path: str, component: str) -> bool:
     legend2.get_frame().set_facecolor('white')
     legend2.get_frame().set_alpha(0.9)
     
-    _beautify_axes(ax2, title=f'RS – {component} (mean ± SEM, first 10 min)', 
+    _beautify_axes(ax2, title=f'RS – {component} (mean ± SEM, first 9:10)', 
                   xlabel='Time (mm:ss)')
     
     # Add overall figure title
@@ -550,11 +621,16 @@ def plot_subject_component_combined(subject: str, component: str) -> bool:
     comp_high = apply_edl_baseline_correction(t_high, comp_high, component)
     comp_low = apply_edl_baseline_correction(t_low, comp_low, component)
     
-    ten_min = 600.0
-    idx_h = np.where(t_high <= ten_min)[0]
-    idx_l = np.where(t_low <= ten_min)[0]
+    limit_subj = 550.0  # 9 minutes 10 seconds
+    # Validate sufficient valid data for 9:10
+    if not (validate_sufficient_data(t_high, comp_high, limit_subj) and validate_sufficient_data(t_low, comp_low, limit_subj)):
+        print(f"⚠️  Skipping {subject}: insufficient valid DMT data in first 9:10")
+        return False
+    
+    idx_h = np.where(t_high <= limit_subj)[0]
+    idx_l = np.where(t_low <= limit_subj)[0]
     if len(idx_h) < 10 or len(idx_l) < 10:
-        print(f"⚠️  Skipping {subject}: insufficient DMT samples in first 10 minutes")
+        print(f"⚠️  Skipping {subject}: insufficient DMT samples in first 9:10")
         return False
     t_high_10 = t_high[idx_h]
     t_low_10 = t_low[idx_l]
@@ -585,10 +661,15 @@ def plot_subject_component_combined(subject: str, component: str) -> bool:
     y1 = apply_edl_baseline_correction(t1, y1, component)
     y2 = apply_edl_baseline_correction(t2, y2, component)
     
-    idx1 = np.where(t1 <= ten_min)[0]
-    idx2 = np.where(t2 <= ten_min)[0]
+    # Validate sufficient valid data for 9:10
+    if not (validate_sufficient_data(t1, y1, limit_subj) and validate_sufficient_data(t2, y2, limit_subj)):
+        print(f"⚠️  Skipping {subject}: insufficient valid RS data in first 9:10")
+        return False
+    
+    idx1 = np.where(t1 <= limit_subj)[0]
+    idx2 = np.where(t2 <= limit_subj)[0]
     if len(idx1) < 10 or len(idx2) < 10:
-        print(f"⚠️  Skipping {subject}: insufficient RS samples in first 10 minutes")
+        print(f"⚠️  Skipping {subject}: insufficient RS samples in first 9:10")
         return False
     t1_10 = t1[idx1]
     y1_10 = y1[idx1]
@@ -622,7 +703,7 @@ def plot_subject_component_combined(subject: str, component: str) -> bool:
     # Subplot 1: DMT high vs low - plot component directly without mean lines
     ax1.plot(t_dmt, y_dmt_high, color='tab:red', lw=1.4, label=f'DMT High (mean={mean_dmt_high:.3f})')
     ax1.plot(t_dmt, y_dmt_low, color='tab:blue', lw=1.4, label=f'DMT Low (mean={mean_dmt_low:.3f})')
-    _beautify_axes(ax1, title='DMT High vs Low (first 10 min)', xlabel='Time', ylabel=config['units'])
+    _beautify_axes(ax1, title='DMT High vs Low (first 9:10)', xlabel='Time', ylabel=config['units'])
     
     # Legend in upper right
     legend1 = ax1.legend(loc='upper right', frameon=True, fancybox=True)
@@ -632,14 +713,14 @@ def plot_subject_component_combined(subject: str, component: str) -> bool:
     # Subplot 2: RS ses01 vs ses02 with dose tags - plot component directly without mean lines
     ax2.plot(t_rs, y_rs1, color='tab:green', lw=1.4, label=f'RS {cond1} (mean={mean_rs1:.3f})')
     ax2.plot(t_rs, y_rs2, color='tab:purple', lw=1.4, label=f'RS {cond2} (mean={mean_rs2:.3f})')
-    _beautify_axes(ax2, title='RS ses01 vs ses02 (first 10 min)', xlabel='Time (mm:ss)')
+    _beautify_axes(ax2, title='RS ses01 vs ses02 (first 9:10)', xlabel='Time (mm:ss)')
     
     # Legend in upper right
     legend2 = ax2.legend(loc='upper right', frameon=True, fancybox=True)
     legend2.get_frame().set_facecolor('white')
     legend2.get_frame().set_alpha(0.9)
 
-    fig.suptitle(f"{subject} – EDA {component} (first 10 min)", y=1.02)
+    fig.suptitle(f"{subject} – EDA {component} (first 9:10)", y=1.02)
     fig.tight_layout(pad=1.2)
 
     out_dir = os.path.join('test', 'eda', config['output_dir'])
@@ -654,6 +735,7 @@ def plot_subject_component_combined(subject: str, component: str) -> bool:
 def run_component_analysis(component: str):
     """Run complete analysis for specified component (EDR or EDL)."""
     config = COMPONENT_CONFIG[component]
+    durations_log = [] if component == 'EDL' else None
     
     print(f"📊 Generating EDA {component} combined plots per validated subject…")
     successes_combined = 0
@@ -676,11 +758,62 @@ def run_component_analysis(component: str):
         rs2 = load_cvx_component(rs2_path, component)
         if None in (dmt_high, dmt_low, rs1, rs2):
             continue
+        # Collect durations (EDL only): last valid timestamp for each available file
+        if durations_log is not None:
+            # DMT High/Low
+            th, yh = dmt_high; tl, yl = dmt_low
+            dur_dmt_high = _last_valid_timestamp_mmss(th, yh)
+            dur_dmt_low = _last_valid_timestamp_mmss(tl, yl)
+            if dur_dmt_high is not None:
+                durations_log.append({
+                    'subject_number': subject,
+                    'condition': 'DMT',
+                    'dose': 'high',
+                    'duration': dur_dmt_high,
+                })
+            if dur_dmt_low is not None:
+                durations_log.append({
+                    'subject_number': subject,
+                    'condition': 'DMT',
+                    'dose': 'low',
+                    'duration': dur_dmt_low,
+                })
+            # RS session1/session2 mapped to doses
+            try:
+                dose_s1 = get_dosis_sujeto(subject, 1)
+            except Exception:
+                dose_s1 = 'Alta'
+            try:
+                dose_s2 = get_dosis_sujeto(subject, 2)
+            except Exception:
+                dose_s2 = 'Baja'
+            d1 = 'high' if str(dose_s1).lower().startswith('alta') or str(dose_s1).lower().startswith('a') else 'low'
+            d2 = 'high' if str(dose_s2).lower().startswith('alta') or str(dose_s2).lower().startswith('a') else 'low'
+            t1, y1 = rs1; t2, y2 = rs2
+            dur_rs1 = _last_valid_timestamp_mmss(t1, y1)
+            dur_rs2 = _last_valid_timestamp_mmss(t2, y2)
+            if dur_rs1 is not None:
+                durations_log.append({
+                    'subject_number': subject,
+                    'condition': 'RS',
+                    'dose': d1,
+                    'duration': dur_rs1,
+                })
+            if dur_rs2 is not None:
+                durations_log.append({
+                    'subject_number': subject,
+                    'condition': 'RS',
+                    'dose': d2,
+                    'duration': dur_rs2,
+                })
         # Trim to 10 minutes and compute mean value consistently
         def trim_and_mean(pair):
             tt, yy = pair
             # Apply baseline correction for EDL
             yy = apply_edl_baseline_correction(tt, yy, component)
+            # Validate sufficient valid data for 10 minutes
+            if not validate_sufficient_data(tt, yy, 600.0):
+                return None
             idx = np.where(tt <= 600.0)[0]
             if len(idx) < 10:
                 return None
@@ -713,6 +846,15 @@ def run_component_analysis(component: str):
     # Run 2x2 within-subject ANOVA (global) and per-minute ANOVAs; write report
     out_dir = os.path.join('test', 'eda', config['output_dir'])
     os.makedirs(out_dir, exist_ok=True)
+    # Write durations JSON for EDL
+    if durations_log is not None and len(durations_log) > 0:
+        durations_path = os.path.join(out_dir, 'edl_valid_durations.json')
+        try:
+            with open(durations_path, 'w', encoding='utf-8') as f:
+                json.dump(durations_log, f, ensure_ascii=False, indent=2)
+            print(f"📝 EDL durations log saved: {durations_path}")
+        except Exception as e:
+            print(f"⚠️  Failed to write durations JSON: {e}")
     report_path = os.path.join(out_dir, 'anova_2x2_report.txt')
     if anova_records:
         _ = run_anova_2x2_within(anova_records, out_report_path=report_path)
@@ -738,10 +880,18 @@ def run_component_analysis(component: str):
             tt, yy = pair
             # Apply baseline correction for EDL
             yy = apply_edl_baseline_correction(tt, yy, component)
+            # Validate sufficient valid data for this minute window
+            if not validate_sufficient_data(tt, yy, 60.0 * (m + 1), min_valid_ratio=0.3):
+                return None
             mask = (tt >= 60.0 * m) & (tt < 60.0 * (m + 1))
             if not np.any(mask):
                 return None
-            return compute_mean_value(yy[mask])
+            yy_window = yy[mask]
+            # Check if this specific window has enough valid data
+            valid_samples = np.sum(~np.isnan(yy_window))
+            if valid_samples < len(yy_window) * 0.3:  # At least 30% valid data
+                return None
+            return compute_mean_value(yy_window)
 
         dose_s1 = get_dosis_sujeto(subject, 1)
         # For each minute, compute all four cells
@@ -790,10 +940,18 @@ def run_component_analysis(component: str):
             tt, yy = pair
             # Apply baseline correction for EDL
             yy = apply_edl_baseline_correction(tt, yy, component)
+            # Validate sufficient valid data for first 5 minutes
+            if not validate_sufficient_data(tt, yy, 300.0):
+                return None
             mask = (tt >= 0.0) & (tt < 300.0)
             if not np.any(mask):
                 return None
-            return compute_mean_value(yy[mask])
+            yy_window = yy[mask]
+            # Check if this specific window has enough valid data
+            valid_samples = np.sum(~np.isnan(yy_window))
+            if valid_samples < len(yy_window) * 0.5:  # At least 50% valid data for 5-min window
+                return None
+            return compute_mean_value(yy_window)
         mean_dh = mean_0_5(dmt_high)
         mean_dl = mean_0_5(dmt_low)
         mean_r1 = mean_0_5(rs1)

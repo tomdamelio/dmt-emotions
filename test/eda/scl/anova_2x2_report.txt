@@ -1,17 +1,17 @@
 N subjects: 11
 Repeated-measures ANOVA via statsmodels:
              F Value  Num DF  Den DF    Pr > F
-Task       14.378685     1.0    10.0  0.003532
-Dose        5.649638     1.0    10.0  0.038818
-Task:Dose   1.076373     1.0    10.0  0.323946
-RS Low vs High (paired t): t=-1.553, p=0.15158370737402968
+Task       13.423340     1.0    10.0  0.004362
+Dose        5.617515     1.0    10.0  0.039269
+Task:Dose   1.660898     1.0    10.0  0.226498
+RS Low vs High (paired t): t=-1.537, p=0.15525065314824407
 DMT Low vs High (paired t): t=-2.356, p=0.04021404665456812
-Main effect Task (RS vs DMT): t=-3.792, p=0.003532232500724264
+Main effect Task (RS vs DMT): t=-3.664, p=0.004361680310036149
 
 Cell means (AUC):
 Dose       Low      High
 Task                    
-RS   -0.912373 -0.553319
+RS   -0.853290 -0.542742
 DMT  -0.100878  0.549854
 
 Repeated-measures ANOVA 2x2 per minute window (first 10 minutes)
@@ -192,19 +192,19 @@ Effect sizes per-minute:
 --- Minute window 09:00–09:59 ---
 N subjects: 11
             F Value  Num DF  Den DF    Pr > F
-Task       9.713230     1.0    10.0  0.010937
-Dose       4.849411     1.0    10.0  0.052252
-Task:Dose  0.011288     1.0    10.0  0.917488
-RS Low vs High (paired t): t=-1.530, p=0.15691899838089887
+Task       6.555489     1.0    10.0  0.028355
+Dose       5.986820     1.0    10.0  0.034446
+Task:Dose  1.450271     1.0    10.0  0.256214
+RS Low vs High (paired t): t=-1.742, p=0.11220121936204334
 DMT Low vs High (paired t): t=-2.612, p=0.025934427560468053
-Main effect Task (RS vs DMT): t=-3.117, p=0.010936989913267765
+Main effect Task (RS vs DMT): t=-2.560, p=0.02835522629509429
 Cell means (AUC):
-Dose       Low      High
-Task                    
-RS   -1.843105 -0.927220
-DMT  -0.739190  0.120186
+Dose      Low      High
+Task                   
+RS   -1.35157 -0.827968
+DMT  -0.73919  0.120186
 Effect sizes per-minute:
-  RS High–Low: d_z=0.461, 95% CI [0.167, 0.956]
+  RS High–Low: d_z=0.525, 95% CI [0.169, 1.113]
   DMT High–Low: d_z=0.788, 95% CI [0.310, 1.508]
   Holm-corrected p (interaction, across minutes): 1.0000
 ========================================

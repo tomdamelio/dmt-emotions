@@ -1,0 +1,266 @@
+[
+  {
+    "subject_number": "S04",
+    "condition": "DMT",
+    "dose": "high",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S04",
+    "condition": "DMT",
+    "dose": "low",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S04",
+    "condition": "RS",
+    "dose": "high",
+    "duration": "10:14"
+  },
+  {
+    "subject_number": "S04",
+    "condition": "RS",
+    "dose": "low",
+    "duration": "10:06"
+  },
+  {
+    "subject_number": "S05",
+    "condition": "DMT",
+    "dose": "high",
+    "duration": "19:33"
+  },
+  {
+    "subject_number": "S05",
+    "condition": "DMT",
+    "dose": "low",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S05",
+    "condition": "RS",
+    "dose": "high",
+    "duration": "10:14"
+  },
+  {
+    "subject_number": "S05",
+    "condition": "RS",
+    "dose": "low",
+    "duration": "10:11"
+  },
+  {
+    "subject_number": "S06",
+    "condition": "DMT",
+    "dose": "high",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S06",
+    "condition": "DMT",
+    "dose": "low",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S06",
+    "condition": "RS",
+    "dose": "low",
+    "duration": "09:21"
+  },
+  {
+    "subject_number": "S06",
+    "condition": "RS",
+    "dose": "high",
+    "duration": "10:14"
+  },
+  {
+    "subject_number": "S07",
+    "condition": "DMT",
+    "dose": "high",
+    "duration": "19:41"
+  },
+  {
+    "subject_number": "S07",
+    "condition": "DMT",
+    "dose": "low",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S07",
+    "condition": "RS",
+    "dose": "low",
+    "duration": "09:21"
+  },
+  {
+    "subject_number": "S07",
+    "condition": "RS",
+    "dose": "high",
+    "duration": "10:14"
+  },
+  {
+    "subject_number": "S09",
+    "condition": "DMT",
+    "dose": "high",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S09",
+    "condition": "DMT",
+    "dose": "low",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S09",
+    "condition": "RS",
+    "dose": "high",
+    "duration": "10:12"
+  },
+  {
+    "subject_number": "S09",
+    "condition": "RS",
+    "dose": "low",
+    "duration": "10:14"
+  },
+  {
+    "subject_number": "S13",
+    "condition": "DMT",
+    "dose": "high",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S13",
+    "condition": "DMT",
+    "dose": "low",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S13",
+    "condition": "RS",
+    "dose": "low",
+    "duration": "10:14"
+  },
+  {
+    "subject_number": "S13",
+    "condition": "RS",
+    "dose": "high",
+    "duration": "10:14"
+  },
+  {
+    "subject_number": "S16",
+    "condition": "DMT",
+    "dose": "high",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S16",
+    "condition": "DMT",
+    "dose": "low",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S16",
+    "condition": "RS",
+    "dose": "low",
+    "duration": "10:14"
+  },
+  {
+    "subject_number": "S16",
+    "condition": "RS",
+    "dose": "high",
+    "duration": "10:14"
+  },
+  {
+    "subject_number": "S17",
+    "condition": "DMT",
+    "dose": "high",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S17",
+    "condition": "DMT",
+    "dose": "low",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S17",
+    "condition": "RS",
+    "dose": "high",
+    "duration": "10:14"
+  },
+  {
+    "subject_number": "S17",
+    "condition": "RS",
+    "dose": "low",
+    "duration": "10:14"
+  },
+  {
+    "subject_number": "S18",
+    "condition": "DMT",
+    "dose": "high",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S18",
+    "condition": "DMT",
+    "dose": "low",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S18",
+    "condition": "RS",
+    "dose": "high",
+    "duration": "09:40"
+  },
+  {
+    "subject_number": "S18",
+    "condition": "RS",
+    "dose": "low",
+    "duration": "10:14"
+  },
+  {
+    "subject_number": "S19",
+    "condition": "DMT",
+    "dose": "high",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S19",
+    "condition": "DMT",
+    "dose": "low",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S19",
+    "condition": "RS",
+    "dose": "low",
+    "duration": "10:14"
+  },
+  {
+    "subject_number": "S19",
+    "condition": "RS",
+    "dose": "high",
+    "duration": "10:14"
+  },
+  {
+    "subject_number": "S20",
+    "condition": "DMT",
+    "dose": "high",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S20",
+    "condition": "DMT",
+    "dose": "low",
+    "duration": "20:14"
+  },
+  {
+    "subject_number": "S20",
+    "condition": "RS",
+    "dose": "low",
+    "duration": "10:14"
+  },
+  {
+    "subject_number": "S20",
+    "condition": "RS",
+    "dose": "high",
+    "duration": "09:58"
+  }
+]
