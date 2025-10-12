@@ -1,0 +1,27 @@
+Figure: SCR Rate Time Course (EmotiPhai)
+
+Group-level mean ± 95% CI for SCR counts per minute over the first 9 minutes. Left: RS with High (green) vs Low (purple). Right: DMT with High (red) vs Low (blue).
+
+
+
+Figure: GEE Coefficients (log-scale and rate ratios)
+
+Fixed-effects β (log rate) with 95% CI; annotated with exp(β) (rate ratios).
+
+
+
+Figure: Marginal Means Over Time
+
+Empirical means ± 95% CI for each condition (RS Low/High; DMT Low/High) across minutes 0–8.
+
+
+
+Figure: Task × Dose Interaction Panels
+
+Separate RS and DMT panels, High vs Low dose, with mean ± 95% CI over time.
+
+
+
+Supplementary: Stacked Subject Time Series (9 minutes)
+
+One row per subject (N=11); RS left, DMT right; shows within-subject variability in SCR rates.

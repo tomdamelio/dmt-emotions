@@ -1,0 +1,15 @@
+Figure: SCR Frequency Time Course (EmotiPhai Detection)
+
+Group-level mean ± SEM for skin conductance response (SCR) frequency during two tasks.
+SCRs were detected using the EmotiPhai algorithm. The plot shows the number of SCRs per minute over 9 minutes.
+
+Left panel: Resting State (RS) with eyes closed, comparing High (green) versus Low (purple) dose conditions (N=11 subjects).
+Right panel: DMT task, comparing High (red) versus Low (blue) dose conditions (N=11 subjects).
+
+The X-axis represents time in minutes (0:00–9:00) with tick marks every minute. Data points are plotted at the center of each 1-minute bin.
+The Y-axis displays SCR count per minute (frequency of discrete SCR events).
+Shaded regions represent the standard error of the mean (SEM) across subjects.
+
+This analysis quantifies the temporal dynamics of autonomic arousal by counting discrete phasic electrodermal responses, 
+providing a complementary measure to the continuous SCR amplitude time series. Higher SCR frequency indicates 
+increased sympathetic nervous system activity and arousal.

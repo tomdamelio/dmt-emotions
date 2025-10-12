@@ -1,0 +1,20 @@
+LME MODEL SUMMARY
+============================================================
+
+Fixed Effects Formula:
+AUC ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c
+
+Random Effects: ~ 1 | subject
+
+Model Fit Statistics:
+AIC: nan
+BIC: nan
+Log-likelihood: -2041.39
+N observations: 396
+N subjects: 11
+
+Significant Fixed Effects (p_FDR < 0.05):
+• Task (DMT vs RS): β = 46.737 ***
+• Dose (High vs Low): β = 17.830 **
+• Dose × Time: β = 5.248 **
+• Task × Dose: β = 19.821 *

@@ -1,0 +1,20 @@
+Figure: SCR Count Distribution (Boxplot with Individual Points)
+
+Boxplot showing the distribution of skin conductance response (SCR) counts across tasks and doses.
+SCRs were detected using the EmotiPhai algorithm and counted over 9 minutes.
+
+The plot shows four conditions:
+- Resting State (RS) High Dose (green, N=11)
+- Resting State (RS) Low Dose (purple, N=11)  
+- DMT High Dose (red, N=11)
+- DMT Low Dose (blue, N=11)
+
+Boxplots show median (line), quartiles (box), and range (whiskers). Individual points represent 
+each subject's SCR count with horizontal jitter for visibility. Gray lines connect the same 
+subject's high and low dose measurements within each task condition, showing individual 
+within-subject dose effects. The Y-axis displays the total number of SCRs detected during 
+the 9-minute recording period.
+
+This analysis reveals the distribution and variability of autonomic arousal levels by counting 
+discrete phasic electrodermal responses. Higher SCR counts indicate increased sympathetic nervous 
+system activity and emotional arousal.

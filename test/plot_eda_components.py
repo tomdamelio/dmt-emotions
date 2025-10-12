@@ -1,23 +1,23 @@
 # -*- coding: utf-8 -*-
 """
-Plot per-subject EDA component analysis: EDR (phasic) and EDL (tonic) comparison.
+Plot per-subject EDA component analysis: SCR (phasic) and SCL (tonic) comparison.
 
 This script analyzes both components from CVX decomposition:
-- EDR (Electrodermal Response): phasic component - transient responses
-- EDL (Electrodermal Level): tonic component - baseline conductance level
+- SCR (Skin Conductance Response): phasic component - transient responses
+- SCL (Skin Conductance Level): tonic component - baseline conductance level
 
 For each subject in SUJETOS_VALIDADOS_EDA, this script:
 - Finds the correct session for high vs low using get_dosis_sujeto
 - Loads CVX decomposition CSVs (…_cvx_decomposition.csv)
-- Extracts the specified component (EDR or EDL) and time
+- Extracts the specified component (SCR or SCL) and time
 - Trims both recordings to the first 10 minutes
 - Computes mean value of the component
 - Plots the component with mean levels and SEM shading
-- Saves to test/eda/scr (EDR) or test/eda/scl (EDL)
+- Saves to test/eda/scr (SCR) or test/eda/scl (SCL)
 
 Usage:
-  python test/plot_eda_components.py --component EDR
-  python test/plot_eda_components.py --component EDL
+  python test/plot_eda_components.py --component SCR
+  python test/plot_eda_components.py --component SCL
 """
 
 import os
@@ -45,7 +45,7 @@ from config import (
     get_dosis_sujeto,
     NEUROKIT_PARAMS,
 )
-from stats_anova_2x2 import run_anova_2x2_within, run_anova_2x2_per_minute, _render_anova_results
+# ANOVA analysis removed - no longer needed
 
 #############################
 # Plot aesthetics (paper-ready minimal style)
@@ -67,20 +67,22 @@ plt.rcParams.update({
 
 # Component configuration
 COMPONENT_CONFIG = {
-    'EDR': {
-        'name': 'EDR',
-        'long_name': 'Electrodermal Response',
+    'SCR': {
+        'name': 'SCR',
+        'long_name': 'Skin Conductance Response',
         'description': 'phasic component',
         'output_dir': 'scr',
-        'units': 'EDR (a.u.)',
+        'units': 'SCR (μS)',
+        'csv_column': 'EDR',  # Column name in CSV files
         'colors': {'high': '#555555', 'low': '#2A9FD6'}
     },
-    'EDL': {
-        'name': 'EDL', 
-        'long_name': 'Electrodermal Level',
+    'SCL': {
+        'name': 'SCL', 
+        'long_name': 'Skin Conductance Level',
         'description': 'tonic component (baseline-corrected)',
         'output_dir': 'scl',
-        'units': 'Δ EDL (a.u.)',
+        'units': 'Δ SCL (μS)',
+        'csv_column': 'EDL',  # Column name in CSV files
         'colors': {'high': '#8B4513', 'low': '#32CD32'}  # Brown/Green for tonic
     }
 }
@@ -105,73 +107,7 @@ def _beautify_axes(ax, title=None, xlabel=None, ylabel=None, time_formatter=True
     ax.grid(False, which='major', axis='x')
 
 
-def _records_to_long_df(records):
-    rows = []
-    for rec in records:
-        sid = rec['subject']
-        rows.append({'Subject': sid, 'Task': 'RS',  'Dose': 'Low',  'AUC': rec['RS_Low']})
-        rows.append({'Subject': sid, 'Task': 'RS',  'Dose': 'High', 'AUC': rec['RS_High']})
-        rows.append({'Subject': sid, 'Task': 'DMT', 'Dose': 'Low',  'AUC': rec['DMT_Low']})
-        rows.append({'Subject': sid, 'Task': 'DMT', 'Dose': 'High', 'AUC': rec['DMT_High']})
-    import pandas as pd
-    df = pd.DataFrame(rows)
-    df['Task'] = pd.Categorical(df['Task'], categories=['RS', 'DMT'], ordered=True)
-    df['Dose'] = pd.Categorical(df['Dose'], categories=['Low', 'High'], ordered=True)
-    return df
-
-
-def _plot_boxplot_2x2(records, out_path, component_name):
-    """Create a comparative 2x2 plot (RS/DMT x Low/High) with paired lines per subject."""
-    import numpy as np
-    import pandas as pd
-    df = _records_to_long_df(records)
-
-    # Build arrays per cell in order: Low_RS, Low_DMT, High_RS, High_DMT
-    low_rs = df[(df['Dose'] == 'Low') & (df['Task'] == 'RS')]
-    low_dmt = df[(df['Dose'] == 'Low') & (df['Task'] == 'DMT')]
-    high_rs = df[(df['Dose'] == 'High') & (df['Task'] == 'RS')]
-    high_dmt = df[(df['Dose'] == 'High') & (df['Task'] == 'DMT')]
-
-    # Fixed x-positions for four boxes within two dose columns
-    pos = [0.88, 1.12, 1.88, 2.12]
-    xticks = [1.0, 2.0]
-    xticklabels = ['Low', 'High']
-
-    fig, ax = plt.subplots(figsize=(7.6, 4.8))
-    groups = [low_rs['AUC'].to_numpy(), low_dmt['AUC'].to_numpy(),
-              high_rs['AUC'].to_numpy(), high_dmt['AUC'].to_numpy()]
-    bp = ax.boxplot(groups, positions=pos, widths=0.18, patch_artist=True,
-                    showfliers=False, medianprops=dict(color='k', linewidth=1.2))
-    colors = ['#4C9F70', '#D65F5F', '#4C9F70', '#D65F5F']
-    for patch, c in zip(bp['boxes'], colors):
-        patch.set_facecolor(c)
-        patch.set_alpha(0.55)
-
-    # Overlay paired individual lines (spaghetti) across all four positions
-    subjects = sorted(df['Subject'].unique())
-    for sid in subjects:
-        s_low_rs = df[(df['Subject'] == sid) & (df['Dose'] == 'Low') & (df['Task'] == 'RS')]['AUC']
-        s_low_dmt = df[(df['Subject'] == sid) & (df['Dose'] == 'Low') & (df['Task'] == 'DMT')]['AUC']
-        s_high_rs = df[(df['Subject'] == sid) & (df['Dose'] == 'High') & (df['Task'] == 'RS')]['AUC']
-        s_high_dmt = df[(df['Subject'] == sid) & (df['Dose'] == 'High') & (df['Task'] == 'DMT')]['AUC']
-        if len(s_low_rs)==len(s_low_dmt)==len(s_high_rs)==len(s_high_dmt)==1:
-            y = [float(s_low_rs.values[0]), float(s_low_dmt.values[0]), float(s_high_rs.values[0]), float(s_high_dmt.values[0])]
-            ax.plot(pos, y, color='k', alpha=0.25, linewidth=1.0)
-            ax.scatter(pos, y, color='k', s=12, alpha=0.5, zorder=3)
-
-    # Legend boxes for RS vs DMT
-    from matplotlib.patches import Patch
-    legend_elems = [Patch(facecolor='#4C9F70', edgecolor='none', alpha=0.55, label='RS'),
-                    Patch(facecolor='#D65F5F', edgecolor='none', alpha=0.55, label='DMT')]
-    ax.legend(handles=legend_elems, title='Task', frameon=False, loc='upper left')
-
-    ax.set_xticks(xticks)
-    ax.set_xticklabels(xticklabels)
-    _beautify_axes(ax, title=f'{component_name} Mean – 2×2 design (paired lines)', 
-                  xlabel='Dose', ylabel=f'Mean {component_name} (first 10 min)', time_formatter=False)
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=400, bbox_inches='tight')
-    plt.close(fig)
+# Boxplot 2x2 and ANOVA functions removed - analysis no longer needed
 
 
 def determine_sessions(subject: str) -> Tuple[str, str]:
@@ -208,7 +144,7 @@ def load_cvx_component(csv_path: str, component: str) -> Optional[Tuple[np.ndarr
 
     Args:
         csv_path: Path to CVX decomposition CSV
-        component: 'EDR' or 'EDL'
+        component: 'SCR' or 'SCL'
         
     Returns (t, component_data) or None if missing/invalid.
     """
@@ -221,8 +157,11 @@ def load_cvx_component(csv_path: str, component: str) -> Optional[Tuple[np.ndarr
         print(f"⚠️  Failed to read CVX file {os.path.basename(csv_path)}: {e}")
         return None
 
-    if component not in df.columns:
-        print(f"⚠️  {component} column not found in {os.path.basename(csv_path)}")
+    # Get the CSV column name for this component
+    csv_column = COMPONENT_CONFIG[component]['csv_column']
+    
+    if csv_column not in df.columns:
+        print(f"⚠️  {csv_column} column not found in {os.path.basename(csv_path)}")
         return None
 
     if 'time' in df.columns:
@@ -231,19 +170,19 @@ def load_cvx_component(csv_path: str, component: str) -> Optional[Tuple[np.ndarr
         sr = NEUROKIT_PARAMS.get('sampling_rate_default', 250)
         t = np.arange(len(df)) / float(sr)
 
-    component_data = pd.to_numeric(df[component], errors='coerce').to_numpy()
+    component_data = pd.to_numeric(df[csv_column], errors='coerce').to_numpy()
     return t, component_data
 
 
-def compute_baseline_edl(t: np.ndarray, y: np.ndarray) -> float:
-    """Compute baseline EDL value from the first second of recording.
+def compute_baseline_scl(t: np.ndarray, y: np.ndarray) -> float:
+    """Compute baseline SCL value from the first second of recording.
     
     Args:
         t: Time array
-        y: EDL signal array
+        y: SCL signal array
         
     Returns:
-        Mean EDL value in the first second (0-1s)
+        Mean SCL value in the first second (0-1s)
     """
     mask_first_sec = (t >= 0.0) & (t < 1.0)
     if not np.any(mask_first_sec):
@@ -259,30 +198,30 @@ def compute_baseline_edl(t: np.ndarray, y: np.ndarray) -> float:
     return float(baseline) if not np.isnan(baseline) else 0.0
 
 
-def apply_edl_baseline_correction(t: np.ndarray, y: np.ndarray, component: str) -> np.ndarray:
-    """Apply baseline correction for EDL signals.
+def apply_scl_baseline_correction(t: np.ndarray, y: np.ndarray, component: str) -> np.ndarray:
+    """Apply baseline correction for SCL signals.
     
     Args:
         t: Time array
         y: Signal array
-        component: 'EDR' or 'EDL'
+        component: 'SCR' or 'SCL'
         
     Returns:
-        Original signal for EDR, baseline-corrected signal for EDL
+        Original signal for SCR, baseline-corrected signal for SCL
     """
-    if component == 'EDL':
-        baseline = compute_baseline_edl(t, y)
+    if component == 'SCL':
+        baseline = compute_baseline_scl(t, y)
         return y - baseline
     else:
         return y
 
 
-def compute_mean_value(y: np.ndarray, component: str = 'EDR', baseline_value: Optional[float] = None) -> float:
+def compute_mean_value(y: np.ndarray, component: str = 'SCR', baseline_value: Optional[float] = None) -> float:
     """Compute mean value of component signal.
     
     Args:
-        y: Signal array (already baseline-corrected for EDL)
-        component: 'EDR' or 'EDL' 
+        y: Signal array (already baseline-corrected for SCL)
+        component: 'SCR' or 'SCL' 
         baseline_value: Deprecated, kept for compatibility
     """
     # Use nanmean to handle NaN values correctly
@@ -377,12 +316,9 @@ def _last_valid_timestamp_mmss(t: np.ndarray, y: np.ndarray) -> Optional[str]:
 
 
 def _plot_dmt_only_20min(out_path: str, component: str) -> bool:
-    """Create a DMT-only plot for 20 minutes (EDL analysis only).
+    """Create a DMT-only plot for 20 minutes (both SCR and SCL).
     Shows High vs Low dose for DMT task across the full 20-minute recording.
     """
-    if component != 'EDL':
-        print(f"⚠️  DMT 20-min plot is only available for EDL component")
-        return False
         
     config = COMPONENT_CONFIG[component]
     
@@ -402,9 +338,9 @@ def _plot_dmt_only_20min(out_path: str, component: str) -> bool:
                 continue
             th, yh = d_high; tl, yl = d_low
 
-            # Apply baseline correction for EDL
-            yh = apply_edl_baseline_correction(th, yh, component)
-            yl = apply_edl_baseline_correction(tl, yl, component)
+            # Apply baseline correction for SCL
+            yh = apply_scl_baseline_correction(th, yh, component)
+            yl = apply_scl_baseline_correction(tl, yl, component)
             
             # Trim to 19 minutes 10 seconds
             mask_h = (th >= 0.0) & (th < 1150.0)
@@ -436,29 +372,37 @@ def _plot_dmt_only_20min(out_path: str, component: str) -> bool:
     # Create single plot for DMT only
     fig, ax = plt.subplots(1, 1, figsize=(12, 6))
     
-    # Colors from config
-    c_high = config['colors']['high']
-    c_low = config['colors']['low']
+    # Fixed colors: DMT High red, DMT Low blue
+    c_dmt_high, c_dmt_low = 'tab:red', 'tab:blue'
     
     # Plot DMT data
-    line_h = ax.plot(t_grid, mean_h, color=c_high, lw=2.5, marker=None, label='High')[0]
-    ax.fill_between(t_grid, mean_h - sem_h, mean_h + sem_h, color=c_high, alpha=0.25)
-    line_l = ax.plot(t_grid, mean_l, color=c_low, lw=2.5, marker=None, label='Low')[0]
-    ax.fill_between(t_grid, mean_l - sem_l, mean_l + sem_l, color=c_low, alpha=0.25)
+    line_h = ax.plot(t_grid, mean_h, color=c_dmt_high, lw=2.0, marker=None, label='High')[0]
+    ax.fill_between(t_grid, mean_h - sem_h, mean_h + sem_h, color=c_dmt_high, alpha=0.25)
+    line_l = ax.plot(t_grid, mean_l, color=c_dmt_low, lw=2.0, marker=None, label='Low')[0]
+    ax.fill_between(t_grid, mean_l - sem_l, mean_l + sem_l, color=c_dmt_low, alpha=0.25)
     
     # Legend with correct colors - High first, then Low
     legend = ax.legend([line_h, line_l], ['High', 'Low'], loc='upper right', 
-                      frameon=True, fancybox=True, shadow=True)
+                      frameon=True, fancybox=False)
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
     
-    _beautify_axes(ax, title=f'DMT – {component} (mean ± SEM, first 19:10)', 
-                  xlabel='Time (mm:ss)', ylabel=config['units'])
+    _beautify_axes(ax, title=None, xlabel='Time (minutes)', ylabel=config['units'])
+    ax.set_title('DMT', fontweight='bold')
     
-    # Add overall figure title
-    fig.suptitle(f'{config["long_name"]} ({component}) during DMT Task\n'
-                f'Group Mean ± SEM across {len(high_curves)} Subjects ({config["description"]})', 
-                fontsize=14, fontweight='bold', y=1.02)
+    # X ticks every minute from 0:00 to 19:00
+    minute_ticks = np.arange(0.0, 1141.0, 60.0)
+    ax.set_xticks(minute_ticks)
+    ax.xaxis.set_major_formatter(FuncFormatter(_fmt_mmss))
+    ax.set_xlim(0.0, 1150.0)
+    
+    # Component-specific Y-axis settings
+    if component == 'SCR':
+        ax.set_ylim(-0.05, 0.25)
+        ax.set_yticks(np.arange(0.00, 0.26, 0.05))
+    else:  # SCL
+        ax.set_ylim(-2.0, 2.0)
+        ax.set_yticks(np.arange(-1.5, 2.0, 0.5))
     
     plt.tight_layout()
     fig.savefig(out_path, dpi=400, bbox_inches='tight')
@@ -506,9 +450,9 @@ def _plot_combined_summary(out_path: str, component: str) -> bool:
                         th, yh = tr2, yr2
                         tl, yl = tr1, yr1
 
-                # Apply baseline correction for EDL
-                yh = apply_edl_baseline_correction(th, yh, component)
-                yl = apply_edl_baseline_correction(tl, yl, component)
+                # Apply baseline correction for SCL
+                yh = apply_scl_baseline_correction(th, yh, component)
+                yl = apply_scl_baseline_correction(tl, yl, component)
                 
                 # Validate sufficient data for 9:10
                 if not (validate_sufficient_data(th, yh, 550.0) and validate_sufficient_data(tl, yl, 550.0)):
@@ -548,57 +492,289 @@ def _plot_combined_summary(out_path: str, component: str) -> bool:
         return False
 
     # Create combined plot with two subplots side by side
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6), sharey=True)
-    
-    # Colors from config
-    c_high = config['colors']['high']
-    c_low = config['colors']['low']
-    
-    # DMT subplot (left)
-    dmt_data = task_data['DMT']
-    line_h1 = ax1.plot(t_grid, dmt_data['mean_h'], color=c_high, lw=2.0, marker=None, label='High')[0]
-    ax1.fill_between(t_grid, dmt_data['mean_h'] - dmt_data['sem_h'], 
-                     dmt_data['mean_h'] + dmt_data['sem_h'], color=c_high, alpha=0.25)
-    line_l1 = ax1.plot(t_grid, dmt_data['mean_l'], color=c_low, lw=2.0, marker=None, label='Low')[0]
-    ax1.fill_between(t_grid, dmt_data['mean_l'] - dmt_data['sem_l'], 
-                     dmt_data['mean_l'] + dmt_data['sem_l'], color=c_low, alpha=0.25)
-    
-    # Legend for DMT with correct colors - High first, then Low
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6), sharex=True, sharey=True)
+
+    # Fixed colors per task
+    c_dmt_high, c_dmt_low = 'tab:red', 'tab:blue'
+    c_rs_high, c_rs_low = 'tab:green', 'tab:purple'
+
+    # RS subplot (left)
+    rs_data = task_data['RS']
+    line_h1 = ax1.plot(t_grid, rs_data['mean_h'], color=c_rs_high, lw=2.0, marker=None, label='High')[0]
+    ax1.fill_between(t_grid, rs_data['mean_h'] - rs_data['sem_h'], 
+                     rs_data['mean_h'] + rs_data['sem_h'], color=c_rs_high, alpha=0.25)
+    line_l1 = ax1.plot(t_grid, rs_data['mean_l'], color=c_rs_low, lw=2.0, marker=None, label='Low')[0]
+    ax1.fill_between(t_grid, rs_data['mean_l'] - rs_data['sem_l'], 
+                     rs_data['mean_l'] + rs_data['sem_l'], color=c_rs_low, alpha=0.25)
+
     legend1 = ax1.legend([line_h1, line_l1], ['High', 'Low'], loc='upper right', 
-                        frameon=True, fancybox=True, shadow=True)
+                        frameon=True, fancybox=False)
     legend1.get_frame().set_facecolor('white')
     legend1.get_frame().set_alpha(0.9)
-    
-    _beautify_axes(ax1, title=f'DMT – {component} (mean ± SEM, first 9:10)', 
-                  xlabel='Time (mm:ss)', ylabel=config['units'])
-    
-    # RS subplot (right)
-    rs_data = task_data['RS']
-    line_h2 = ax2.plot(t_grid, rs_data['mean_h'], color=c_high, lw=2.0, marker=None, label='High')[0]
-    ax2.fill_between(t_grid, rs_data['mean_h'] - rs_data['sem_h'], 
-                     rs_data['mean_h'] + rs_data['sem_h'], color=c_high, alpha=0.25)
-    line_l2 = ax2.plot(t_grid, rs_data['mean_l'], color=c_low, lw=2.0, marker=None, label='Low')[0]
-    ax2.fill_between(t_grid, rs_data['mean_l'] - rs_data['sem_l'], 
-                     rs_data['mean_l'] + rs_data['sem_l'], color=c_low, alpha=0.25)
-    
-    # Legend for RS with correct colors - High first, then Low
+
+    _beautify_axes(ax1, title=None, xlabel='Time (minutes)', ylabel=config['units'])
+    ax1.set_title('Resting State (RS)', fontweight='bold')
+
+    # DMT subplot (right)
+    dmt_data = task_data['DMT']
+    line_h2 = ax2.plot(t_grid, dmt_data['mean_h'], color=c_dmt_high, lw=2.0, marker=None, label='High')[0]
+    ax2.fill_between(t_grid, dmt_data['mean_h'] - dmt_data['sem_h'], 
+                     dmt_data['mean_h'] + dmt_data['sem_h'], color=c_dmt_high, alpha=0.25)
+    line_l2 = ax2.plot(t_grid, dmt_data['mean_l'], color=c_dmt_low, lw=2.0, marker=None, label='Low')[0]
+    ax2.fill_between(t_grid, dmt_data['mean_l'] - dmt_data['sem_l'], 
+                     dmt_data['mean_l'] + dmt_data['sem_l'], color=c_dmt_low, alpha=0.25)
+
     legend2 = ax2.legend([line_h2, line_l2], ['High', 'Low'], loc='upper right', 
-                        frameon=True, fancybox=True, shadow=True)
+                        frameon=True, fancybox=False)
     legend2.get_frame().set_facecolor('white')
     legend2.get_frame().set_alpha(0.9)
-    
-    _beautify_axes(ax2, title=f'RS – {component} (mean ± SEM, first 9:10)', 
-                  xlabel='Time (mm:ss)')
-    
-    # Add overall figure title
-    fig.suptitle(f'{config["long_name"]} ({component}) by Task and Dose\n'
-                f'Group Mean ± SEM across 11 Subjects ({config["description"]})', 
-                fontsize=14, fontweight='bold', y=1.02)
-    
+
+    _beautify_axes(ax2, title=None, xlabel='Time (minutes)', ylabel=config['units'])
+    ax2.set_title('DMT', fontweight='bold')
+
+    # X ticks at each minute (0:00..9:00)
+    minute_ticks = np.arange(0.0, 541.0, 60.0)
+    for ax in (ax1, ax2):
+        ax.set_xticks(minute_ticks)
+        ax.xaxis.set_major_formatter(FuncFormatter(_fmt_mmss))
+        ax.set_xlim(0.0, 550.0)
+        # Component-specific Y-axis settings
+        if component == 'SCR':
+            ax.set_ylim(-0.05, 0.25)
+            ax.set_yticks(np.arange(0.00, 0.26, 0.05))
+        else:  # SCL
+            ax.set_ylim(-2.0, 2.0)
+            ax.set_yticks(np.arange(-1.5, 2.0, 0.5))
+
     plt.tight_layout()
     fig.savefig(out_path, dpi=400, bbox_inches='tight')
     plt.close(fig)
     return True
+
+
+def _plot_all_subjects_stacked(out_path: str, component: str) -> bool:
+    """Create a stacked figure (supplementary): one row per subject, RS left, DMT right.
+
+    - X: 0:00–9:10 with ticks every minute (labels mm:ss), xlabel "Time (minutes)" on bottom row
+    - Y: {units} with fixed range [-5, 5], ylabel on both columns
+    - Colors fixed: RS High green, RS Low purple; DMT High red, DMT Low blue
+    - Each row annotated with subject code in bold
+    """
+    config = COMPONENT_CONFIG[component]
+    units = config['units']
+    limit_sec = 550.0
+
+    # Collect valid subjects and their trimmed data
+    rows = []
+    for subject in SUJETOS_VALIDADOS_EDA:
+        try:
+            # DMT
+            high_session, low_session = determine_sessions(subject)
+            p_high, p_low = build_cvx_paths(subject, high_session, low_session)
+            d_high = load_cvx_component(p_high, component)
+            d_low = load_cvx_component(p_low, component)
+            if None in (d_high, d_low):
+                continue
+            th, yh = d_high; tl, yl = d_low
+            yh = apply_scl_baseline_correction(th, yh, component)
+            yl = apply_scl_baseline_correction(tl, yl, component)
+            if not (validate_sufficient_data(th, yh, limit_sec) and validate_sufficient_data(tl, yl, limit_sec)):
+                continue
+            mask_h = (th >= 0.0) & (th <= limit_sec)
+            mask_l = (tl >= 0.0) & (tl <= limit_sec)
+            th = th[mask_h]; yh = yh[mask_h]
+            tl = tl[mask_l]; yl = yl[mask_l]
+
+            # RS
+            p_r1 = build_rs_cvx_path(subject, 'session1')
+            p_r2 = build_rs_cvx_path(subject, 'session2')
+            r1 = load_cvx_component(p_r1, component)
+            r2 = load_cvx_component(p_r2, component)
+            if None in (r1, r2):
+                continue
+            tr1, yr1 = r1; tr2, yr2 = r2
+            yr1 = apply_scl_baseline_correction(tr1, yr1, component)
+            yr2 = apply_scl_baseline_correction(tr2, yr2, component)
+            if not (validate_sufficient_data(tr1, yr1, limit_sec) and validate_sufficient_data(tr2, yr2, limit_sec)):
+                continue
+            m1 = (tr1 >= 0.0) & (tr1 <= limit_sec)
+            m2 = (tr2 >= 0.0) & (tr2 <= limit_sec)
+            tr1 = tr1[m1]; yr1 = yr1[m1]
+            tr2 = tr2[m2]; yr2 = yr2[m2]
+
+            # Determine RS dose mapping
+            dose_s1 = get_dosis_sujeto(subject, 1)
+            cond1 = 'High' if str(dose_s1).lower().startswith('alta') or str(dose_s1).lower().startswith('a') else 'Low'
+            # session2 inferred opposite
+            cond2 = 'Low' if cond1 == 'High' else 'High'
+
+            rows.append({
+                'subject': subject,
+                't_rs1': tr1, 'y_rs1': yr1, 'cond1': cond1,
+                't_rs2': tr2, 'y_rs2': yr2, 'cond2': cond2,
+                't_dmt_h': th, 'y_dmt_h': yh,
+                't_dmt_l': tl, 'y_dmt_l': yl,
+            })
+        except Exception:
+            continue
+
+    if not rows:
+        return False
+
+    n = len(rows)
+    # Increase figure height to accommodate suptitles per row
+    fig, axes = plt.subplots(n, 2, figsize=(14, max(4.0, 2.2 * n)), sharex=True, sharey=True)
+    if n == 1:
+        axes = np.array([axes])
+
+    # Colors
+    c_dmt_high, c_dmt_low = 'tab:red', 'tab:blue'
+    c_rs_high, c_rs_low = 'tab:green', 'tab:purple'
+
+    minute_ticks = np.arange(0.0, 541.0, 60.0)
+
+    from matplotlib.lines import Line2D
+
+    for i, row in enumerate(rows):
+        ax_rs = axes[i, 0]
+        ax_dmt = axes[i, 1]
+
+        # RS left subplot
+        if row['cond1'] == 'High':
+            ax_rs.plot(row['t_rs1'], row['y_rs1'], color=c_rs_high, lw=1.4)
+        else:
+            ax_rs.plot(row['t_rs1'], row['y_rs1'], color=c_rs_low, lw=1.4)
+        if row['cond2'] == 'High':
+            ax_rs.plot(row['t_rs2'], row['y_rs2'], color=c_rs_high, lw=1.4)
+        else:
+            ax_rs.plot(row['t_rs2'], row['y_rs2'], color=c_rs_low, lw=1.4)
+        
+        _beautify_axes(ax_rs, title=None, xlabel='Time (minutes)', ylabel=units)
+        ax_rs.set_title('Resting State (RS)', fontweight='bold')
+        ax_rs.set_xlim(0.0, limit_sec)
+
+        # RS legend with fixed order
+        legend_rs = ax_rs.legend(handles=[
+            Line2D([0], [0], color=c_rs_high, lw=1.4, label='RS High'),
+            Line2D([0], [0], color=c_rs_low, lw=1.4, label='RS Low'),
+        ], loc='upper right', frameon=True, fancybox=False)
+        legend_rs.get_frame().set_facecolor('white')
+        legend_rs.get_frame().set_alpha(0.9)
+
+        # DMT right subplot
+        ax_dmt.plot(row['t_dmt_h'], row['y_dmt_h'], color=c_dmt_high, lw=1.4)
+        ax_dmt.plot(row['t_dmt_l'], row['y_dmt_l'], color=c_dmt_low, lw=1.4)
+        
+        _beautify_axes(ax_dmt, title=None, xlabel='Time (minutes)', ylabel=units)
+        ax_dmt.set_title('DMT', fontweight='bold')
+        ax_dmt.set_xlim(0.0, limit_sec)
+
+        # DMT legend with fixed order
+        legend_dmt = ax_dmt.legend(handles=[
+            Line2D([0], [0], color=c_dmt_high, lw=1.4, label='DMT High'),
+            Line2D([0], [0], color=c_dmt_low, lw=1.4, label='DMT Low'),
+        ], loc='upper right', frameon=True, fancybox=False)
+        legend_dmt.get_frame().set_facecolor('white')
+        legend_dmt.get_frame().set_alpha(0.9)
+
+        # Y ticks on both columns
+        ax_rs.tick_params(labelleft=True)
+        ax_dmt.tick_params(labelleft=True)
+
+        # X ticks and formatter
+        ax_rs.set_xticks(minute_ticks)
+        ax_rs.xaxis.set_major_formatter(FuncFormatter(_fmt_mmss))
+        ax_dmt.set_xticks(minute_ticks)
+        ax_dmt.xaxis.set_major_formatter(FuncFormatter(_fmt_mmss))
+
+        # Y limits
+        ax_rs.set_ylim(-5.0, 5.0)
+        ax_dmt.set_ylim(-5.0, 5.0)
+        
+        # Component-specific Y-axis settings for SCR
+        if component == 'SCR':
+            ax_rs.set_ylim(-0.25, 1.0)
+            ax_dmt.set_ylim(-0.25, 1.0)
+            ax_rs.set_yticks(np.arange(0.0, 1.01, 0.25))
+            ax_dmt.set_yticks(np.arange(0.0, 1.01, 0.25))
+
+        # Add subject suptitle above this row (centered between the two subplots)
+        # Use fig.text to place text in figure coordinates
+        # Calculate vertical position for this row's suptitle
+        row_center_y = 1.0 - (i + 0.5) / n  # Approximate center of row in figure coords
+        fig.text(0.5, row_center_y + 0.035, row['subject'], 
+                 ha='center', va='bottom', fontweight='bold', fontsize=26,
+                 transform=fig.transFigure)
+
+    fig.tight_layout(pad=1.5)
+    fig.savefig(out_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    return True
+
+def _write_combined_captions(out_dir: str, component: str):
+    """Write a single comprehensive captions file for all figures of this component."""
+    config = COMPONENT_CONFIG[component]
+    comp_name = component
+    comp_long = config['long_name']
+    comp_desc = config['description']
+    units = config['units']
+    output_subdir = config['output_dir']  # 'scr' or 'scl'
+    
+    caption_file = os.path.join(out_dir, f'captions_{output_subdir}.txt')
+    
+    captions = []
+    
+    # Caption 1: Combined summary (RS + DMT)
+    captions.append(
+        f"Figure: {comp_name} Comparison Across Tasks (Resting State and DMT)\n"
+        f"Group-level mean ± SEM for {comp_long} ({comp_desc}) across 11 subjects during two tasks. "
+        f"Left panel: Resting State (RS) with eyes closed, comparing High (green) versus Low (purple) dose conditions. "
+        f"Right panel: DMT task, comparing High (red) versus Low (blue) dose conditions. "
+        f"The X-axis represents time in minutes (0:00–9:00) with tick marks every minute. "
+        f"The Y-axis displays {units} with a fixed range of [−5, 5] μS to enable direct comparison across tasks. "
+        f"Shaded regions represent the standard error of the mean (SEM). "
+        f"Each curve is the average of 11 individual subjects' {comp_name} time series, "
+        f"resampled to a common 2 Hz grid and then averaged point-wise. "
+        f"The plot highlights dose-dependent modulation in both resting and active psychedelic states."
+    )
+    
+    # Caption 2: DMT-only summary (19:10 for SCL)
+    if component == 'SCL':
+        captions.append(
+            f"\nFigure: DMT Task {comp_name} Extended Time Course (0–19 minutes)\n"
+            f"Group-level mean ± SEM for {comp_long} ({comp_desc}) during the DMT task across the extended recording period (19 minutes 10 seconds). "
+            f"The plot compares High (red) versus Low (blue) dose conditions. "
+            f"The X-axis represents time in minutes (0:00–19:00) with tick marks every minute. "
+            f"The Y-axis displays {units} with a fixed range of [−5, 5] μS. "
+            f"Shaded regions represent the standard error of the mean (SEM). "
+            f"This extended time series (N = 11 subjects) reveals the temporal dynamics of the tonic electrodermal component "
+            f"throughout the full DMT experience, including onset, peak, and offset phases. "
+            f"The longer recording window allows examination of sustained dose effects beyond the acute psychedelic state."
+        )
+    
+    # Caption 3: Stacked per-subject
+    captions.append(
+        f"\nSupplementary Figure: Individual Subject {comp_name} Time Series (Stacked Layout)\n"
+        f"Per-subject {comp_long} ({comp_desc}) time series for all 11 validated subjects. "
+        f"Each row represents one subject, with the subject code displayed in bold on the left margin. "
+        f"Left column: Resting State (RS) with eyes closed, showing High (green) and Low (purple) dose sessions overlaid. "
+        f"Right column: DMT task, showing High (red) and Low (blue) dose sessions overlaid. "
+        f"The X-axis represents time in minutes (0:00–9:00) with tick marks every minute. "
+        f"The Y-axis displays {units} with a fixed range of [−5, 5] μS across all subjects to facilitate visual comparison. "
+        f"Both axes are shared across all subplots to enable direct between-subject comparisons of signal amplitude and temporal dynamics. "
+        f"This layout reveals individual variability in {comp_name} responses to dose and task conditions, "
+        f"complementing the group-level averages shown in the main figures. "
+        f"Notable inter-individual differences can be observed in baseline levels, response magnitudes, and temporal patterns."
+    )
+    
+    combined_text = "\n\n".join(captions)
+    
+    try:
+        with open(caption_file, 'w', encoding='utf-8') as f:
+            f.write(combined_text)
+        print(f"📝 Combined captions written: {caption_file}")
+    except Exception as e:
+        print(f"⚠️  Failed to write combined captions: {e}")
 
 
 def plot_subject_component_combined(subject: str, component: str) -> bool:
@@ -617,9 +793,9 @@ def plot_subject_component_combined(subject: str, component: str) -> bool:
     t_high, comp_high = dmt_high
     t_low, comp_low = dmt_low
     
-    # Apply baseline correction for EDL
-    comp_high = apply_edl_baseline_correction(t_high, comp_high, component)
-    comp_low = apply_edl_baseline_correction(t_low, comp_low, component)
+    # Apply baseline correction for SCL
+    comp_high = apply_scl_baseline_correction(t_high, comp_high, component)
+    comp_low = apply_scl_baseline_correction(t_low, comp_low, component)
     
     limit_subj = 550.0  # 9 minutes 10 seconds
     # Validate sufficient valid data for 9:10
@@ -657,9 +833,9 @@ def plot_subject_component_combined(subject: str, component: str) -> bool:
     t1, y1 = rs1
     t2, y2 = rs2
     
-    # Apply baseline correction for EDL
-    y1 = apply_edl_baseline_correction(t1, y1, component)
-    y2 = apply_edl_baseline_correction(t2, y2, component)
+    # Apply baseline correction for SCL
+    y1 = apply_scl_baseline_correction(t1, y1, component)
+    y2 = apply_scl_baseline_correction(t2, y2, component)
     
     # Validate sufficient valid data for 9:10
     if not (validate_sufficient_data(t1, y1, limit_subj) and validate_sufficient_data(t2, y2, limit_subj)):
@@ -698,34 +874,78 @@ def plot_subject_component_combined(subject: str, component: str) -> bool:
     cond2 = 'High' if str(dose_s2).lower().startswith('alta') or str(dose_s2).lower().startswith('a') else 'Low'
 
     # Combined figure with two subplots
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 4.8), sharey=True)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 4.8), sharex=True, sharey=True)
 
-    # Subplot 1: DMT high vs low - plot component directly without mean lines
-    ax1.plot(t_dmt, y_dmt_high, color='tab:red', lw=1.4, label=f'DMT High (mean={mean_dmt_high:.3f})')
-    ax1.plot(t_dmt, y_dmt_low, color='tab:blue', lw=1.4, label=f'DMT Low (mean={mean_dmt_low:.3f})')
-    _beautify_axes(ax1, title='DMT High vs Low (first 9:10)', xlabel='Time', ylabel=config['units'])
-    
-    # Legend in upper right
-    legend1 = ax1.legend(loc='upper right', frameon=True, fancybox=True)
+    # Colors fixed across subjects
+    c_dmt_high = 'tab:red'
+    c_dmt_low = 'tab:blue'
+    c_rs_high = 'tab:green'
+    c_rs_low = 'tab:purple'
+
+    # Subplot 1: Resting State (RS) - LEFT
+    # Map RS traces to High/Low colors based on cond1/cond2 computed above
+    # cond1/cond2 already hold 'High'/'Low' strings
+    if cond1 == 'High':
+        ax1.plot(t_rs, y_rs1, color=c_rs_high, lw=1.4, label='RS High')
+    else:
+        ax1.plot(t_rs, y_rs1, color=c_rs_low, lw=1.4, label='RS Low')
+    if cond2 == 'High':
+        ax1.plot(t_rs, y_rs2, color=c_rs_high, lw=1.4, label='RS High')
+    else:
+        ax1.plot(t_rs, y_rs2, color=c_rs_low, lw=1.4, label='RS Low')
+    _beautify_axes(ax1, title=None, xlabel='Time (minutes)', ylabel=config['units'])
+    ax1.set_title('Resting State (RS)', fontweight='bold')
+
+    # Subplot 2: DMT - RIGHT
+    ax2.plot(t_dmt, y_dmt_high, color=c_dmt_high, lw=1.4, label='DMT High')
+    ax2.plot(t_dmt, y_dmt_low, color=c_dmt_low, lw=1.4, label='DMT Low')
+    _beautify_axes(ax2, title=None, xlabel='Time (minutes)', ylabel=config['units'])
+    ax2.set_title('DMT', fontweight='bold')
+
+    # Legends (no mean values)
+    from matplotlib.lines import Line2D
+    legend1 = ax1.legend(handles=[
+        Line2D([0], [0], color=c_rs_high, lw=1.4, label='RS High'),
+        Line2D([0], [0], color=c_rs_low, lw=1.4, label='RS Low'),
+    ], loc='upper right', frameon=True, fancybox=True)
     legend1.get_frame().set_facecolor('white')
     legend1.get_frame().set_alpha(0.9)
-
-    # Subplot 2: RS ses01 vs ses02 with dose tags - plot component directly without mean lines
-    ax2.plot(t_rs, y_rs1, color='tab:green', lw=1.4, label=f'RS {cond1} (mean={mean_rs1:.3f})')
-    ax2.plot(t_rs, y_rs2, color='tab:purple', lw=1.4, label=f'RS {cond2} (mean={mean_rs2:.3f})')
-    _beautify_axes(ax2, title='RS ses01 vs ses02 (first 9:10)', xlabel='Time (mm:ss)')
-    
-    # Legend in upper right
-    legend2 = ax2.legend(loc='upper right', frameon=True, fancybox=True)
+    legend2 = ax2.legend(handles=[
+        Line2D([0], [0], color=c_dmt_high, lw=1.4, label='DMT High'),
+        Line2D([0], [0], color=c_dmt_low, lw=1.4, label='DMT Low'),
+    ], loc='upper right', frameon=True, fancybox=True)
     legend2.get_frame().set_facecolor('white')
     legend2.get_frame().set_alpha(0.9)
 
-    fig.suptitle(f"{subject} – EDA {component} (first 9:10)", y=1.02)
+    # Consistent axes
+    ax1.set_xlim(0.0, 550.0)
+    ax2.set_xlim(0.0, 550.0)
+    ax1.set_ylim(-5.0, 5.0)
+    ax2.set_ylim(-5.0, 5.0)
+    
+    # Component-specific Y-axis settings for SCR
+    if component == 'SCR':
+        ax1.set_ylim(-0.25, 1.0)
+        ax2.set_ylim(-0.25, 1.0)
+        ax1.set_yticks(np.arange(0.0, 1.01, 0.25))
+        ax2.set_yticks(np.arange(0.0, 1.01, 0.25))
+
+    # Y tick labels visible on both subplots
+    ax1.tick_params(labelleft=True)
+    ax2.tick_params(labelleft=True)
+
+    # Major ticks every minute from 0:00 to 9:00; show formatter mm:ss, but label says minutes
+    minute_ticks = np.arange(0.0, 541.0, 60.0)
+    for ax in (ax1, ax2):
+        ax.set_xticks(minute_ticks)
+        ax.xaxis.set_major_formatter(FuncFormatter(_fmt_mmss))
+
+    fig.suptitle(f"{subject}", y=1.02, fontweight='bold', fontsize=26)
     fig.tight_layout(pad=1.2)
 
     out_dir = os.path.join('test', 'eda', config['output_dir'])
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, f"{subject.lower()}_eda_{component.lower()}_combined_10min.png")
+    out_path = os.path.join(out_dir, f"{subject.lower()}_eda_{component.lower()}.png")
     fig.savefig(out_path, dpi=200, bbox_inches='tight')
     plt.close(fig)
     print(f"✅ Saved combined {component} plot: {out_path}")
@@ -733,33 +953,32 @@ def plot_subject_component_combined(subject: str, component: str) -> bool:
 
 
 def run_component_analysis(component: str):
-    """Run complete analysis for specified component (EDR or EDL)."""
+    """Run complete analysis for specified component (SCR or SCL)."""
     config = COMPONENT_CONFIG[component]
-    durations_log = [] if component == 'EDL' else None
+    durations_log = [] if component == 'SCL' else None
     
     print(f"📊 Generating EDA {component} combined plots per validated subject…")
     successes_combined = 0
-    # Collect per-subject mean values for 2x2 ANOVA
-    anova_records = []
+    
     for subject in SUJETOS_VALIDADOS_EDA:
         ok = plot_subject_component_combined(subject, component)
         if ok:
             successes_combined += 1
-        # Compute and store mean values for all four cells for ANOVA
-        # Build paths
-        high_session, low_session = determine_sessions(subject)
-        dmt_high_path, dmt_low_path = build_cvx_paths(subject, high_session, low_session)
-        rs1_path = build_rs_cvx_path(subject, 'session1')
-        rs2_path = build_rs_cvx_path(subject, 'session2')
-        # Load
-        dmt_high = load_cvx_component(dmt_high_path, component)
-        dmt_low = load_cvx_component(dmt_low_path, component)
-        rs1 = load_cvx_component(rs1_path, component)
-        rs2 = load_cvx_component(rs2_path, component)
-        if None in (dmt_high, dmt_low, rs1, rs2):
-            continue
-        # Collect durations (EDL only): last valid timestamp for each available file
+        
+        # Collect durations (SCL only): last valid timestamp for each available file
         if durations_log is not None:
+            # Build paths
+            high_session, low_session = determine_sessions(subject)
+            dmt_high_path, dmt_low_path = build_cvx_paths(subject, high_session, low_session)
+            rs1_path = build_rs_cvx_path(subject, 'session1')
+            rs2_path = build_rs_cvx_path(subject, 'session2')
+            # Load
+            dmt_high = load_cvx_component(dmt_high_path, component)
+            dmt_low = load_cvx_component(dmt_low_path, component)
+            rs1 = load_cvx_component(rs1_path, component)
+            rs2 = load_cvx_component(rs2_path, component)
+            if None in (dmt_high, dmt_low, rs1, rs2):
+                continue
             # DMT High/Low
             th, yh = dmt_high; tl, yl = dmt_low
             dur_dmt_high = _last_valid_timestamp_mmss(th, yh)
@@ -806,209 +1025,50 @@ def run_component_analysis(component: str):
                     'dose': d2,
                     'duration': dur_rs2,
                 })
-        # Trim to 10 minutes and compute mean value consistently
-        def trim_and_mean(pair):
-            tt, yy = pair
-            # Apply baseline correction for EDL
-            yy = apply_edl_baseline_correction(tt, yy, component)
-            # Validate sufficient valid data for 10 minutes
-            if not validate_sufficient_data(tt, yy, 600.0):
-                return None
-            idx = np.where(tt <= 600.0)[0]
-            if len(idx) < 10:
-                return None
-            yy = yy[idx]
-            return compute_mean_value(yy)
-        mean_dmt_high = trim_and_mean(dmt_high)
-        mean_dmt_low = trim_and_mean(dmt_low)
-        mean_rs1 = trim_and_mean(rs1)
-        mean_rs2 = trim_and_mean(rs2)
-        if None in (mean_dmt_high, mean_dmt_low, mean_rs1, mean_rs2):
-            continue
-        # Map RS1/RS2 to Low/High using session dose
-        dose_s1 = get_dosis_sujeto(subject, 1)
-        dose_s2 = get_dosis_sujeto(subject, 2)
-        if str(dose_s1).lower().startswith('alta') or str(dose_s1).lower().startswith('a'):
-            rs_high = mean_rs1; rs_low = mean_rs2
-        else:
-            rs_high = mean_rs2; rs_low = mean_rs1
-        # Map DMT High/Low already aligned by determine_sessions
-        rec = {
-            'subject': subject,
-            'RS_Low': rs_low,
-            'RS_High': rs_high,
-            'DMT_Low': mean_dmt_low,
-            'DMT_High': mean_dmt_high,
-        }
-        anova_records.append(rec)
+    
     print(f"🎯 Completed combined plots: {successes_combined}/{len(SUJETOS_VALIDADOS_EDA)}")
     
-    # Run 2x2 within-subject ANOVA (global) and per-minute ANOVAs; write report
+    # Setup output directory
     out_dir = os.path.join('test', 'eda', config['output_dir'])
     os.makedirs(out_dir, exist_ok=True)
-    # Write durations JSON for EDL
+    
+    # Write durations JSON for SCL
     if durations_log is not None and len(durations_log) > 0:
-        durations_path = os.path.join(out_dir, 'edl_valid_durations.json')
+        durations_path = os.path.join(out_dir, 'scl_valid_durations.json')
         try:
             with open(durations_path, 'w', encoding='utf-8') as f:
                 json.dump(durations_log, f, ensure_ascii=False, indent=2)
-            print(f"📝 EDL durations log saved: {durations_path}")
+            print(f"📝 SCL durations log saved: {durations_path}")
         except Exception as e:
             print(f"⚠️  Failed to write durations JSON: {e}")
-    report_path = os.path.join(out_dir, 'anova_2x2_report.txt')
-    if anova_records:
-        _ = run_anova_2x2_within(anova_records, out_report_path=report_path)
-        print(f"📄 ANOVA 2x2 report (global) saved: {report_path}")
 
-    # Build per-minute records: for m in 0..9, compute per-subject means in that 1-min window
-    records_by_minute = {m: [] for m in range(10)}
-    for subject in SUJETOS_VALIDADOS_EDA:
-        # Gather sources as before
-        high_session, low_session = determine_sessions(subject)
-        dmt_high_path, dmt_low_path = build_cvx_paths(subject, high_session, low_session)
-        rs1_path = build_rs_cvx_path(subject, 'session1')
-        rs2_path = build_rs_cvx_path(subject, 'session2')
-        dmt_high = load_cvx_component(dmt_high_path, component)
-        dmt_low = load_cvx_component(dmt_low_path, component)
-        rs1 = load_cvx_component(rs1_path, component)
-        rs2 = load_cvx_component(rs2_path, component)
-        if None in (dmt_high, dmt_low, rs1, rs2):
-            continue
+    # Generate summary plots
+    # Combined summary plot with DMT and RS subplots
+    out_sum_combined = os.path.join(out_dir, f'all_subs_eda_{component.lower()}.png')
+    ok_combined = _plot_combined_summary(out_sum_combined, component)
+    if ok_combined:
+        print(f"🖼️  Combined summary DMT+RS mean±SEM saved: {out_sum_combined}")
 
-        # Minute windows
-        def mean_window(pair, m):
-            tt, yy = pair
-            # Apply baseline correction for EDL
-            yy = apply_edl_baseline_correction(tt, yy, component)
-            # Validate sufficient valid data for this minute window
-            if not validate_sufficient_data(tt, yy, 60.0 * (m + 1), min_valid_ratio=0.3):
-                return None
-            mask = (tt >= 60.0 * m) & (tt < 60.0 * (m + 1))
-            if not np.any(mask):
-                return None
-            yy_window = yy[mask]
-            # Check if this specific window has enough valid data
-            valid_samples = np.sum(~np.isnan(yy_window))
-            if valid_samples < len(yy_window) * 0.3:  # At least 30% valid data
-                return None
-            return compute_mean_value(yy_window)
+    # Additional DMT-only plot for 20 minutes (both SCR and SCL)
+    out_dmt_20min = os.path.join(out_dir, f'all_subs_dmt_eda_{component.lower()}.png')
+    ok_dmt_20min = _plot_dmt_only_20min(out_dmt_20min, component)
+    if ok_dmt_20min:
+        print(f"🖼️  DMT-only 20-min {component} summary saved: {out_dmt_20min}")
 
-        dose_s1 = get_dosis_sujeto(subject, 1)
-        # For each minute, compute all four cells
-        for m in range(10):
-            mean_dh = mean_window(dmt_high, m)
-            mean_dl = mean_window(dmt_low, m)
-            mean_r1 = mean_window(rs1, m)
-            mean_r2 = mean_window(rs2, m)
-            if None in (mean_dh, mean_dl, mean_r1, mean_r2):
-                continue
-            # Map RS1/RS2 to Low/High via session dose
-            if str(dose_s1).lower().startswith('alta') or str(dose_s1).lower().startswith('a'):
-                rs_high = mean_r1; rs_low = mean_r2
-            else:
-                rs_high = mean_r2; rs_low = mean_r1
-            rec = {
-                'subject': subject,
-                'RS_Low': rs_low,
-                'RS_High': rs_high,
-                'DMT_Low': mean_dl,
-                'DMT_High': mean_dh,
-            }
-            records_by_minute[m].append(rec)
-
-    # Write per-minute ANOVAs appended after global
-    per_minute_text = run_anova_2x2_per_minute(records_by_minute, out_report_path=None)
-    with open(report_path, 'a', encoding='utf-8') as f:
-        f.write('\n\n')
-        f.write(per_minute_text)
-    print(f"📄 ANOVA 2x2 per-minute report appended to: {report_path}")
-
-    # Add 0–5 minute ANOVA (first half) using aggregated means in 0..4 minutes
-    records_first5 = []
-    for subject in SUJETOS_VALIDADOS_EDA:
-        high_session, low_session = determine_sessions(subject)
-        dmt_high_path, dmt_low_path = build_cvx_paths(subject, high_session, low_session)
-        rs1_path = build_rs_cvx_path(subject, 'session1')
-        rs2_path = build_rs_cvx_path(subject, 'session2')
-        dmt_high = load_cvx_component(dmt_high_path, component)
-        dmt_low = load_cvx_component(dmt_low_path, component)
-        rs1 = load_cvx_component(rs1_path, component)
-        rs2 = load_cvx_component(rs2_path, component)
-        if None in (dmt_high, dmt_low, rs1, rs2):
-            continue
-        def mean_0_5(pair):
-            tt, yy = pair
-            # Apply baseline correction for EDL
-            yy = apply_edl_baseline_correction(tt, yy, component)
-            # Validate sufficient valid data for first 5 minutes
-            if not validate_sufficient_data(tt, yy, 300.0):
-                return None
-            mask = (tt >= 0.0) & (tt < 300.0)
-            if not np.any(mask):
-                return None
-            yy_window = yy[mask]
-            # Check if this specific window has enough valid data
-            valid_samples = np.sum(~np.isnan(yy_window))
-            if valid_samples < len(yy_window) * 0.5:  # At least 50% valid data for 5-min window
-                return None
-            return compute_mean_value(yy_window)
-        mean_dh = mean_0_5(dmt_high)
-        mean_dl = mean_0_5(dmt_low)
-        mean_r1 = mean_0_5(rs1)
-        mean_r2 = mean_0_5(rs2)
-        if None in (mean_dh, mean_dl, mean_r1, mean_r2):
-            continue
-        dose_s1 = get_dosis_sujeto(subject, 1)
-        if str(dose_s1).lower().startswith('alta') or str(dose_s1).lower().startswith('a'):
-            rs_high = mean_r1; rs_low = mean_r2
-        else:
-            rs_high = mean_r2; rs_low = mean_r1
-        records_first5.append({
-            'subject': subject,
-            'RS_Low': rs_low,
-            'RS_High': rs_high,
-            'DMT_Low': mean_dl,
-            'DMT_High': mean_dh,
-        })
-    if records_first5:
-        res5_path = report_path
-        res5 = run_anova_2x2_within(records_first5, out_report_path=None)
-        # Render and append
-        text5 = [
-            '',
-            '========================================',
-            'Repeated-measures ANOVA 2x2 for first 5 minutes (0:00–4:59)',
-            '========================================',
-            _render_anova_results(res5)
-        ]
-        with open(res5_path, 'a', encoding='utf-8') as f:
-            f.write('\n'.join(text5))
-        print("📄 ANOVA 2x2 (first 5 minutes) appended to report")
-
-    # Create 2x2 boxplot with paired data
-    if anova_records:
-        out_box = os.path.join(out_dir, f'{component.lower()}_mean_2x2_boxplot.png')
-        _plot_boxplot_2x2(anova_records, out_box, component)
-        print(f"🖼️  2x2 mean {component} boxplot saved: {out_box}")
-
-        # Combined summary plot with DMT and RS subplots
-        out_sum_combined = os.path.join(out_dir, f'summary_combined_dmt_rs_mean_sem_{component.lower()}.png')
-        ok_combined = _plot_combined_summary(out_sum_combined, component)
-        if ok_combined:
-            print(f"🖼️  Combined summary DMT+RS mean±SEM saved: {out_sum_combined}")
-
-        # For EDL only: additional DMT-only plot for 20 minutes
-        if component == 'EDL':
-            out_dmt_20min = os.path.join(out_dir, f'summary_dmt_only_20min_mean_sem_{component.lower()}.png')
-            ok_dmt_20min = _plot_dmt_only_20min(out_dmt_20min, component)
-            if ok_dmt_20min:
-                print(f"🖼️  DMT-only 20-min EDL summary saved: {out_dmt_20min}")
+    # Stacked figure across subjects (supplementary)
+    try:
+        _plot_all_subjects_stacked(os.path.join(out_dir, f'stacked_subs_eda_{component.lower()}.png'), component)
+    except Exception:
+        pass
+    
+    # Write combined captions file for all figures
+    _write_combined_captions(out_dir, component)
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Analyze EDA components (EDR or EDL)')
-    parser.add_argument('--component', choices=['EDR', 'EDL'], required=True,
-                        help='EDA component to analyze: EDR (phasic) or EDL (tonic)')
+    parser = argparse.ArgumentParser(description='Analyze EDA components (SCR or SCL)')
+    parser.add_argument('--component', choices=['SCR', 'SCL'], required=True,
+                        help='EDA component to analyze: SCR (phasic) or SCL (tonic)')
     
     args = parser.parse_args()
     

@@ -252,16 +252,16 @@ S20 EDA REST SES01 LOW
 * Guarde la carpeta `phys` como backup en escritorio
 
 
+
+[x] Hacer el plot de los 20 minutos comparando dosis baja y dosis alta, que ahora no deberia tener el 0 padding. Al hacer los plots, hacerlo con los 20 minutos 15 segndos, y marcar claramente el momento de administracion de DMT. Tene en cuenta que los eje X debe ir de 0 a 20 minutos (que lo anterior debe ser negativo, no debe ser un eje X de 20 minutos 15 segundos.)
+
 SEGUIR DESDE ACA ->
 
-[ ] Hacer el plot de los 20 minutos comparando dosis baja y dosis alta, que ahora no deberia tener el 0 padding. Al hacer los plots, hacerlo con los 20 minutos 15 segndos, y marcar claramente el momento de administracion de DMT. Tene en cuenta que los eje X debe ir de 0 a 20 minutos (que lo anterior debe ser negativo, no debe ser un eje X de 20 minutos 15 segundos.)
-
-[ ] Implementar los siguientes cambios en `plot_eda_components.py`:
+[x] Implementar los siguientes cambios en `plot_eda_components.py`:
 Archivos individuales por sujeto:
 - En el y label de cada subplot, en vez de "(a.u.)" deberia decir "(μS)"
 - En el x label de cada subplot, la escala temporal deberia tener numeros espaciados cada un minuto (0:00, 1:00, ..., 9:00). Y el label deberia decir `Time (minutes)`, o algo asi.
 - Tene en cuenta que los registros de cada sujeto son de 9 minutos y 10 segundos. Pero quiero que los 10 primeros segundos sean "linea de base", y que el registro real sea de 00:00 a 09:00. Para eso, en el 00:00 marca una linea punteada vertical, para dar cuenta que ese es el inicio real.
-
 - En el label de las variables eliminar los valores medios e.g. "(mean=0.045)" luego de definir el color de cada variable.
 - Los colores de cada variable deberian ser los mismos para todos los sujetos: DMT High en rojo, DMT Low en azul, RS High en verde y RS Low en violeta.
 - La escala del eje Y deberia ser igual para todos los sujetos (entre 5 y -5)
@@ -269,16 +269,119 @@ Archivos individuales por sujeto:
  - En el titulo de cada subplot deberia decir solamente el numero de sujeto (e.g. S05) y nada sobre EDA, EDL ni (first 10 min)
  - En los titutlos de cada subplot solamente deberia decir `DMT` (y no `DMT High vs Low (first 10 min)`) y `Resting State (RS)` (y no `RS ses01 vs ses02 (first 10 min)`).
 
+[x]  Implementar los siguientes cambios en `plot_eda_components.py`:
+Archivos individuales por sujeto:
+- No quiero mas las lineas verticales en 00:00. De hecho, el registro debe comenzar en 00:00 y terminar en 09:10 (manteniendo las marcas en el x label en 00:00, 01:00, ..., 09:00)
+- Los titulos DMT, Resting State (RS) y el numero de sujeto (e.g. S04). Deben ir todos en bold. Y el titulo del sujeto debe ir ademas en un formato de letra el doble de grande.
+- El orden de los labels indicando la condicion en Resting State -RS High y RS Low- deben seguir siempre *ese* orden (high arriba y low abajo)
 
-[ ] Rehacer las figuras y analisis estadisticos, con estos cambios. Y volcarlos en el informe.
+[x]  Implementar los siguientes cambios en `plot_eda_components.py`:
+Archivos individuales por sujeto:
+- Los subplots de Resting State deben ir a la izquierda y los de DMT a la derecha (al reves de como estan ahora)
+- Incluir tambien en el subplot de la derecha el Y label con los Y ticks de los valores en microsiemens (ahora solo aparecen en el subplot de a derecha)
+- Crear de forma adicional un plot que stackee de forma vertical todos los sujetos. Esta figura sera agregada como material suplementario en el paper
+Archivos `summary`:
+- Mantener todas las propiedades de los elementos graficos analogas a los plots individuales enlos plots sumary (e.g. titulos de los subplots, titulos de los ejes X e Y, formato de los labels, colores de las lineas, etc)
+- El subplot de Resting state deben ir a la izquierda y los de DMT a la derecha.
+- Eliminarle el titulo general a estos plots summary. En cambio guardar un nuevo .txt con el caption de esta figura y tambien dela figura de los sujetos indivudales stackeada (figura de material suplementario)
 
-[ ] Agregar en los scripts de `plot_eda_components.py` Salgun analisis de extraccion de SCR counts (y/o amplitud de los SCRs) extraido de los archivos `emotiphai_scr.csv` guardados en `../data/derivatives/preprocessing/phys/eda/*`
+[x]  Implementar los siguientes cambios en `plot_eda_components.py`:
+Archivos individuales por sujeto:
+- Los filenames de los archivos por sujeto deberian decir `9min` en vez de `10min`.
+Archivo "stacked_subject":
+- Los numeros de los sujetos (e.g. S04) aparece superpuesto co el Y label (e.g. EDL (uS)). Hay que dejar mas espacio en el margen izquierdo para que entre el numero del sujeto. Ademas, el numero del sujeot debe estar el doble de grande al menos.
+Archivo "summary dmt only":
+- Mantener todas las propiedades de los elementos graficos analogas a los plots individuales enlos plots sumary (e.g. titulos de los subplots, titulos de los ejes X e Y, formato de los labels, colores de las lineas, etc). Incluir tambien una caption de esta figura
+
+- Todas las caption deben ser en ingles, y *mucho* mas completas. Te paso un  ejemplo de una caption bien completa:
+Fig. 1. Cumulative dose effect on SMNA (High–Low) during DMT and rest.
+Each curve shows, per task, the cumulative dose effect calculated as the sum over time (0–9 min) of the differences per minute in SMNA AUC between high and low doses (High–Low). The thick lines represent the group mean with 95% CI (shaded); the thin lines are the individual trajectories (N = 11). 
+
+[x] Implementar los siguientes cambios en `plot_eda_components.py`:
+En todos los plots:
+- El Y label debe ser el **delta** de SCL en microsiemens, y *no* directamente SCL en microsiemens. Replicar esto en todos los archivos por sujeto
+Archivos stackeado por sujeto:
+- Quiero que el archivo stakkeado sea literalmente una version stakeada verticalmente de los plots individaules. De este modo, cada subplot por participante debe incluir todos los labels y titulos identifico a los plots por participantes, con el mismo estilo etc. Asi, el titulo de sujeto debe estar en la parte superior, debe incluir subtitulos de resting state y DMT, debe incluir x e y label cada subplot de cada participante, asi como tambien los indicadores de las condiciones / colores en cada subplo de cada sujeto
+En ambos plots summary (summary dmt only y summary combined dmt rs mean sem edl):
+- El indicador de la codnicion high o low no debe tener ese relieve/sombreado, sino qeu debe ser igual esteticamente a como aparece ese indicador en los archivos por sujeto
+- El Y label del delta de SCL debe tener limite en -1.5 y 1.5
+
+[x] Para los plots de SCR de @plot_eda_components.py, considera que:
+- Para los plots por sujeto (y tambein el plot stacked_subs_eda_scr), el eje y deberia tener limite entre -0.25 y 1.0. Pero que los y ticks deberian ir de 0.0 a 1.0 (0.0, 0.1, ..., 1.0)
+- Para los plots por all_subs, el eje y deberia tener limite entre -0.05 y 0.25. Pero que los y ticks deberian ir de 0.00 a 0.25 (0.00, 0.05, ..., 0.25)
+- Por algun motivo no se creo el plot all_subs_dmt_eda_scr.png, que deberia haberse creado al igual que corriendo para scl
+
+
+- [x] Ahora que ya implemente los cambios, correrlo para SCR y ver resultados
+
+
+SEGUIR DESDE ACA
+
+[x] Incluir en plot_eda_components.py --SCR analisis sobre los datos de `*emotiphai_scr.csv` (en vez de la columna EDR de la extraccion de CVX EDA).
+
+Tene en cuenta que los datos de emotiphai tienen este formato (ver datos de las primeras filas como ejemplo de una sesion de un paticipante, e.g. `S02_dmt_session2_high_emotiphai_scr.csv`):
+
+```
+SCR_Onsets_Emotiphai,SCR_Peaks_Emotiphai,SCR_Amplitudes_Emotiphai
+929,1555,0.49777427216092107
+2022,2417,0.16037486767340248
+3588,4278,0.4908677882173871
+5753,6415,0.4167111851163048
+7010,7562,0.4408856160456054
+```
+
+Esto quiere decir que ya no tenemos una serie de tiempo de valores de EDA, sino tenemos todos los SCRs encontrados con los tiempos del onset y del peak (en timepoints) y su amplitud asociada.
+
+Para empezar, quiero que me propongas posibles plots para evaluar condiciones (DMT y RS) y dosis (alta y baja) con este tipo de datos de SCR (cantidad de SCRs y amplitud).
+
+Con esos plots, voy a decidir  si vale la pena incluir algun grafico a los resultados segun los analisis de extraccion de SCR counts (y/o amplitud de los SCRs) extraido de los archivos `emotiphai_scr.csv` guardados en `../data/derivatives/preprocessing/phys/eda/*`
+
+
+[x] Objetivo: rehacer los analisis de SMNA (que ya hice antes) pero con los nuevos datos, porque cambie un poco las tablas de donde salieron los datos.
+Para esto, quiero crear un nuevo script que sea un mix de estos siguientes scripts que antes corria secuencialmente:
+Primero: python test/lme_analysis_smna_auc.py (análisis principal)
+Segundo: python test/plot_lme_coefficients.py (coeficientes)
+Tercero: python test/plot_lme_marginal_means.py (medias marginales)
+En concreto, aunar todo en un unico script, que considere unicamente usar los 9 primeros minutos de datos para los analisis (tanto plots como analsiis estadisticos), de forma analoga a como hice con los scripts de SCL en @plot_eda_components.py 
+
+Ademas, es necesaio hacer algunas cambios menores extras:
+- Imitar todo el resto de los patrones esteticos del plot (labels, formato, colores para cada condicion, nombre de las variables, orden de las condiciones, etc) como hice en `plot_emotiphai_scr_rate.py`
+- Eliminar los titulos de todos los plots
+- Elimnar el bold de todos los `x label` y `y label` de todos los plots
+- modificar para que en vez de crear una figura de  `model_summary.png`, qeu esto sea un .txt
+- Eliminar de todos los plots los rectangulos de texto con los key findings (eso se debe agregar luego al texto del paper, o al caption de las figuras).
+- Al correr esto se debe crear automaticamente un .txt con las caption de todas las figuras
+
+[x] Ahora quiero hacer algunos cambios pequeños a scripts/run_eda_smna_analysis.py:
+- En `task_main_effect.png`, el y label debe ser "SMNA AUC". En los labels de las condiciones arriba a la derecha, debe decir DMT y RS en ese orden, y no al reves como esta ahora. Y sin el aparentesis de "avg across dose".
+- En `task_dose_interaction.png`, el y label debe ser "SMNA AUC" (esto vale tambien para `marginal_means_all_conditions.png`). Y los labels de arriba a la derecha deben estar dentro de un recuadro como el resto de los labels en los otros plots. Ademas, debe mantenerse la logia de "High" arriba y "Low" abajo (y no al reves como esta ahora)
+
+[x] Implementar estos mismos analisis estadisticos que hice para SMNA pero para SCL.  Corriendo el anterior script `plot_eda_components.py --component SCL` (que ahora adaptare y creare un nuevo script en `./scripts`) se deberian crear directamente estos analisis. Importante: ahora tanto los plots (que hacia antes) como los nuevos analisis y plots resultantes que se agregan ahora se guardaran en `./results/eda/scl`. El nuevo script  `run_eda_scl_analysis.py` (adaptado de `plot_eda_components.py --component SCL`) deberia generar todo esto que describi anteriormente.
+
+[x] Algunos cambios que son necesarios hacer todavia en run_eda_scl_analysis.py:
+- Todos los plots deben guardarse en `plots` (y no directamente en `scl`)
+- Por algun motivo, las cuadriculas de fondo en los plots estan en un color muy solido. Deberian estar mas tranlucidas / grises, como estaban en el resto de los plots de antes.
+- El y label debe ser `ΔSCL (µS)`
+- En la nueva version de `stacked_subs_eda_scl.png` falta agregar en el titulo de cada subplot stackeado el numero de los particiapntes, como estaba antes en @plot_eda_components.py --scl
+
+[x] Bien. Ahora ya terminamos de adaptar por completo y de la forma que buscaba  los analisis que antes formaban parte de  `plot_eda_components.py --component SCL` en `scripts/run_eda_scl_analysis.py` (incluyendo elementos de diseño grafico aprioiado, etc).
+Ahora quiero que hagas LO MISMO para adaptar los analisis de `plot_eda_components_scr_emotiphai.py` en un nuevo script `run_eda_scr_analysis.py`. Considera agregar tambien los analisis de LME considerando los SCR counts extraidos.
+
+De SCR el unico grafico que me interesa es all_subs_eda_scr.png, que incluso podria ir a Anexos. El resto me parece que no vale la pena.
+
+
+SEGUIR DESDE ACA
+- Volcar esto en el manuscrito. Si hay analisis que no van en la historia principal, pero igual son relevantes, pueden ir en una seccion de "Anexo" del mismo documento.
+
+
+Despues de la reunion
+-------
 
 [ ] Hacer espectrograma pero con los datos de EDA a nivel exploratorio, e integrarlo tambien en el documento .doc.
 
-[ ] Hacer analisis estadisticos de DMT (high vs low) con los 20 minutos (y no solo con los 10 minutos). Hacer esto para SMNA AUC, SCL, y SCR. Si hay analisis que no van en la historia principal, pero igual son relevantes, pueden ir en una seccion de "Anexo" del mismo documento.
-
 [ ] Documentar todos los cambios realizados
+
+[ ] Continuar con ECG!
 
 
 
