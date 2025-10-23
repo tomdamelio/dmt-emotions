@@ -1,0 +1,12 @@
+FDR COMPARISON: SMNA High vs Low (Interaction panels)
+Alpha = 0.05
+
+PANEL RS:
+  Significant segments (count=0):
+    - None
+  Min p_FDR: 0.662260; Median p_FDR: 0.729211
+
+PANEL DMT:
+  Significant segments (count=0):
+    - None
+  Min p_FDR: 0.106150; Median p_FDR: 0.179205

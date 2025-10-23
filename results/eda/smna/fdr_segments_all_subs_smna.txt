@@ -1,0 +1,10 @@
+FDR COMPARISON: SMNA AUC High vs Low (All Subjects, RS and DMT)
+Alpha = 0.05
+
+PANEL RS:
+  Significant segments (count=0):
+    - None
+
+PANEL DMT:
+  Significant segments (count=0):
+    - None

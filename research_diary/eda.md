@@ -370,25 +370,50 @@ Ahora quiero que hagas LO MISMO para adaptar los analisis de `plot_eda_component
 De SCR el unico grafico que me interesa es all_subs_eda_scr.png, que incluso podria ir a Anexos. El resto me parece que no vale la pena.
 
 
+
 SEGUIR DESDE ACA
-- Volcar esto en el manuscrito. Si hay analisis que no van en la historia principal, pero igual son relevantes, pueden ir en una seccion de "Anexo" del mismo documento.
+----------------
 
+[x] Editar la figura tambien de resultados suplementarios ara agregar significancia estadistica. Esto NO da diferencias significativas en ninguna plot / subplot. Es por eso que no aparece ningun segmento como sombreado, porque ninguno sobrevive correccion por FDR. Los resultados quedaron guardados en .txt en results\eda\scl. Los p valor minimos son siempre mayores a 0.05 (corregido por FDR).
+[x] Ver comentario de Diego " En caso de que RS sea placebo (lo que sería menos confuso que decir RS) por que hay diferencia enrte high y low".
+Revisar esto, porque efectivamente tiene razon, es raro.
+La respuesta es que no hay diferencias significativas (si no apareceria como sombreado en el plot, y no lo esta). 
+[x] Extender los cambios realizados en SCL a SCR
+[x] Extender los cambios realizados en SCL a SMNA
+[x] Crear un script auxialiar en `results/eda/` llamado `generate_eda_figures.py`, que genere 2 paneles de plots, a partir de los plots ya generados y guardados en `results/eda`.
 
-Despues de la reunion
--------
+1er panel:
+Parte superior del panel:
+Subplot A (disposicion izquierda): all_subs_eda_scl.png
+Subplot B(disposicion izquierda): lme_coefficient_plot.png
+Parte inferior del panel:
+Subplot C (disposicion izquierda): all_subs_smna.png
+Subplot D(disposicion izquierda): lme_coefficient_plot.png
 
-[ ] Hacer espectrograma pero con los datos de EDA a nivel exploratorio, e integrarlo tambien en el documento .doc.
+2do panel:
+Parte superior del panel (Subplot A): all_subs_dmt_eda_scl.png
+Parte inferior del panel (Subplot B): all_subs_dmt_smna
 
-[ ] Documentar todos los cambios realizados
+Tene en cuenta que estos ya seran los plots finales que seráne enviados para publicar a Nature Human Behaviour. Por lo tanto, dispone los plots esteticamente ya como plots finales, secuenciando los subplots de cada panel en orden segun las letras mencioandas mas arriba (e.g. A, B, C, ...)
 
+SEGUIR DESDE ACA
+
+[ ] Agrandar un poco el tamaño de los boxes de labels en el margen superior derecho de cada subplot, modificando para eso `run_eda_scl_analysis` y ``run_eda_smna_analysis`. Con eso volver a correr la generaicon de plots con `generate_eda_figures`
+[ ] EDitar en `Results` y en `Material Suplementario` las captions de acuerdo a estas nuevas figuras
+[ ] Documentar todos los cambios realizados.
+[ ] Elimiar archivos de mi compu, pasarlos a la NUBE, porque tengo miedo de perder data.
 [ ] Continuar con ECG!
+
+
+   [ ] Hacer espectrograma pero con los datos de EDA a nivel exploratorio, e integrarlo tambien en el documento .doc.
+
+   [ ] Hacer espectrograma pero con los datos de ECG a nivel exploratorio.
+
+   [ ] Analisis de ECG. En el S02 ECg Rest ses 02 high hay que corregir la señal de ECG, pero es salvable interpolando  desde el segundo 210 hasta el segundo 310.
 
 
 
 PROXIMOS PASOS ->
 
-[ ] Hacer espectrograma pero con los datos de ECG a nivel exploratorio.
-
 [ ] Que pasa si comparamos el PSD de EEG en los momentos de SMNA > 0 comparados con SMNA = 0?. COmo cambia el PSD dependiendo la actividad autonomica?
 
-[ ] Analisis de ECG. En el S02 ECg Rest ses 02 high hay que corregir la señal de ECG, pero es salvable interpolando  desde el segundo 210 hasta el segundo 310.

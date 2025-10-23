@@ -1,0 +1,5 @@
+FDR COMPARISON: SMNA AUC High vs Low (DMT only)
+Alpha = 0.05
+
+Significant segments (count=0):
+  - None

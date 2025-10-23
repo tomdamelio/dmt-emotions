@@ -51,21 +51,42 @@ except Exception:
 
 
 #############################
-# Plot aesthetics (paper-ready minimal style)
+# Plot aesthetics & centralized hyperparameters
 #############################
+
+# Centralized font sizes and legend settings
+AXES_TITLE_SIZE = 29
+AXES_LABEL_SIZE = 36
+TICK_LABEL_SIZE = 28
+TICK_LABEL_SIZE_SMALL = 24
+
+# Legend sizes (global and a smaller variant for dense, per-subject panels)
+LEGEND_FONTSIZE = 14
+LEGEND_FONTSIZE_SMALL = 12
+LEGEND_MARKERSCALE = 1.6
+LEGEND_BORDERPAD = 0.6
+LEGEND_HANDLELENGTH = 3.0
+
+# Stacked per-subject figure specific sizes
+STACKED_AXES_LABEL_SIZE = 26
+STACKED_TICK_LABEL_SIZE = 18
+STACKED_SUBJECT_FONTSIZE = 36
+
 plt.style.use('seaborn-v0_8-whitegrid')
 plt.rcParams.update({
     'figure.dpi': 110,
     'savefig.dpi': 400,
-    'axes.titlesize': 13,
-    'axes.labelsize': 12,
+    'axes.titlesize': AXES_TITLE_SIZE,
+    'axes.labelsize': AXES_LABEL_SIZE,
     'axes.titlepad': 8.0,
     'axes.spines.top': False,
     'axes.spines.right': False,
     'legend.frameon': False,
-    'legend.fontsize': 10,
-    'xtick.labelsize': 10,
-    'ytick.labelsize': 10,
+    'legend.fontsize': LEGEND_FONTSIZE,
+    'legend.borderpad': LEGEND_BORDERPAD,
+    'legend.handlelength': LEGEND_HANDLELENGTH,
+    'xtick.labelsize': TICK_LABEL_SIZE_SMALL,
+    'ytick.labelsize': TICK_LABEL_SIZE_SMALL,
 })
 
 # Fixed colors to match the project's convention
@@ -179,11 +200,12 @@ def prepare_long_data_scl() -> pd.DataFrame:
             auc_rs_high = compute_auc_minute_window(t_rs_high, y_rs_high, minute)
             auc_rs_low = compute_auc_minute_window(t_rs_low, y_rs_low, minute)
             if None not in (auc_dmt_high, auc_dmt_low, auc_rs_high, auc_rs_low):
+                minute_label = minute + 1  # store minutes as 1..9 instead of 0..8
                 rows.extend([
-                    {'subject': subject, 'minute': minute, 'Task': 'DMT', 'Dose': 'High', 'AUC': auc_dmt_high},
-                    {'subject': subject, 'minute': minute, 'Task': 'DMT', 'Dose': 'Low', 'AUC': auc_dmt_low},
-                    {'subject': subject, 'minute': minute, 'Task': 'RS', 'Dose': 'High', 'AUC': auc_rs_high},
-                    {'subject': subject, 'minute': minute, 'Task': 'RS', 'Dose': 'Low', 'AUC': auc_rs_low},
+                    {'subject': subject, 'minute': minute_label, 'Task': 'DMT', 'Dose': 'High', 'AUC': auc_dmt_high},
+                    {'subject': subject, 'minute': minute_label, 'Task': 'DMT', 'Dose': 'Low', 'AUC': auc_dmt_low},
+                    {'subject': subject, 'minute': minute_label, 'Task': 'RS', 'Dose': 'High', 'AUC': auc_rs_high},
+                    {'subject': subject, 'minute': minute_label, 'Task': 'RS', 'Dose': 'Low', 'AUC': auc_rs_low},
                 ])
 
     if not rows:
@@ -265,6 +287,94 @@ def benjamini_hochberg_correction(p_values: List[float]) -> List[float]:
             adjusted[order[i]] = min(sorted_p[i] * n / (i + 1), adjusted[order[i + 1]])
     return np.minimum(adjusted, 1.0).tolist()
 
+
+def _compute_fdr_significant_segments(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05) -> List[Tuple[float, float]]:
+    """Return contiguous x-intervals where High vs Low differ after BH-FDR.
+
+    A and B are shape (n_subjects, n_time). NaNs are ignored per-timepoint.
+    x_grid has shape (n_time,) with the same sampling as the columns in A/B.
+    """
+    try:
+        from math import isnan  # noqa: F401
+    except Exception:
+        pass
+    if scistats is None:
+        return []
+    n_time = A.shape[1]
+    pvals = np.full(n_time, np.nan, dtype=float)
+    for t in range(n_time):
+        a = A[:, t]
+        b = B[:, t]
+        mask = (~np.isnan(a)) & (~np.isnan(b))
+        if np.sum(mask) >= 2:
+            try:
+                _, p = scistats.ttest_rel(a[mask], b[mask])
+                pvals[t] = float(p)
+            except Exception:
+                pvals[t] = np.nan
+    valid_idx = np.where(~np.isnan(pvals))[0]
+    if len(valid_idx) == 0:
+        return []
+    adj = np.full_like(pvals, np.nan, dtype=float)
+    adj_vals = benjamini_hochberg_correction(pvals[valid_idx].tolist())
+    adj[valid_idx] = np.array(adj_vals, dtype=float)
+    sig = adj < alpha
+    segments: List[Tuple[float, float]] = []
+    i = 0
+    while i < len(sig):
+        if sig[i]:
+            start = i
+            while i + 1 < len(sig) and sig[i + 1]:
+                i += 1
+            end = i
+            segments.append((float(x_grid[start]), float(x_grid[end])))
+        i += 1
+    return segments
+
+
+def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05) -> Dict:
+    """Compute paired t-test across time, apply BH-FDR, and summarize results.
+
+    Returns dict with keys: 'alpha', 'pvals', 'pvals_adj', 'sig_mask', 'segments'.
+    Empty results if SciPy unavailable or no valid timepoints.
+    """
+    result: Dict[str, object] = {'alpha': alpha, 'pvals': [], 'pvals_adj': [], 'sig_mask': [], 'segments': []}
+    if scistats is None:
+        return result
+    n_time = A.shape[1]
+    pvals = np.full(n_time, np.nan, dtype=float)
+    for t in range(n_time):
+        a = A[:, t]
+        b = B[:, t]
+        mask = (~np.isnan(a)) & (~np.isnan(b))
+        if np.sum(mask) >= 2:
+            try:
+                _, p = scistats.ttest_rel(a[mask], b[mask])
+                pvals[t] = float(p)
+            except Exception:
+                pvals[t] = np.nan
+    valid_idx = np.where(~np.isnan(pvals))[0]
+    if len(valid_idx) == 0:
+        return result
+    adj = np.full_like(pvals, np.nan, dtype=float)
+    adj_vals = benjamini_hochberg_correction(pvals[valid_idx].tolist())
+    adj[valid_idx] = np.array(adj_vals, dtype=float)
+    sig = adj < alpha
+    segments: List[Tuple[float, float]] = []
+    i = 0
+    while i < len(sig):
+        if sig[i]:
+            start = i
+            while i + 1 < len(sig) and sig[i + 1]:
+                i += 1
+            end = i
+            segments.append((float(x_grid[start]), float(x_grid[end])))
+        i += 1
+    result['pvals'] = pvals.tolist()
+    result['pvals_adj'] = adj.tolist()
+    result['sig_mask'] = sig.tolist()
+    result['segments'] = segments
+    return result
 
 def hypothesis_testing_with_fdr(fitted_model) -> Dict:
     if fitted_model is None:
@@ -498,15 +608,15 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
     y_positions = np.arange(len(coef_df))
     for _, row in coef_df.iterrows():
         y_pos = y_positions[row['order']]
-        linewidth = 2.5 if row['significant'] else 1.5
+        linewidth = 3.5 if row['significant'] else 2.5
         alpha = 1.0 if row['significant'] else 0.8
         marker_size = 70 if row['significant'] else 55
         ax.plot([row['ci_lower'], row['ci_upper']], [y_pos, y_pos], color=row['color'], linewidth=linewidth, alpha=alpha)
         ax.scatter(row['beta'], y_pos, color=row['color'], s=marker_size, alpha=alpha, edgecolors='white', linewidths=1)
     ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=1)
     ax.set_yticks(y_positions)
-    ax.set_yticklabels(coef_df['label'], fontsize=11)
-    ax.set_xlabel('Coefficient Estimate (β) with 95% CI')
+    ax.set_yticklabels(coef_df['label'], fontsize=33)
+    ax.set_xlabel('Coefficient Estimate (β)\nwith 95% CI')
     ax.grid(True, axis='x', alpha=0.3, linestyle='-', linewidth=0.5)
     ax.set_axisbelow(True)
     plt.subplots_adjust(left=0.28)
@@ -550,11 +660,12 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
         ax.fill_between(cond_data['minute'], cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
     ax.set_xlabel('Time (minutes)')
     ax.set_ylabel('ΔSCL (µS)')
-    ax.set_xticks(list(range(N_MINUTES)))
-    ax.set_xlim(-0.2, N_MINUTES - 1 + 0.2)
+    ticks = list(range(1, N_MINUTES + 1))
+    ax.set_xticks(ticks)
+    ax.set_xlim(0.8, N_MINUTES + 0.2)
     ax.grid(True, which='major', axis='y', alpha=0.25)
     ax.grid(False, which='major', axis='x')
-    legend = ax.legend(loc='upper right', frameon=True, fancybox=True)
+    legend = ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
     plt.tight_layout()
@@ -576,11 +687,12 @@ def create_task_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
         ax.fill_between(task_data['minute'], task_data['ci_lower'], task_data['ci_upper'], color=color, alpha=0.2)
     ax.set_xlabel('Time (minutes)')
     ax.set_ylabel('ΔSCL (µS)')
-    ax.set_xticks(list(range(N_MINUTES)))
-    ax.set_xlim(-0.2, N_MINUTES - 1 + 0.2)
+    ticks = list(range(1, N_MINUTES + 1))
+    ax.set_xticks(ticks)
+    ax.set_xlim(0.8, N_MINUTES + 0.2)
     ax.grid(True, which='major', axis='y', alpha=0.25)
     ax.grid(False, which='major', axis='x')
-    legend = ax.legend(loc='upper right', frameon=True, fancybox=True)
+    legend = ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
     plt.tight_layout()
@@ -598,8 +710,10 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str) -> None:
     ax1.set_ylabel('ΔSCL (µS)')
     ax1.grid(True, which='major', axis='y', alpha=0.25)
     ax1.grid(False, which='major', axis='x')
-    ax1.set_xticks(list(range(N_MINUTES)))
-    leg1 = ax1.legend(loc='upper right', frameon=True, fancybox=True)
+    ticks = list(range(1, N_MINUTES + 1))
+    ax1.set_xticks(ticks)
+    ax1.set_xlim(0.8, N_MINUTES + 0.2)
+    leg1 = ax1.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
     leg1.get_frame().set_facecolor('white')
     leg1.get_frame().set_alpha(0.9)
     for condition, color in [('DMT_High', COLOR_DMT_HIGH), ('DMT_Low', COLOR_DMT_LOW)]:
@@ -609,8 +723,9 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str) -> None:
     ax2.set_xlabel('Time (minutes)')
     ax2.grid(True, which='major', axis='y', alpha=0.25)
     ax2.grid(False, which='major', axis='x')
-    ax2.set_xticks(list(range(N_MINUTES)))
-    leg2 = ax2.legend(loc='upper right', frameon=True, fancybox=True)
+    ax2.set_xticks(ticks)
+    ax2.set_xlim(0.8, N_MINUTES + 0.2)
+    leg2 = ax2.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
     leg2.get_frame().set_facecolor('white')
     leg2.get_frame().set_alpha(0.9)
     plt.tight_layout()
@@ -674,90 +789,7 @@ def _resample_to_grid(t: np.ndarray, y: np.ndarray, t_grid: np.ndarray) -> np.nd
     return yg
 
 
-def create_group_timecourse_plot(out_dir: str) -> Optional[str]:
-    t_grid = np.arange(0.0, MAX_TIME_SEC, 1.0)  # 1-second grid for first 9 minutes
-    rs_high_list, rs_low_list, dmt_high_list, dmt_low_list = [], [], [], []
-    for subject in SUJETOS_VALIDADOS_EDA:
-        try:
-            high_session, low_session = determine_sessions(subject)
-            # RS
-            t_rsh_path = build_rs_cvx_path(subject, high_session)
-            t_rsl_path = build_rs_cvx_path(subject, low_session)
-            rsh = load_cvx_scl(t_rsh_path)
-            rsl = load_cvx_scl(t_rsl_path)
-            # DMT
-            p_high, p_low = build_cvx_paths(subject, high_session, low_session)
-            dmth = load_cvx_scl(p_high)
-            dmtl = load_cvx_scl(p_low)
-            if None in (rsh, rsl, dmth, dmtl):
-                continue
-            trh, yrh = rsh; trl, yrl = rsl
-            tdh, ydh = dmth; tdl, ydl = dmtl
-            # Trim
-            mrh = (trh >= 0.0) & (trh < MAX_TIME_SEC)
-            mrl = (trl >= 0.0) & (trl < MAX_TIME_SEC)
-            mdh = (tdh >= 0.0) & (tdh < MAX_TIME_SEC)
-            mdl = (tdl >= 0.0) & (tdl < MAX_TIME_SEC)
-            trh, yrh = trh[mrh], yrh[mrh]
-            trl, yrl = trl[mrl], yrl[mrl]
-            tdh, ydh = tdh[mdh], ydh[mdh]
-            tdl, ydl = tdl[mdl], ydl[mdl]
-            # Resample
-            rs_high_list.append(_resample_to_grid(trh, yrh, t_grid))
-            rs_low_list.append(_resample_to_grid(trl, yrl, t_grid))
-            dmt_high_list.append(_resample_to_grid(tdh, ydh, t_grid))
-            dmt_low_list.append(_resample_to_grid(tdl, ydl, t_grid))
-        except Exception:
-            continue
-    if not (rs_high_list and rs_low_list and dmt_high_list and dmt_low_list):
-        return None
-    RS_H = np.vstack(rs_high_list)
-    RS_L = np.vstack(rs_low_list)
-    DMT_H = np.vstack(dmt_high_list)
-    DMT_L = np.vstack(dmt_low_list)
-    def mean_sem(M: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        mean = np.nanmean(M, axis=0)
-        sem = np.nanstd(M, axis=0, ddof=1) / np.sqrt(M.shape[0])
-        return mean, sem
-    rs_h_mean, rs_h_sem = mean_sem(RS_H)
-    rs_l_mean, rs_l_sem = mean_sem(RS_L)
-    dmt_h_mean, dmt_h_sem = mean_sem(DMT_H)
-    dmt_l_mean, dmt_l_sem = mean_sem(DMT_L)
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6), sharex=True, sharey=True)
-    x = t_grid / 60.0  # minutes
-    # RS
-    l1 = ax1.plot(x, rs_h_mean, color=COLOR_RS_HIGH, lw=2.0, marker=None, label='High')[0]
-    ax1.fill_between(x, rs_h_mean - rs_h_sem, rs_h_mean + rs_h_sem, color=COLOR_RS_HIGH, alpha=0.25)
-    l2 = ax1.plot(x, rs_l_mean, color=COLOR_RS_LOW, lw=2.0, marker=None, label='Low')[0]
-    ax1.fill_between(x, rs_l_mean - rs_l_sem, rs_l_mean + rs_l_sem, color=COLOR_RS_LOW, alpha=0.25)
-    leg1 = ax1.legend([l1, l2], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False)
-    leg1.get_frame().set_facecolor('white')
-    leg1.get_frame().set_alpha(0.9)
-    ax1.set_xlabel('Time (minutes)')
-    ax1.set_ylabel('ΔSCL (µS)')
-    ax1.set_title(None)
-    ax1.grid(True, which='major', axis='y', alpha=0.25)
-    ax1.grid(False, which='major', axis='x')
-    # DMT
-    l3 = ax2.plot(x, dmt_h_mean, color=COLOR_DMT_HIGH, lw=2.0, marker=None, label='High')[0]
-    ax2.fill_between(x, dmt_h_mean - dmt_h_sem, dmt_h_mean + dmt_h_sem, color=COLOR_DMT_HIGH, alpha=0.25)
-    l4 = ax2.plot(x, dmt_l_mean, color=COLOR_DMT_LOW, lw=2.0, marker=None, label='Low')[0]
-    ax2.fill_between(x, dmt_l_mean - dmt_l_sem, dmt_l_mean + dmt_l_sem, color=COLOR_DMT_LOW, alpha=0.25)
-    leg2 = ax2.legend([l3, l4], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False)
-    leg2.get_frame().set_facecolor('white')
-    leg2.get_frame().set_alpha(0.9)
-    ax2.set_xlabel('Time (minutes)')
-    ax2.set_title(None)
-    ax2.grid(True, which='major', axis='y', alpha=0.25)
-    ax2.grid(False, which='major', axis='x')
-    # Axes
-    ax1.set_xlim(0.0, N_MINUTES)
-    ax2.set_xlim(0.0, N_MINUTES)
-    plt.tight_layout()
-    out_path = os.path.join(out_dir, 'plots', 'scl_timecourse_9min.png')
-    plt.savefig(out_path, dpi=400, bbox_inches='tight')
-    plt.close()
-    return out_path
+# Removed: create_group_timecourse_plot (duplicate of combined summary)
 
 
 def create_combined_summary_plot(out_dir: str) -> Optional[str]:
@@ -811,7 +843,14 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
             mean_l = np.nanmean(L, axis=0)
             sem_h = np.nanstd(H, axis=0, ddof=1) / np.sqrt(H.shape[0])
             sem_l = np.nanstd(L, axis=0, ddof=1) / np.sqrt(L.shape[0])
-            task_data[kind] = {'mean_h': mean_h, 'mean_l': mean_l, 'sem_h': sem_h, 'sem_l': sem_l}
+            task_data[kind] = {
+                'mean_h': mean_h,
+                'mean_l': mean_l,
+                'sem_h': sem_h,
+                'sem_l': sem_l,
+                'H_mat': H,
+                'L_mat': L,
+            }
         else:
             return None
 
@@ -827,11 +866,15 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
 
     # RS (left)
     rs = task_data['RS']
+    # Shade significant differences (High vs Low) and collect report
+    rs_fdr = _compute_fdr_results(rs['H_mat'], rs['L_mat'], t_grid)
+    for x0, x1 in rs_fdr.get('segments', []):
+        ax1.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
     line_h1 = ax1.plot(t_grid, rs['mean_h'], color=c_rs_high, lw=2.0, marker=None, label='High')[0]
     ax1.fill_between(t_grid, rs['mean_h'] - rs['sem_h'], rs['mean_h'] + rs['sem_h'], color=c_rs_high, alpha=0.25)
     line_l1 = ax1.plot(t_grid, rs['mean_l'], color=c_rs_low, lw=2.0, marker=None, label='Low')[0]
     ax1.fill_between(t_grid, rs['mean_l'] - rs['sem_l'], rs['mean_l'] + rs['sem_l'], color=c_rs_low, alpha=0.25)
-    legend1 = ax1.legend([line_h1, line_l1], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False)
+    legend1 = ax1.legend([line_h1, line_l1], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
     legend1.get_frame().set_facecolor('white')
     legend1.get_frame().set_alpha(0.9)
     ax1.set_xlabel('Time (minutes)')
@@ -842,11 +885,14 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
 
     # DMT (right)
     dmt = task_data['DMT']
+    dmt_fdr = _compute_fdr_results(dmt['H_mat'], dmt['L_mat'], t_grid)
+    for x0, x1 in dmt_fdr.get('segments', []):
+        ax2.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
     line_h2 = ax2.plot(t_grid, dmt['mean_h'], color=c_dmt_high, lw=2.0, marker=None, label='High')[0]
     ax2.fill_between(t_grid, dmt['mean_h'] - dmt['sem_h'], dmt['mean_h'] + dmt['sem_h'], color=c_dmt_high, alpha=0.25)
     line_l2 = ax2.plot(t_grid, dmt['mean_l'], color=c_dmt_low, lw=2.0, marker=None, label='Low')[0]
     ax2.fill_between(t_grid, dmt['mean_l'] - dmt['sem_l'], dmt['mean_l'] + dmt['sem_l'], color=c_dmt_low, alpha=0.25)
-    legend2 = ax2.legend([line_h2, line_l2], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False)
+    legend2 = ax2.legend([line_h2, line_l2], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
     legend2.get_frame().set_facecolor('white')
     legend2.get_frame().set_alpha(0.9)
     ax2.set_xlabel('Time (minutes)')
@@ -854,11 +900,11 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     ax2.grid(True, which='major', axis='y', alpha=0.25)
     ax2.grid(False, which='major', axis='x')
 
-    # X ticks 0..9:00 every minute, formatter mm:ss
-    minute_ticks = np.arange(0.0, 541.0, 60.0)
+    # X ticks 0..9:00 every minute, formatter integer minutes (e.g. 0, 1, ..., 9)
+    minute_ticks = np.arange(0, 10)  # integer minutes 0–9
     for ax in (ax1, ax2):
-        ax.set_xticks(minute_ticks)
-        ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{int(x//60):02d}:{int(x%60):02d}"))
+        ax.set_xticks(minute_ticks * 60)
+        ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{int(x // 60)}"))
         ax.set_xlim(0.0, 540.0)
         # SCL specific y-range as in previous plots
         ax.set_ylim(-2.0, 2.0)
@@ -868,6 +914,32 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     out_path = os.path.join(out_dir, 'plots', 'all_subs_eda_scl.png')
     plt.savefig(out_path, dpi=400, bbox_inches='tight')
     plt.close()
+
+    # Write FDR report
+    try:
+        report_lines: List[str] = []
+        report_lines.append('FDR COMPARISON: High vs Low (All Subjects, RS and DMT)')
+        report_lines.append(f"Alpha = {rs_fdr.get('alpha', 0.05)}")
+        report_lines.append('')
+        def _panel_section(name: str, res: Dict):
+            report_lines.append(f'PANEL {name}:')
+            segs = res.get('segments', [])
+            report_lines.append(f"  Significant segments (count={len(segs)}):")
+            if len(segs) == 0:
+                report_lines.append('    - None')
+            for (x0, x1) in segs:
+                report_lines.append(f"    - {x0:.1f}s–{x1:.1f}s ( {x0/60:.2f}–{x1/60:.2f} min )")
+            # Summary of p-values
+            p_adj = [v for v in res.get('pvals_adj', []) if isinstance(v, (int, float)) and not np.isnan(v)]
+            if p_adj:
+                report_lines.append(f"  Min p_FDR: {np.nanmin(p_adj):.6f}; Median p_FDR: {np.nanmedian(p_adj):.6f}")
+            report_lines.append('')
+        _panel_section('RS', rs_fdr)
+        _panel_section('DMT', dmt_fdr)
+        with open(os.path.join(out_dir, 'fdr_segments_all_subs_eda_scl.txt'), 'w', encoding='utf-8') as f:
+            f.write('\n'.join(report_lines))
+    except Exception:
+        pass
     return out_path
 
 
@@ -908,12 +980,16 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     fig, ax = plt.subplots(1, 1, figsize=(12, 6))
     # Colors: DMT High red, DMT Low blue
     c_dmt_high, c_dmt_low = COLOR_DMT_HIGH, COLOR_DMT_LOW
+    # Shade significant differences (High vs Low) after FDR and collect report
+    fdr_res = _compute_fdr_results(H, L, t_grid)
+    for x0, x1 in fdr_res.get('segments', []):
+        ax.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
     line_h = ax.plot(t_grid, mean_h, color=c_dmt_high, lw=2.0, marker=None, label='High')[0]
     ax.fill_between(t_grid, mean_h - sem_h, mean_h + sem_h, color=c_dmt_high, alpha=0.25)
     line_l = ax.plot(t_grid, mean_l, color=c_dmt_low, lw=2.0, marker=None, label='Low')[0]
     ax.fill_between(t_grid, mean_l - sem_l, mean_l + sem_l, color=c_dmt_low, alpha=0.25)
 
-    legend = ax.legend([line_h, line_l], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False)
+    legend = ax.legend([line_h, line_l], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
     ax.set_xlabel('Time (minutes)')
@@ -924,7 +1000,7 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     ax.grid(False, which='major', axis='x')
     minute_ticks = np.arange(0.0, 1141.0, 60.0)
     ax.set_xticks(minute_ticks)
-    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{int(x//60):02d}:{int(x%60):02d}"))
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{int(x//60)}"))
     ax.set_xlim(0.0, 1150.0)
     ax.set_ylim(-2.0, 2.0)
     ax.set_yticks(np.arange(-1.5, 2.0, 0.5))
@@ -933,6 +1009,27 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     out_path = os.path.join(out_dir, 'plots', 'all_subs_dmt_eda_scl.png')
     plt.savefig(out_path, dpi=400, bbox_inches='tight')
     plt.close()
+
+    # Write FDR report for DMT-only plot
+    try:
+        lines: List[str] = [
+            'FDR COMPARISON: High vs Low (All Subjects, DMT only)',
+            f"Alpha = {fdr_res.get('alpha', 0.05)}",
+            '',
+        ]
+        segs = fdr_res.get('segments', [])
+        lines.append(f"Significant segments (count={len(segs)}):")
+        if len(segs) == 0:
+            lines.append('  - None')
+        for (x0, x1) in segs:
+            lines.append(f"  - {x0:.1f}s–{x1:.1f}s ( {x0/60:.2f}–{x1/60:.2f} min )")
+        p_adj = [v for v in fdr_res.get('pvals_adj', []) if isinstance(v, (int, float)) and not np.isnan(v)]
+        if p_adj:
+            lines.append(f"Min p_FDR: {np.nanmin(p_adj):.6f}; Median p_FDR: {np.nanmedian(p_adj):.6f}")
+        with open(os.path.join(out_dir, 'fdr_segments_all_subs_dmt_eda_scl.txt'), 'w', encoding='utf-8') as f:
+            f.write('\n'.join(lines))
+    except Exception:
+        pass
     return out_path
 
 
@@ -993,7 +1090,15 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         return None
 
     n = len(rows)
-    fig, axes = plt.subplots(n, 2, figsize=(14, max(4.0, 2.2 * n)), sharex=True, sharey=True)
+    # Larger figure to keep typography proportional
+    fig, axes = plt.subplots(
+        n,
+        2,
+        figsize=(18, max(6.0, 3.2 * n)),
+        sharex=True,
+        sharey=True,
+        gridspec_kw={'hspace': 0.8, 'wspace': 0.35}
+    )
     if n == 1:
         axes = np.array([axes])
 
@@ -1016,8 +1121,9 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
             ax_rs.plot(row['t_rs2'], row['y_rs2'], color=c_rs_high, lw=1.4)
         else:
             ax_rs.plot(row['t_rs2'], row['y_rs2'], color=c_rs_low, lw=1.4)
-        ax_rs.set_xlabel('Time (minutes)')
-        ax_rs.set_ylabel('ΔSCL (µS)')
+        ax_rs.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_rs.set_ylabel('ΔSCL (µS)', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_rs.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_rs.set_title('Resting State (RS)', fontweight='bold')
         ax_rs.set_xlim(0.0, limit_sec)
         ax_rs.grid(True, which='major', axis='y', alpha=0.25)
@@ -1025,15 +1131,16 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         legend_rs = ax_rs.legend(handles=[
             Line2D([0], [0], color=c_rs_high, lw=1.4, label='RS High'),
             Line2D([0], [0], color=c_rs_low, lw=1.4, label='RS Low'),
-        ], loc='upper right', frameon=True, fancybox=False)
+        ], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
         legend_rs.get_frame().set_facecolor('white')
         legend_rs.get_frame().set_alpha(0.9)
 
         # DMT
         ax_dmt.plot(row['t_dmt_h'], row['y_dmt_h'], color=c_dmt_high, lw=1.4)
         ax_dmt.plot(row['t_dmt_l'], row['y_dmt_l'], color=c_dmt_low, lw=1.4)
-        ax_dmt.set_xlabel('Time (minutes)')
-        ax_dmt.set_ylabel('ΔSCL (µS)')
+        ax_dmt.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_dmt.set_ylabel('ΔSCL (µS)', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_dmt.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_dmt.set_title('DMT', fontweight='bold')
         ax_dmt.set_xlim(0.0, limit_sec)
         ax_dmt.grid(True, which='major', axis='y', alpha=0.25)
@@ -1041,23 +1148,38 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         legend_dmt = ax_dmt.legend(handles=[
             Line2D([0], [0], color=c_dmt_high, lw=1.4, label='DMT High'),
             Line2D([0], [0], color=c_dmt_low, lw=1.4, label='DMT Low'),
-        ], loc='upper right', frameon=True, fancybox=False)
+        ], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
         legend_dmt.get_frame().set_facecolor('white')
         legend_dmt.get_frame().set_alpha(0.9)
 
         # ticks & limits
         ax_rs.set_xticks(minute_ticks)
-        ax_rs.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{int(x//60):02d}:{int(x%60):02d}"))
+        ax_rs.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{int(x//60)}"))
         ax_dmt.set_xticks(minute_ticks)
-        ax_dmt.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{int(x//60):02d}:{int(x%60):02d}"))
+        ax_dmt.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{int(x//60)}"))
         ax_rs.set_ylim(-5.0, 5.0)
         ax_dmt.set_ylim(-5.0, 5.0)
 
-        # Add subject code as row title centered
-        row_center_y = 1.0 - (i + 0.5) / n
-        fig.text(0.5, row_center_y + 0.035, row['subject'], ha='center', va='bottom', fontweight='bold', fontsize=26, transform=fig.transFigure)
+        # Subject labels added after layout (see below)
 
-    fig.tight_layout(pad=1.5)
+    fig.tight_layout(pad=2.0)
+
+    # Add subject codes centered between columns, aligned to final layout
+    for i, row in enumerate(rows):
+        pos_left = axes[i, 0].get_position()
+        pos_right = axes[i, 1].get_position()
+        y_center = (pos_left.y0 + pos_left.y1) / 2.0
+        x_center = (pos_left.x1 + pos_right.x0) / 2.0
+        fig.text(
+            x_center,
+            y_center + 0.02,
+            row['subject'],
+            ha='center',
+            va='bottom',
+            fontweight='bold',
+            fontsize=STACKED_SUBJECT_FONTSIZE,
+            transform=fig.transFigure,
+        )
     out_path = os.path.join(out_dir, 'plots', 'stacked_subs_eda_scl.png')
     plt.savefig(out_path, dpi=300, bbox_inches='tight')
     plt.close()
@@ -1125,8 +1247,7 @@ def main() -> bool:
         overall.to_csv(os.path.join(plots_dir, 'summary_statistics.csv'))
         # Model summary txt
         create_model_summary_txt(diagnostics, coef_df, os.path.join(out_dir, 'model_summary.txt'))
-        # Group timecourse
-        create_group_timecourse_plot(out_dir)
+        # Group timecourse plot removed (duplicated by combined summary)
         # Combined summary (previous aesthetic)
         create_combined_summary_plot(out_dir)
         # DMT-only extended

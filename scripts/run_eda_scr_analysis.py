@@ -50,21 +50,41 @@ except Exception:
 
 
 #############################
-# Plot aesthetics (paper-ready minimal style)
+# Plot aesthetics & centralized hyperparameters
 #############################
+
+# Centralized font sizes and legend settings (aligned with SCL script)
+AXES_TITLE_SIZE = 29
+AXES_LABEL_SIZE = 36
+TICK_LABEL_SIZE = 28
+TICK_LABEL_SIZE_SMALL = 24
+
+LEGEND_FONTSIZE = 14
+LEGEND_FONTSIZE_SMALL = 12
+LEGEND_MARKERSCALE = 1.6
+LEGEND_BORDERPAD = 0.6
+LEGEND_HANDLELENGTH = 3.0
+
+# Stacked per-subject figure specific sizes
+STACKED_AXES_LABEL_SIZE = 26
+STACKED_TICK_LABEL_SIZE = 18
+STACKED_SUBJECT_FONTSIZE = 36
+
 plt.style.use('seaborn-v0_8-whitegrid')
 plt.rcParams.update({
     'figure.dpi': 110,
     'savefig.dpi': 400,
-    'axes.titlesize': 13,
-    'axes.labelsize': 12,
+    'axes.titlesize': AXES_TITLE_SIZE,
+    'axes.labelsize': AXES_LABEL_SIZE,
     'axes.titlepad': 8.0,
     'axes.spines.top': False,
     'axes.spines.right': False,
     'legend.frameon': False,
-    'legend.fontsize': 10,
-    'xtick.labelsize': 10,
-    'ytick.labelsize': 10,
+    'legend.fontsize': LEGEND_FONTSIZE,
+    'legend.borderpad': LEGEND_BORDERPAD,
+    'legend.handlelength': LEGEND_HANDLELENGTH,
+    'xtick.labelsize': TICK_LABEL_SIZE_SMALL,
+    'ytick.labelsize': TICK_LABEL_SIZE_SMALL,
 })
 
 # Fixed colors matching project convention
@@ -75,7 +95,7 @@ COLOR_DMT_HIGH = 'tab:red'
 COLOR_DMT_LOW = 'tab:blue'
 
 # Analysis window: first 9 minutes
-N_MINUTES = 9  # 0..8
+N_MINUTES = 9  # store minutes as 1..9 in long data
 MAX_TIME_SEC = 60 * N_MINUTES
 
 
@@ -166,13 +186,14 @@ def prepare_long_data_scr() -> pd.DataFrame:
             rs_h_counts = compute_scr_rate_per_minute(onsets_rs_high)
             rs_l_counts = compute_scr_rate_per_minute(onsets_rs_low)
 
-            # Build rows for minutes 0..8
+            # Build rows for minutes 1..9 (labels shifted by +1 for interpretability)
             for minute in range(N_MINUTES):
+                minute_label = minute + 1
                 rows.extend([
-                    {'subject': subject, 'minute': minute, 'Task': 'DMT', 'Dose': 'High', 'count': float(dmt_h_counts[minute])},
-                    {'subject': subject, 'minute': minute, 'Task': 'DMT', 'Dose': 'Low', 'count': float(dmt_l_counts[minute])},
-                    {'subject': subject, 'minute': minute, 'Task': 'RS', 'Dose': 'High', 'count': float(rs_h_counts[minute])},
-                    {'subject': subject, 'minute': minute, 'Task': 'RS', 'Dose': 'Low', 'count': float(rs_l_counts[minute])},
+                    {'subject': subject, 'minute': minute_label, 'Task': 'DMT', 'Dose': 'High', 'count': float(dmt_h_counts[minute])},
+                    {'subject': subject, 'minute': minute_label, 'Task': 'DMT', 'Dose': 'Low', 'count': float(dmt_l_counts[minute])},
+                    {'subject': subject, 'minute': minute_label, 'Task': 'RS', 'Dose': 'High', 'count': float(rs_h_counts[minute])},
+                    {'subject': subject, 'minute': minute_label, 'Task': 'RS', 'Dose': 'Low', 'count': float(rs_l_counts[minute])},
                 ])
         except Exception:
             continue
@@ -461,15 +482,15 @@ def create_gee_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None
     y_positions = np.arange(len(plot_df))
     for i, row in enumerate(plot_df.itertuples(index=False)):
         color = family_colors.get(row.family, '#666666')
-        ax.plot([row.ci_lower, row.ci_upper], [i, i], color=color, linewidth=2.0, alpha=1.0 if row.significant else 0.8)
+        ax.plot([row.ci_lower, row.ci_upper], [i, i], color=color, linewidth=3.0 if row.significant else 2.5, alpha=1.0 if row.significant else 0.8)
         ax.scatter(row.beta, i, color=color, s=70 if row.significant else 55, alpha=1.0 if row.significant else 0.8, edgecolors='white', linewidths=1)
         # Annotate exp(beta)
-        ax.text(row.ci_upper + 0.02, i, f"exp(β)={row.exp_beta:.2f}", va='center', fontsize=10, color=color)
+        ax.text(row.ci_upper + 0.02, i, f"exp(β)={row.exp_beta:.2f}", va='center', fontsize=26, color=color)
 
     ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=1)
     ax.set_yticks(y_positions)
-    ax.set_yticklabels([labels.get(p, p) for p in plot_df['parameter']], fontsize=11)
-    ax.set_xlabel('Coefficient (β, log rate) with 95% CI')
+    ax.set_yticklabels([labels.get(p, p) for p in plot_df['parameter']], fontsize=33)
+    ax.set_xlabel('Coefficient (β, log rate)\nwith 95% CI')
     ax.grid(True, which='major', axis='y', alpha=0.25)
     ax.grid(False, which='major', axis='x')
     plt.subplots_adjust(left=0.3)
@@ -492,7 +513,78 @@ def compute_empirical_means_and_ci(df: pd.DataFrame, confidence: float = 0.95) -
     return stats_df
 
 
-def create_timecourse_plot(stats_df: pd.DataFrame, output_path: str) -> None:
+def _compute_fdr_significant_segments(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05) -> List[Tuple[float, float]]:
+    """Return contiguous x-intervals where High vs Low differ after BH-FDR."""
+    if scistats is None:
+        return []
+    n_time = A.shape[1]
+    pvals = np.full(n_time, np.nan, dtype=float)
+    for t in range(n_time):
+        a = A[:, t]
+        b = B[:, t]
+        mask = (~np.isnan(a)) & (~np.isnan(b))
+        if np.sum(mask) >= 2:
+            try:
+                _, p = scistats.ttest_rel(a[mask], b[mask])
+                pvals[t] = float(p)
+            except Exception:
+                pvals[t] = np.nan
+    valid = ~np.isnan(pvals)
+    if not np.any(valid):
+        return []
+    adj = np.full_like(pvals, np.nan, dtype=float)
+    adj_vals = benjamini_hochberg_correction(pvals[valid].tolist())
+    adj[valid] = np.array(adj_vals)
+    sig = adj < alpha
+    segments: List[Tuple[float, float]] = []
+    i = 0
+    while i < len(sig):
+        if sig[i]:
+            start = i
+            while i + 1 < len(sig) and sig[i + 1]:
+                i += 1
+            end = i
+            segments.append((float(x_grid[start]), float(x_grid[end])))
+        i += 1
+    return segments
+
+
+def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05) -> Dict:
+    if scistats is None:
+        return {'alpha': alpha, 'pvals': [], 'pvals_adj': [], 'sig_mask': [], 'segments': []}
+    n_time = A.shape[1]
+    pvals = np.full(n_time, np.nan, dtype=float)
+    for t in range(n_time):
+        a = A[:, t]
+        b = B[:, t]
+        mask = (~np.isnan(a)) & (~np.isnan(b))
+        if np.sum(mask) >= 2:
+            try:
+                _, p = scistats.ttest_rel(a[mask], b[mask])
+                pvals[t] = float(p)
+            except Exception:
+                pvals[t] = np.nan
+    valid = ~np.isnan(pvals)
+    if not np.any(valid):
+        return {'alpha': alpha, 'pvals': pvals.tolist(), 'pvals_adj': [], 'sig_mask': [], 'segments': []}
+    adj = np.full_like(pvals, np.nan, dtype=float)
+    adj_vals = benjamini_hochberg_correction(pvals[valid].tolist())
+    adj[valid] = np.array(adj_vals)
+    sig = adj < alpha
+    segments: List[Tuple[float, float]] = []
+    i = 0
+    while i < len(sig):
+        if sig[i]:
+            start = i
+            while i + 1 < len(sig) and sig[i + 1]:
+                i += 1
+            end = i
+            segments.append((float(x_grid[start]), float(x_grid[end])))
+        i += 1
+    return {'alpha': alpha, 'pvals': pvals.tolist(), 'pvals_adj': adj.tolist(), 'sig_mask': sig.tolist(), 'segments': segments}
+
+
+def create_timecourse_plot(df: pd.DataFrame, stats_df: pd.DataFrame, output_path: str) -> None:
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6), sharex=True, sharey=True)
     # RS
     for condition, color in [('RS_High', COLOR_RS_HIGH), ('RS_Low', COLOR_RS_LOW)]:
@@ -500,12 +592,53 @@ def create_timecourse_plot(stats_df: pd.DataFrame, output_path: str) -> None:
         ax1.plot(data['minute'], data['mean'], color=color, lw=2.5, marker='o', markersize=5, label=condition.replace('RS_', ''))
         # Use SEM shading (to match legacy test/ EmotiPhai plot)
         ax1.fill_between(data['minute'], data['mean'] - data['se'], data['mean'] + data['se'], color=color, alpha=0.2)
+    # Shade significant segments (paired across subjects High vs Low)
+    try:
+        # Build per-subject matrices for RS
+        subjects = list(df['subject'].cat.categories)
+        n_time = N_MINUTES
+        H = np.full((len(subjects), n_time), np.nan, dtype=float)
+        L = np.full((len(subjects), n_time), np.nan, dtype=float)
+        for si, subj in enumerate(subjects):
+            sdf = df[df['subject'] == subj]
+            for minute in range(1, N_MINUTES + 1):
+                row_h = sdf[(sdf['Task'] == 'RS') & (sdf['Dose'] == 'High') & (sdf['minute'] == minute)]['count']
+                row_l = sdf[(sdf['Task'] == 'RS') & (sdf['Dose'] == 'Low') & (sdf['minute'] == minute)]['count']
+                if len(row_h) == 1:
+                    H[si, minute - 1] = float(row_h.iloc[0])
+                if len(row_l) == 1:
+                    L[si, minute - 1] = float(row_l.iloc[0])
+        x_grid = np.arange(1, N_MINUTES + 1)
+        segs = _compute_fdr_significant_segments(H, L, x_grid)
+        for x0, x1 in segs:
+            ax1.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
+        # Write RS report
+        rs_res = _compute_fdr_results(H, L, x_grid)
+        with open(os.path.join(os.path.dirname(output_path), '..', 'fdr_segments_all_subs_scr_rs.txt'), 'w', encoding='utf-8') as f:
+            lines = [
+                'FDR COMPARISON: RS High vs Low (SCR rate)',
+                f"Alpha = {rs_res.get('alpha', 0.05)}",
+                '',
+            ]
+            segs2 = rs_res.get('segments', [])
+            lines.append(f"Significant segments (count={len(segs2)}):")
+            if len(segs2) == 0:
+                lines.append('  - None')
+            for (a, b) in segs2:
+                lines.append(f"  - {a:.1f}–{b:.1f} min")
+            p_adj = [v for v in rs_res.get('pvals_adj', []) if isinstance(v, (int, float)) and not np.isnan(v)]
+            if p_adj:
+                lines.append(f"Min p_FDR: {np.nanmin(p_adj):.6f}; Median p_FDR: {np.nanmedian(p_adj):.6f}")
+            f.write('\n'.join(lines))
+    except Exception:
+        pass
     ax1.set_xlabel('Time (minutes)')
-    ax1.set_ylabel('SCR count per minute')
-    ax1.set_xticks(list(range(N_MINUTES)))
-    ax1.set_xlim(-0.2, N_MINUTES - 1 + 0.2)
+    ax1.set_ylabel('SCR')
+    ticks = list(range(1, N_MINUTES + 1))
+    ax1.set_xticks(ticks)
+    ax1.set_xlim(0.8, N_MINUTES + 0.2)
     ax1.set_title('Resting State (RS)', fontweight='bold')
-    leg1 = ax1.legend(loc='upper right', frameon=True, fancybox=True)
+    leg1 = ax1.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
     leg1.get_frame().set_facecolor('white')
     leg1.get_frame().set_alpha(0.9)
     ax1.grid(True, which='major', axis='y', alpha=0.25)
@@ -516,11 +649,50 @@ def create_timecourse_plot(stats_df: pd.DataFrame, output_path: str) -> None:
         ax2.plot(data['minute'], data['mean'], color=color, lw=2.5, marker='o', markersize=5, label=condition.replace('DMT_', ''))
         # Use SEM shading (to match legacy test/ EmotiPhai plot)
         ax2.fill_between(data['minute'], data['mean'] - data['se'], data['mean'] + data['se'], color=color, alpha=0.2)
+    try:
+        # Build per-subject matrices for DMT
+        subjects = list(df['subject'].cat.categories)
+        n_time = N_MINUTES
+        H = np.full((len(subjects), n_time), np.nan, dtype=float)
+        L = np.full((len(subjects), n_time), np.nan, dtype=float)
+        for si, subj in enumerate(subjects):
+            sdf = df[df['subject'] == subj]
+            for minute in range(1, N_MINUTES + 1):
+                row_h = sdf[(sdf['Task'] == 'DMT') & (sdf['Dose'] == 'High') & (sdf['minute'] == minute)]['count']
+                row_l = sdf[(sdf['Task'] == 'DMT') & (sdf['Dose'] == 'Low') & (sdf['minute'] == minute)]['count']
+                if len(row_h) == 1:
+                    H[si, minute - 1] = float(row_h.iloc[0])
+                if len(row_l) == 1:
+                    L[si, minute - 1] = float(row_l.iloc[0])
+        x_grid = np.arange(1, N_MINUTES + 1)
+        segs = _compute_fdr_significant_segments(H, L, x_grid)
+        for x0, x1 in segs:
+            ax2.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
+        # Write DMT report
+        dmt_res = _compute_fdr_results(H, L, x_grid)
+        with open(os.path.join(os.path.dirname(output_path), '..', 'fdr_segments_all_subs_scr_dmt.txt'), 'w', encoding='utf-8') as f:
+            lines = [
+                'FDR COMPARISON: DMT High vs Low (SCR rate)',
+                f"Alpha = {dmt_res.get('alpha', 0.05)}",
+                '',
+            ]
+            segs2 = dmt_res.get('segments', [])
+            lines.append(f"Significant segments (count={len(segs2)}):")
+            if len(segs2) == 0:
+                lines.append('  - None')
+            for (a, b) in segs2:
+                lines.append(f"  - {a:.1f}–{b:.1f} min")
+            p_adj = [v for v in dmt_res.get('pvals_adj', []) if isinstance(v, (int, float)) and not np.isnan(v)]
+            if p_adj:
+                lines.append(f"Min p_FDR: {np.nanmin(p_adj):.6f}; Median p_FDR: {np.nanmedian(p_adj):.6f}")
+            f.write('\n'.join(lines))
+    except Exception:
+        pass
     ax2.set_xlabel('Time (minutes)')
-    ax2.set_xticks(list(range(N_MINUTES)))
-    ax2.set_xlim(-0.2, N_MINUTES - 1 + 0.2)
+    ax2.set_xticks(ticks)
+    ax2.set_xlim(0.8, N_MINUTES + 0.2)
     ax2.set_title('DMT', fontweight='bold')
-    leg2 = ax2.legend(loc='upper right', frameon=True, fancybox=True)
+    leg2 = ax2.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
     leg2.get_frame().set_facecolor('white')
     leg2.get_frame().set_alpha(0.9)
     ax2.grid(True, which='major', axis='y', alpha=0.25)
@@ -544,9 +716,10 @@ def create_task_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
         ax.plot(data['minute'], data['mean'], color=color, lw=3, marker='o', markersize=6, label=f'{task}')
         ax.fill_between(data['minute'], data['ci_lower'], data['ci_upper'], color=color, alpha=0.2)
     ax.set_xlabel('Time (minutes)')
-    ax.set_ylabel('SCR count per minute')
-    ax.set_xticks(list(range(N_MINUTES)))
-    ax.set_xlim(-0.2, N_MINUTES - 1 + 0.2)
+    ax.set_ylabel('SCR')
+    ticks = list(range(1, N_MINUTES + 1))
+    ax.set_xticks(ticks)
+    ax.set_xlim(0.8, N_MINUTES + 0.2)
     ax.grid(True, which='major', axis='y', alpha=0.25)
     ax.grid(False, which='major', axis='x')
     leg = ax.legend(loc='upper right', frameon=True, fancybox=True)
@@ -559,15 +732,16 @@ def create_task_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
 
 def create_interaction_plot(stats_df: pd.DataFrame, output_path: str) -> None:
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6), sharey=True)
+    ticks = list(range(1, N_MINUTES + 1))
     for condition, color in [('RS_High', COLOR_RS_HIGH), ('RS_Low', COLOR_RS_LOW)]:
         data = stats_df[stats_df['condition'] == condition].sort_values('minute')
         ax1.plot(data['minute'], data['mean'], color=color, lw=2.5, marker='o', markersize=4, label=condition.replace('RS_', ''))
         ax1.fill_between(data['minute'], data['ci_lower'], data['ci_upper'], color=color, alpha=0.2)
     ax1.set_xlabel('Time (minutes)')
-    ax1.set_ylabel('SCR count per minute')
+    ax1.set_ylabel('SCR')
     ax1.grid(True, which='major', axis='y', alpha=0.25)
     ax1.grid(False, which='major', axis='x')
-    ax1.set_xticks(list(range(N_MINUTES)))
+    ax1.set_xticks(ticks)
     leg1 = ax1.legend(loc='upper right', frameon=True, fancybox=True)
     leg1.get_frame().set_facecolor('white')
     leg1.get_frame().set_alpha(0.9)
@@ -579,7 +753,7 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str) -> None:
     ax2.set_xlabel('Time (minutes)')
     ax2.grid(True, which='major', axis='y', alpha=0.25)
     ax2.grid(False, which='major', axis='x')
-    ax2.set_xticks(list(range(N_MINUTES)))
+    ax2.set_xticks(ticks)
     leg2 = ax2.legend(loc='upper right', frameon=True, fancybox=True)
     leg2.get_frame().set_facecolor('white')
     leg2.get_frame().set_alpha(0.9)
@@ -593,10 +767,11 @@ def create_stacked_subjects_plot(df: pd.DataFrame, output_path: str) -> None:
     # Pivot by subject to reconstruct per-subject minute curves per condition
     subjects = list(df['subject'].cat.categories)
     n = len(subjects)
-    fig, axes = plt.subplots(n, 2, figsize=(14, max(4.0, 2.2 * n)), sharex=True, sharey=True)
+    fig, axes = plt.subplots(n, 2, figsize=(18, max(6.0, 3.2 * n)), sharex=True, sharey=True, gridspec_kw={'hspace': 0.8, 'wspace': 0.35})
     if n == 1:
         axes = np.array([axes])
-    minute_ticks = list(range(N_MINUTES))
+    minute_ticks = list(range(1, N_MINUTES + 1))
+    from matplotlib.lines import Line2D
     for i, subj in enumerate(subjects):
         ax_rs = axes[i, 0]
         ax_dmt = axes[i, 1]
@@ -605,28 +780,49 @@ def create_stacked_subjects_plot(df: pd.DataFrame, output_path: str) -> None:
         for cond, color in [('Low', COLOR_RS_LOW), ('High', COLOR_RS_HIGH)]:
             d = sdf[(sdf['Task'] == 'RS') & (sdf['Dose'] == cond)].sort_values('minute')
             ax_rs.plot(d['minute'], d['count'], color=color, lw=1.4)
-        ax_rs.set_xlabel('Time (minutes)')
-        ax_rs.set_ylabel('SCR count per minute')
+        ax_rs.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_rs.set_ylabel('SCR', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_rs.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_rs.set_title('Resting State (RS)', fontweight='bold')
         ax_rs.set_xticks(minute_ticks)
-        ax_rs.set_xlim(-0.2, N_MINUTES - 1 + 0.2)
+        ax_rs.set_xlim(0.8, N_MINUTES + 0.2)
         ax_rs.grid(True, which='major', axis='y', alpha=0.25)
         ax_rs.grid(False, which='major', axis='x')
+        # RS legend
+        legend_rs = ax_rs.legend(handles=[
+            Line2D([0], [0], color=COLOR_RS_HIGH, lw=1.4, label='RS High'),
+            Line2D([0], [0], color=COLOR_RS_LOW, lw=1.4, label='RS Low'),
+        ], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+        legend_rs.get_frame().set_facecolor('white')
+        legend_rs.get_frame().set_alpha(0.9)
         # DMT
         for cond, color in [('Low', COLOR_DMT_LOW), ('High', COLOR_DMT_HIGH)]:
             d = sdf[(sdf['Task'] == 'DMT') & (sdf['Dose'] == cond)].sort_values('minute')
             ax_dmt.plot(d['minute'], d['count'], color=color, lw=1.4)
-        ax_dmt.set_xlabel('Time (minutes)')
-        ax_dmt.set_ylabel('SCR count per minute')
+        ax_dmt.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_dmt.set_ylabel('SCR', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_dmt.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_dmt.set_title('DMT', fontweight='bold')
         ax_dmt.set_xticks(minute_ticks)
-        ax_dmt.set_xlim(-0.2, N_MINUTES - 1 + 0.2)
+        ax_dmt.set_xlim(0.8, N_MINUTES + 0.2)
         ax_dmt.grid(True, which='major', axis='y', alpha=0.25)
         ax_dmt.grid(False, which='major', axis='x')
+        # DMT legend
+        legend_dmt = ax_dmt.legend(handles=[
+            Line2D([0], [0], color=COLOR_DMT_HIGH, lw=1.4, label='DMT High'),
+            Line2D([0], [0], color=COLOR_DMT_LOW, lw=1.4, label='DMT Low'),
+        ], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+        legend_dmt.get_frame().set_facecolor('white')
+        legend_dmt.get_frame().set_alpha(0.9)
         # Subject row title
-        row_center_y = 1.0 - (i + 0.5) / n
-        fig.text(0.5, row_center_y + 0.035, subj, ha='center', va='bottom', fontweight='bold', fontsize=26, transform=fig.transFigure)
-    plt.tight_layout(pad=1.5)
+    plt.tight_layout(pad=2.0)
+    # Place subject labels after layout using axes positions
+    for i, subj in enumerate(subjects):
+        pos_left = axes[i, 0].get_position()
+        pos_right = axes[i, 1].get_position()
+        y_center = (pos_left.y0 + pos_left.y1) / 2.0
+        x_center = (pos_left.x1 + pos_right.x0) / 2.0
+        fig.text(x_center, y_center + 0.02, subj, ha='center', va='bottom', fontweight='bold', fontsize=STACKED_SUBJECT_FONTSIZE, transform=fig.transFigure)
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
 
@@ -690,7 +886,7 @@ def main() -> bool:
 
         # Empirical means and derivative plots
         stats_df = compute_empirical_means_and_ci(df)
-        create_timecourse_plot(stats_df, os.path.join(plots_dir, 'all_subs_scr_rate_timecourse.png'))
+        create_timecourse_plot(df, stats_df, os.path.join(plots_dir, 'all_subs_scr_rate_timecourse.png'))
         create_task_effect_plot(stats_df, os.path.join(plots_dir, 'task_main_effect.png'))
         create_interaction_plot(stats_df, os.path.join(plots_dir, 'task_dose_interaction.png'))
 

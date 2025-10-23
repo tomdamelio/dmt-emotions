@@ -1,0 +1,6 @@
+FDR COMPARISON: High vs Low (All Subjects, DMT only)
+Alpha = 0.05
+
+Significant segments (count=0):
+  - None
+Min p_FDR: 0.076854; Median p_FDR: 0.102029

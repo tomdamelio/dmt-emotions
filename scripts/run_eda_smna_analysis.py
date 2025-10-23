@@ -54,21 +54,36 @@ except Exception:
 
 
 #############################
-# Plot aesthetics (paper-ready minimal style)
+# Plot aesthetics & centralized hyperparameters
 #############################
+
+# Centralized font sizes and legend settings (aligned with SCL/SCR)
+AXES_TITLE_SIZE = 29
+AXES_LABEL_SIZE = 36
+TICK_LABEL_SIZE = 28
+TICK_LABEL_SIZE_SMALL = 24
+
+LEGEND_FONTSIZE = 14
+LEGEND_FONTSIZE_SMALL = 12
+LEGEND_MARKERSCALE = 1.6
+LEGEND_BORDERPAD = 0.6
+LEGEND_HANDLELENGTH = 3.0
+
 plt.style.use('seaborn-v0_8-whitegrid')
 plt.rcParams.update({
     'figure.dpi': 110,
     'savefig.dpi': 400,
-    'axes.titlesize': 13,
-    'axes.labelsize': 12,
+    'axes.titlesize': AXES_TITLE_SIZE,
+    'axes.labelsize': AXES_LABEL_SIZE,
     'axes.titlepad': 8.0,
     'axes.spines.top': False,
     'axes.spines.right': False,
     'legend.frameon': False,
-    'legend.fontsize': 10,
-    'xtick.labelsize': 10,
-    'ytick.labelsize': 10,
+    'legend.fontsize': LEGEND_FONTSIZE,
+    'legend.borderpad': LEGEND_BORDERPAD,
+    'legend.handlelength': LEGEND_HANDLELENGTH,
+    'xtick.labelsize': TICK_LABEL_SIZE_SMALL,
+    'ytick.labelsize': TICK_LABEL_SIZE_SMALL,
 })
 
 # Fixed colors to match EmotiPhai SCR rate script
@@ -188,11 +203,12 @@ def prepare_long_data() -> pd.DataFrame:
             auc_rs_low = compute_auc_minute_window(t_rs_low, smna_rs_low, minute)
 
             if None not in (auc_dmt_high, auc_dmt_low, auc_rs_high, auc_rs_low):
+                minute_label = minute + 1
                 subject_rows.extend([
-                    {'subject': subject, 'minute': minute, 'Task': 'DMT', 'Dose': 'High', 'AUC': auc_dmt_high},
-                    {'subject': subject, 'minute': minute, 'Task': 'DMT', 'Dose': 'Low', 'AUC': auc_dmt_low},
-                    {'subject': subject, 'minute': minute, 'Task': 'RS', 'Dose': 'High', 'AUC': auc_rs_high},
-                    {'subject': subject, 'minute': minute, 'Task': 'RS', 'Dose': 'Low', 'AUC': auc_rs_low},
+                    {'subject': subject, 'minute': minute_label, 'Task': 'DMT', 'Dose': 'High', 'AUC': auc_dmt_high},
+                    {'subject': subject, 'minute': minute_label, 'Task': 'DMT', 'Dose': 'Low', 'AUC': auc_dmt_low},
+                    {'subject': subject, 'minute': minute_label, 'Task': 'RS', 'Dose': 'High', 'AUC': auc_rs_high},
+                    {'subject': subject, 'minute': minute_label, 'Task': 'RS', 'Dose': 'Low', 'AUC': auc_rs_low},
                 ])
 
         if subject_rows:
@@ -297,6 +313,77 @@ def benjamini_hochberg_correction(p_values: List[float]) -> List[float]:
             adjusted_p[sorted_indices[i]] = min(sorted_p[i] * n / (i + 1), adjusted_p[sorted_indices[i + 1]])
     return np.minimum(adjusted_p, 1.0).tolist()
 
+
+def _compute_fdr_significant_segments(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05) -> List[Tuple[float, float]]:
+    if not SCIPY_AVAILABLE:
+        return []
+    from scipy import stats as scistats
+    n_time = A.shape[1]
+    pvals = np.full(n_time, np.nan, dtype=float)
+    for t in range(n_time):
+        a = A[:, t]
+        b = B[:, t]
+        mask = (~np.isnan(a)) & (~np.isnan(b))
+        if np.sum(mask) >= 2:
+            try:
+                _, p = scistats.ttest_rel(a[mask], b[mask])
+                pvals[t] = float(p)
+            except Exception:
+                pvals[t] = np.nan
+    valid = ~np.isnan(pvals)
+    if not np.any(valid):
+        return []
+    adj = np.full_like(pvals, np.nan, dtype=float)
+    adj_vals = benjamini_hochberg_correction(pvals[valid].tolist())
+    adj[valid] = np.array(adj_vals)
+    sig = adj < alpha
+    segs: List[Tuple[float, float]] = []
+    i = 0
+    while i < len(sig):
+        if sig[i]:
+            start = i
+            while i + 1 < len(sig) and sig[i + 1]:
+                i += 1
+            end = i
+            segs.append((float(x_grid[start]), float(x_grid[end])))
+        i += 1
+    return segs
+
+
+def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05) -> Dict:
+    if not SCIPY_AVAILABLE:
+        return {'alpha': alpha, 'pvals': [], 'pvals_adj': [], 'sig_mask': [], 'segments': []}
+    from scipy import stats as scistats
+    n_time = A.shape[1]
+    pvals = np.full(n_time, np.nan, dtype=float)
+    for t in range(n_time):
+        a = A[:, t]
+        b = B[:, t]
+        mask = (~np.isnan(a)) & (~np.isnan(b))
+        if np.sum(mask) >= 2:
+            try:
+                _, p = scistats.ttest_rel(a[mask], b[mask])
+                pvals[t] = float(p)
+            except Exception:
+                pvals[t] = np.nan
+    valid = ~np.isnan(pvals)
+    if not np.any(valid):
+        return {'alpha': alpha, 'pvals': pvals.tolist(), 'pvals_adj': [], 'sig_mask': [], 'segments': []}
+    adj = np.full_like(pvals, np.nan, dtype=float)
+    adj_vals = benjamini_hochberg_correction(pvals[valid].tolist())
+    adj[valid] = np.array(adj_vals)
+    sig = adj < alpha
+    segs: List[Tuple[float, float]] = []
+    i = 0
+    while i < len(sig):
+        if sig[i]:
+            start = i
+            while i + 1 < len(sig) and sig[i + 1]:
+                i += 1
+            end = i
+            segs.append((float(x_grid[start]), float(x_grid[end])))
+        i += 1
+    return {'alpha': alpha, 'pvals': pvals.tolist(), 'pvals_adj': adj.tolist(), 'sig_mask': sig.tolist(), 'segments': segs}
 
 def hypothesis_testing_with_fdr(fitted_model) -> Dict:
     if fitted_model is None:
@@ -573,7 +660,7 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
 
     for _, row in coef_df.iterrows():
         y_pos = y_positions[row['order']]
-        linewidth = 2.5 if row['significant'] else 1.5
+        linewidth = 3.5 if row['significant'] else 2.5
         alpha = 1.0 if row['significant'] else 0.8
         marker_size = 70 if row['significant'] else 55
 
@@ -582,8 +669,8 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
 
     ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=1)
     ax.set_yticks(y_positions)
-    ax.set_yticklabels(coef_df['label'], fontsize=11)
-    ax.set_xlabel('Coefficient Estimate (β) with 95% CI')
+    ax.set_yticklabels(coef_df['label'], fontsize=33)
+    ax.set_xlabel('Coefficient Estimate (β)\nwith 95% CI')
     ax.grid(True, axis='x', alpha=0.3, linestyle='-', linewidth=0.5)
     ax.set_axisbelow(True)
     plt.subplots_adjust(left=0.28)
@@ -632,10 +719,11 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
 
     ax.set_xlabel('Time (minutes)')
     ax.set_ylabel('SMNA AUC')
-    ax.set_xticks(list(range(N_MINUTES)))
-    ax.set_xlim(-0.2, N_MINUTES - 1 + 0.2)
+    ticks = list(range(1, N_MINUTES + 1))
+    ax.set_xticks(ticks)
+    ax.set_xlim(0.8, N_MINUTES + 0.2)
     ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
-    legend = ax.legend(loc='upper right', frameon=True, fancybox=True)
+    legend = ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
 
@@ -662,10 +750,11 @@ def create_task_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
 
     ax.set_xlabel('Time (minutes)')
     ax.set_ylabel('SMNA AUC')
-    ax.set_xticks(list(range(N_MINUTES)))
-    ax.set_xlim(-0.2, N_MINUTES - 1 + 0.2)
+    ticks = list(range(1, N_MINUTES + 1))
+    ax.set_xticks(ticks)
+    ax.set_xlim(0.8, N_MINUTES + 0.2)
     ax.grid(True, alpha=0.3)
-    legend = ax.legend(loc='upper right', frameon=True, fancybox=True)
+    legend = ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
     plt.tight_layout()
@@ -673,8 +762,13 @@ def create_task_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
     plt.close()
 
 
-def create_interaction_plot(stats_df: pd.DataFrame, output_path: str) -> None:
+def create_interaction_plot(stats_df: pd.DataFrame, output_path: str, df_raw: Optional[pd.DataFrame] = None) -> None:
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6), sharey=True)
+    # Compute FDR-based significant segments per panel using subject-wise data
+    try:
+        subjects = sorted(stats_df['minute'].index.unique())  # dummy to trigger except if malformed
+    except Exception:
+        pass
 
     # RS panel (High above Low in legend)
     for condition, color in [('RS_High', COLOR_RS_HIGH), ('RS_Low', COLOR_RS_LOW)]:
@@ -684,8 +778,10 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str) -> None:
     ax1.set_xlabel('Time (minutes)')
     ax1.set_ylabel('SMNA AUC')
     ax1.grid(True, alpha=0.3)
-    ax1.set_xticks(list(range(N_MINUTES)))
-    leg1 = ax1.legend(loc='upper right', frameon=True, fancybox=True)
+    ticks = list(range(1, N_MINUTES + 1))
+    ax1.set_xticks(ticks)
+    ax1.set_xlim(0.8, N_MINUTES + 0.2)
+    leg1 = ax1.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
     leg1.get_frame().set_facecolor('white')
     leg1.get_frame().set_alpha(0.9)
 
@@ -696,15 +792,273 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str) -> None:
         ax2.fill_between(cond_data['minute'], cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
     ax2.set_xlabel('Time (minutes)')
     ax2.grid(True, alpha=0.3)
-    ax2.set_xticks(list(range(N_MINUTES)))
-    leg2 = ax2.legend(loc='upper right', frameon=True, fancybox=True)
+    ax2.set_xticks(ticks)
+    ax2.set_xlim(0.8, N_MINUTES + 0.2)
+    leg2 = ax2.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
     leg2.get_frame().set_facecolor('white')
     leg2.get_frame().set_alpha(0.9)
+
+    # Optional: add FDR-based shading if raw df provided
+    if df_raw is not None:
+        try:
+            subjects = list(df_raw['subject'].cat.categories) if 'category' in str(df_raw['subject'].dtype) else list(df_raw['subject'].unique())
+            n_time = N_MINUTES
+            # RS arrays
+            H = np.full((len(subjects), n_time), np.nan, dtype=float)
+            L = np.full((len(subjects), n_time), np.nan, dtype=float)
+            for si, subj in enumerate(subjects):
+                sdf = df_raw[df_raw['subject'] == subj]
+                for minute in range(1, N_MINUTES + 1):
+                    row_h = sdf[(sdf['Task'] == 'RS') & (sdf['Dose'] == 'High') & (sdf['minute'] == minute)]['AUC']
+                    row_l = sdf[(sdf['Task'] == 'RS') & (sdf['Dose'] == 'Low') & (sdf['minute'] == minute)]['AUC']
+                    if len(row_h) == 1:
+                        H[si, minute - 1] = float(row_h.iloc[0])
+                    if len(row_l) == 1:
+                        L[si, minute - 1] = float(row_l.iloc[0])
+            x_grid = np.arange(1, N_MINUTES + 1)
+            segs = _compute_fdr_significant_segments(H, L, x_grid)
+            for x0, x1 in segs:
+                ax1.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
+            rs_res = _compute_fdr_results(H, L, x_grid)
+
+            # DMT arrays
+            H = np.full((len(subjects), n_time), np.nan, dtype=float)
+            L = np.full((len(subjects), n_time), np.nan, dtype=float)
+            for si, subj in enumerate(subjects):
+                sdf = df_raw[df_raw['subject'] == subj]
+                for minute in range(1, N_MINUTES + 1):
+                    row_h = sdf[(sdf['Task'] == 'DMT') & (sdf['Dose'] == 'High') & (sdf['minute'] == minute)]['AUC']
+                    row_l = sdf[(sdf['Task'] == 'DMT') & (sdf['Dose'] == 'Low') & (sdf['minute'] == minute)]['AUC']
+                    if len(row_h) == 1:
+                        H[si, minute - 1] = float(row_h.iloc[0])
+                    if len(row_l) == 1:
+                        L[si, minute - 1] = float(row_l.iloc[0])
+            segs = _compute_fdr_significant_segments(H, L, x_grid)
+            for x0, x1 in segs:
+                ax2.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
+            dmt_res = _compute_fdr_results(H, L, x_grid)
+
+            # Write FDR report
+            out_dir = os.path.dirname(os.path.dirname(output_path))
+            lines: List[str] = [
+                'FDR COMPARISON: SMNA High vs Low (Interaction panels)',
+                f"Alpha = {rs_res.get('alpha', 0.05)}",
+                ''
+            ]
+            def _sec(name: str, res: Dict):
+                lines.append(f'PANEL {name}:')
+                segs2 = res.get('segments', [])
+                lines.append(f"  Significant segments (count={len(segs2)}):")
+                if len(segs2) == 0:
+                    lines.append('    - None')
+                for (a, b) in segs2:
+                    lines.append(f"    - {a:.1f}–{b:.1f} min")
+                p_adj = [v for v in res.get('pvals_adj', []) if isinstance(v, (int, float)) and not np.isnan(v)]
+                if p_adj:
+                    lines.append(f"  Min p_FDR: {np.nanmin(p_adj):.6f}; Median p_FDR: {np.nanmedian(p_adj):.6f}")
+                lines.append('')
+            _sec('RS', rs_res)
+            _sec('DMT', dmt_res)
+            with open(os.path.join(out_dir, 'fdr_segments_smna_interaction.txt'), 'w', encoding='utf-8') as f:
+                f.write('\n'.join(lines))
+        except Exception:
+            pass
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=400, bbox_inches='tight')
     plt.close()
 
+
+def _resample_to_grid(t: np.ndarray, y: np.ndarray, t_grid: np.ndarray) -> np.ndarray:
+    t = np.asarray(t, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if len(t) < 2:
+        return np.full_like(t_grid, np.nan, dtype=float)
+    valid = ~np.isnan(y)
+    if not np.any(valid):
+        return np.full_like(t_grid, np.nan, dtype=float)
+    t_valid = t[valid]
+    y_valid = y[valid]
+    yg = np.full_like(t_grid, np.nan, dtype=float)
+    mask = (t_grid >= t_valid[0]) & (t_grid <= t_valid[-1])
+    if np.any(mask):
+        yg[mask] = np.interp(t_grid[mask], t_valid, y_valid)
+    return yg
+
+
+def create_combined_summary_plot(out_dir: str) -> Optional[str]:
+    """SMNA combined summary using per-minute AUC (first 9 minutes).
+
+    Saves: results/eda/smna/plots/all_subs_smna.png
+    """
+    # Build per-subject per-minute AUC matrices for RS and DMT (High/Low)
+    H_RS, L_RS, H_DMT, L_DMT = [], [], [], []
+    for subject in SUJETOS_VALIDADOS_EDA:
+        try:
+            high_session, low_session = determine_sessions(subject)
+            # DMT paths
+            p_high, p_low = build_cvx_paths(subject, high_session, low_session)
+            d_high = load_cvx_smna(p_high)
+            d_low = load_cvx_smna(p_low)
+            # RS paths
+            p_rsh = build_rs_cvx_path(subject, high_session)
+            p_rsl = build_rs_cvx_path(subject, low_session)
+            r_high = load_cvx_smna(p_rsh)
+            r_low = load_cvx_smna(p_rsl)
+            if None in (d_high, d_low, r_high, r_low):
+                continue
+            th, yh = d_high; tl, yl = d_low
+            trh, yrh = r_high; trl, yrl = r_low
+            # Compute per-minute AUC 1..9
+            auc_dmt_h = [compute_auc_minute_window(th, yh, m) for m in range(N_MINUTES)]
+            auc_dmt_l = [compute_auc_minute_window(tl, yl, m) for m in range(N_MINUTES)]
+            auc_rs_h = [compute_auc_minute_window(trh, yrh, m) for m in range(N_MINUTES)]
+            auc_rs_l = [compute_auc_minute_window(trl, yrl, m) for m in range(N_MINUTES)]
+            if None in auc_dmt_h or None in auc_dmt_l or None in auc_rs_h or None in auc_rs_l:
+                continue
+            H_RS.append(np.array(auc_rs_h, dtype=float))
+            L_RS.append(np.array(auc_rs_l, dtype=float))
+            H_DMT.append(np.array(auc_dmt_h, dtype=float))
+            L_DMT.append(np.array(auc_dmt_l, dtype=float))
+        except Exception:
+            continue
+    if not (H_RS and L_RS and H_DMT and L_DMT):
+        return None
+    H_RS = np.vstack(H_RS); L_RS = np.vstack(L_RS)
+    H_DMT = np.vstack(H_DMT); L_DMT = np.vstack(L_DMT)
+
+    def mean_sem(M: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        return np.nanmean(M, axis=0), np.nanstd(M, axis=0, ddof=1) / np.sqrt(M.shape[0])
+
+    rs_mean_h, rs_sem_h = mean_sem(H_RS)
+    rs_mean_l, rs_sem_l = mean_sem(L_RS)
+    dmt_mean_h, dmt_sem_h = mean_sem(H_DMT)
+    dmt_mean_l, dmt_sem_l = mean_sem(L_DMT)
+
+    x = np.arange(1, N_MINUTES + 1)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6), sharex=True, sharey=True)
+    # RS panel
+    rs_segs = _compute_fdr_significant_segments(H_RS, L_RS, x)
+    for x0, x1 in rs_segs:
+        ax1.axvspan(x0 - 0.5, x1 + 0.5, color='0.85', alpha=0.35, zorder=0)
+    l1 = ax1.plot(x, rs_mean_h, color=COLOR_RS_HIGH, lw=2.0, label='High')[0]
+    ax1.fill_between(x, rs_mean_h - rs_sem_h, rs_mean_h + rs_sem_h, color=COLOR_RS_HIGH, alpha=0.25)
+    l2 = ax1.plot(x, rs_mean_l, color=COLOR_RS_LOW, lw=2.0, label='Low')[0]
+    ax1.fill_between(x, rs_mean_l - rs_sem_l, rs_mean_l + rs_sem_l, color=COLOR_RS_LOW, alpha=0.25)
+    leg1 = ax1.legend([l1, l2], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    leg1.get_frame().set_facecolor('white'); leg1.get_frame().set_alpha(0.9)
+    ax1.set_xlabel('Time (minutes)'); ax1.set_ylabel('SMNA AUC'); ax1.set_title('Resting State (RS)', fontweight='bold')
+    ax1.grid(True, which='major', axis='y', alpha=0.25); ax1.grid(False, which='major', axis='x')
+    # DMT panel
+    dmt_segs = _compute_fdr_significant_segments(H_DMT, L_DMT, x)
+    for x0, x1 in dmt_segs:
+        ax2.axvspan(x0 - 0.5, x1 + 0.5, color='0.85', alpha=0.35, zorder=0)
+    l3 = ax2.plot(x, dmt_mean_h, color=COLOR_DMT_HIGH, lw=2.0, label='High')[0]
+    ax2.fill_between(x, dmt_mean_h - dmt_sem_h, dmt_mean_h + dmt_sem_h, color=COLOR_DMT_HIGH, alpha=0.25)
+    l4 = ax2.plot(x, dmt_mean_l, color=COLOR_DMT_LOW, lw=2.0, label='Low')[0]
+    ax2.fill_between(x, dmt_mean_l - dmt_sem_l, dmt_mean_l + dmt_sem_l, color=COLOR_DMT_LOW, alpha=0.25)
+    leg2 = ax2.legend([l3, l4], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    leg2.get_frame().set_facecolor('white'); leg2.get_frame().set_alpha(0.9)
+    ax2.set_xlabel('Time (minutes)'); ax2.set_title('DMT', fontweight='bold')
+    ax2.grid(True, which='major', axis='y', alpha=0.25); ax2.grid(False, which='major', axis='x')
+
+    for ax in (ax1, ax2):
+        ax.set_xticks(x)
+        ax.set_xlim(0.8, N_MINUTES + 0.2)
+
+    plt.tight_layout()
+    out_path = os.path.join(out_dir, 'plots', 'all_subs_smna.png')
+    plt.savefig(out_path, dpi=400, bbox_inches='tight')
+    plt.close()
+
+    try:
+        lines: List[str] = [
+            'FDR COMPARISON: SMNA AUC High vs Low (All Subjects, RS and DMT)',
+            'Alpha = 0.05',
+            ''
+        ]
+        def _sect(name: str, segs: List[Tuple[float, float]]):
+            lines.append(f'PANEL {name}:')
+            lines.append(f'  Significant segments (count={len(segs)}):')
+            if len(segs) == 0:
+                lines.append('    - None')
+            for (a, b) in segs:
+                lines.append(f"    - minute {a:.0f}–{b:.0f}")
+            lines.append('')
+        _sect('RS', rs_segs)
+        _sect('DMT', dmt_segs)
+        with open(os.path.join(out_dir, 'fdr_segments_all_subs_smna.txt'), 'w', encoding='utf-8') as f:
+            f.write('\n'.join(lines))
+    except Exception:
+        pass
+    return out_path
+
+
+def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
+    """SMNA DMT-only extended plot using per-minute AUC (~19 minutes)."""
+    limit_sec = 1150.0
+    total_minutes = int(np.floor(limit_sec / 60.0))  # ~19
+    H_list, L_list = [] , []
+    for subject in SUJETOS_VALIDADOS_EDA:
+        try:
+            high_session, low_session = determine_sessions(subject)
+            p_high, p_low = build_cvx_paths(subject, high_session, low_session)
+            d_high = load_cvx_smna(p_high)
+            d_low = load_cvx_smna(p_low)
+            if None in (d_high, d_low):
+                continue
+            th, yh = d_high; tl, yl = d_low
+            auc_h = [compute_auc_minute_window(th, yh, m) for m in range(total_minutes)]
+            auc_l = [compute_auc_minute_window(tl, yl, m) for m in range(total_minutes)]
+            if None in auc_h or None in auc_l:
+                continue
+            H_list.append(np.array(auc_h, dtype=float))
+            L_list.append(np.array(auc_l, dtype=float))
+        except Exception:
+            continue
+    if not (H_list and L_list):
+        return None
+    H = np.vstack(H_list); L = np.vstack(L_list)
+    mean_h = np.nanmean(H, axis=0); mean_l = np.nanmean(L, axis=0)
+    sem_h = np.nanstd(H, axis=0, ddof=1) / np.sqrt(H.shape[0])
+    sem_l = np.nanstd(L, axis=0, ddof=1) / np.sqrt(L.shape[0])
+
+    x = np.arange(1, total_minutes + 1)
+    fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+    segs = _compute_fdr_significant_segments(H, L, x)
+    for x0, x1 in segs:
+        ax.axvspan(x0 - 0.5, x1 + 0.5, color='0.85', alpha=0.35, zorder=0)
+    l1 = ax.plot(x, mean_h, color=COLOR_DMT_HIGH, lw=2.0, label='High')[0]
+    ax.fill_between(x, mean_h - sem_h, mean_h + sem_h, color=COLOR_DMT_HIGH, alpha=0.25)
+    l2 = ax.plot(x, mean_l, color=COLOR_DMT_LOW, lw=2.0, label='Low')[0]
+    ax.fill_between(x, mean_l - sem_l, mean_l + sem_l, color=COLOR_DMT_LOW, alpha=0.25)
+    leg = ax.legend([l1, l2], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    leg.get_frame().set_facecolor('white'); leg.get_frame().set_alpha(0.9)
+    ax.set_xlabel('Time (minutes)'); ax.set_ylabel('SMNA AUC'); ax.set_title('DMT', fontweight='bold')
+    ax.grid(True, which='major', axis='y', alpha=0.25); ax.grid(False, which='major', axis='x')
+    ax.set_xticks(x); ax.set_xlim(0.8, total_minutes + 0.2)
+
+    plt.tight_layout()
+    out_path = os.path.join(out_dir, 'plots', 'all_subs_dmt_smna.png')
+    plt.savefig(out_path, dpi=400, bbox_inches='tight')
+    plt.close()
+
+    try:
+        lines: List[str] = [
+            'FDR COMPARISON: SMNA AUC High vs Low (DMT only)',
+            'Alpha = 0.05',
+            ''
+        ]
+        lines.append(f"Significant segments (count={len(segs)}):")
+        if len(segs) == 0:
+            lines.append('  - None')
+        for (a, b) in segs:
+            lines.append(f"  - minute {a:.0f}–{b:.0f}")
+        with open(os.path.join(out_dir, 'fdr_segments_all_subs_dmt_smna.txt'), 'w', encoding='utf-8') as f:
+            f.write('\n'.join(lines))
+    except Exception:
+        pass
+    return out_path
 
 def create_effect_sizes_table(coef_df: pd.DataFrame, output_path: str) -> None:
     table_data = coef_df[['label', 'beta', 'se', 'ci_lower', 'ci_upper', 'p_raw', 'p_fdr', 'significance', 'family']].copy()
@@ -807,7 +1161,7 @@ def main() -> bool:
         task_main_path = os.path.join(plots_dir, 'task_main_effect.png')
         create_task_effect_plot(stats_df, task_main_path)
         interaction_path = os.path.join(plots_dir, 'task_dose_interaction.png')
-        create_interaction_plot(stats_df, interaction_path)
+        create_interaction_plot(stats_df, interaction_path, df)
 
         # Summary statistics
         summary_path = os.path.join(plots_dir, 'summary_statistics.csv')
@@ -823,6 +1177,10 @@ def main() -> bool:
         # Text model summary (instead of PNG)
         model_summary_txt = os.path.join(out_dir, 'model_summary.txt')
         create_model_summary_txt(diagnostics, coef_df, model_summary_txt)
+
+        # Combined summary (first 9 min) and DMT-only extended
+        create_combined_summary_plot(out_dir)
+        create_dmt_only_20min_plot(out_dir)
 
         # Captions
         generate_captions_file(out_dir, len(df['subject'].unique()))
