@@ -396,14 +396,20 @@ Parte inferior del panel (Subplot B): all_subs_dmt_smna
 
 Tene en cuenta que estos ya seran los plots finales que seráne enviados para publicar a Nature Human Behaviour. Por lo tanto, dispone los plots esteticamente ya como plots finales, secuenciando los subplots de cada panel en orden segun las letras mencioandas mas arriba (e.g. A, B, C, ...)
 
-SEGUIR DESDE ACA
+[x] Agrandar un poco el tamaño de los boxes de labels en el margen superior derecho de cada subplot, modificando para eso `run_eda_scl_analysis` y ``run_eda_smna_analysis`. Con eso volver a correr la generaicon de plots con `generate_eda_figures`
 
-[ ] Agrandar un poco el tamaño de los boxes de labels en el margen superior derecho de cada subplot, modificando para eso `run_eda_scl_analysis` y ``run_eda_smna_analysis`. Con eso volver a correr la generaicon de plots con `generate_eda_figures`
-[ ] EDitar en `Results` y en `Material Suplementario` las captions de acuerdo a estas nuevas figuras
+[x] Editar `generate_eda_figures` para que:
+- Las letras que titulan los subplots del panel (A,B,C y D) sean un poco mas grandes
+- El margen (espacio) vertical que separa el panel A del panel B, y tambien el panel C del panel D (es decir, los paneles de la izquierda de los de la derecha) sea considerablemnete menor. Ahora hay mucho espacio entre si.
+
+[x] EDitar en `Results` y en `Material Suplementario` las captions de acuerdo a estas nuevas figuras.
+
+SEGUIR DEDE ACA
 [ ] Documentar todos los cambios realizados.
-[ ] Elimiar archivos de mi compu, pasarlos a la NUBE, porque tengo miedo de perder data.
-[ ] Continuar con ECG!
+[ ] Planear las tareas de ECG e implementarlas hasta donde pueda con los creditos de cursor (vrevisar lo que hizo Tomi para saber como seguir). Pero esto ya hacerlo en un nuevo documento `ecg.md` dentro de `research_diary`.
 
+
+EXTRA (no lo implementamos):
 
    [ ] Hacer espectrograma pero con los datos de EDA a nivel exploratorio, e integrarlo tambien en el documento .doc.
 

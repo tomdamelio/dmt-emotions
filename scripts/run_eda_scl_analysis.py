@@ -61,16 +61,18 @@ TICK_LABEL_SIZE = 28
 TICK_LABEL_SIZE_SMALL = 24
 
 # Legend sizes (global and a smaller variant for dense, per-subject panels)
-LEGEND_FONTSIZE = 14
-LEGEND_FONTSIZE_SMALL = 12
+LEGEND_FONTSIZE = 18
+LEGEND_FONTSIZE_SMALL = 14
 LEGEND_MARKERSCALE = 1.6
 LEGEND_BORDERPAD = 0.6
 LEGEND_HANDLELENGTH = 3.0
+LEGEND_LABELSPACING = 0.7
+LEGEND_BORDERAXESPAD = 0.9
 
 # Stacked per-subject figure specific sizes
-STACKED_AXES_LABEL_SIZE = 26
-STACKED_TICK_LABEL_SIZE = 18
-STACKED_SUBJECT_FONTSIZE = 36
+STACKED_AXES_LABEL_SIZE = 22
+STACKED_TICK_LABEL_SIZE = 14
+STACKED_SUBJECT_FONTSIZE = 30
 
 plt.style.use('seaborn-v0_8-whitegrid')
 plt.rcParams.update({
@@ -665,7 +667,7 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
     ax.set_xlim(0.8, N_MINUTES + 0.2)
     ax.grid(True, which='major', axis='y', alpha=0.25)
     ax.grid(False, which='major', axis='x')
-    legend = ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    legend = ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
     plt.tight_layout()
@@ -692,7 +694,7 @@ def create_task_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
     ax.set_xlim(0.8, N_MINUTES + 0.2)
     ax.grid(True, which='major', axis='y', alpha=0.25)
     ax.grid(False, which='major', axis='x')
-    legend = ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    legend = ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
     plt.tight_layout()
@@ -713,7 +715,7 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str) -> None:
     ticks = list(range(1, N_MINUTES + 1))
     ax1.set_xticks(ticks)
     ax1.set_xlim(0.8, N_MINUTES + 0.2)
-    leg1 = ax1.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    leg1 = ax1.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg1.get_frame().set_facecolor('white')
     leg1.get_frame().set_alpha(0.9)
     for condition, color in [('DMT_High', COLOR_DMT_HIGH), ('DMT_Low', COLOR_DMT_LOW)]:
@@ -725,7 +727,7 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str) -> None:
     ax2.grid(False, which='major', axis='x')
     ax2.set_xticks(ticks)
     ax2.set_xlim(0.8, N_MINUTES + 0.2)
-    leg2 = ax2.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    leg2 = ax2.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg2.get_frame().set_facecolor('white')
     leg2.get_frame().set_alpha(0.9)
     plt.tight_layout()
@@ -874,7 +876,7 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     ax1.fill_between(t_grid, rs['mean_h'] - rs['sem_h'], rs['mean_h'] + rs['sem_h'], color=c_rs_high, alpha=0.25)
     line_l1 = ax1.plot(t_grid, rs['mean_l'], color=c_rs_low, lw=2.0, marker=None, label='Low')[0]
     ax1.fill_between(t_grid, rs['mean_l'] - rs['sem_l'], rs['mean_l'] + rs['sem_l'], color=c_rs_low, alpha=0.25)
-    legend1 = ax1.legend([line_h1, line_l1], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    legend1 = ax1.legend([line_h1, line_l1], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     legend1.get_frame().set_facecolor('white')
     legend1.get_frame().set_alpha(0.9)
     ax1.set_xlabel('Time (minutes)')
@@ -892,7 +894,7 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     ax2.fill_between(t_grid, dmt['mean_h'] - dmt['sem_h'], dmt['mean_h'] + dmt['sem_h'], color=c_dmt_high, alpha=0.25)
     line_l2 = ax2.plot(t_grid, dmt['mean_l'], color=c_dmt_low, lw=2.0, marker=None, label='Low')[0]
     ax2.fill_between(t_grid, dmt['mean_l'] - dmt['sem_l'], dmt['mean_l'] + dmt['sem_l'], color=c_dmt_low, alpha=0.25)
-    legend2 = ax2.legend([line_h2, line_l2], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    legend2 = ax2.legend([line_h2, line_l2], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     legend2.get_frame().set_facecolor('white')
     legend2.get_frame().set_alpha(0.9)
     ax2.set_xlabel('Time (minutes)')
@@ -989,7 +991,7 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     line_l = ax.plot(t_grid, mean_l, color=c_dmt_low, lw=2.0, marker=None, label='Low')[0]
     ax.fill_between(t_grid, mean_l - sem_l, mean_l + sem_l, color=c_dmt_low, alpha=0.25)
 
-    legend = ax.legend([line_h, line_l], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    legend = ax.legend([line_h, line_l], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
     ax.set_xlabel('Time (minutes)')
@@ -1131,7 +1133,7 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         legend_rs = ax_rs.legend(handles=[
             Line2D([0], [0], color=c_rs_high, lw=1.4, label='RS High'),
             Line2D([0], [0], color=c_rs_low, lw=1.4, label='RS Low'),
-        ], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+        ], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE_SMALL, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
         legend_rs.get_frame().set_facecolor('white')
         legend_rs.get_frame().set_alpha(0.9)
 
@@ -1148,7 +1150,7 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         legend_dmt = ax_dmt.legend(handles=[
             Line2D([0], [0], color=c_dmt_high, lw=1.4, label='DMT High'),
             Line2D([0], [0], color=c_dmt_low, lw=1.4, label='DMT Low'),
-        ], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+        ], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE_SMALL, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
         legend_dmt.get_frame().set_facecolor('white')
         legend_dmt.get_frame().set_alpha(0.9)
 

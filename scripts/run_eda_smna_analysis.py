@@ -52,22 +52,29 @@ try:
 except Exception:
     SCIPY_AVAILABLE = False
 
-
 #############################
 # Plot aesthetics & centralized hyperparameters
 #############################
 
-# Centralized font sizes and legend settings (aligned with SCL/SCR)
+# Centralized font sizes and legend settings
 AXES_TITLE_SIZE = 29
 AXES_LABEL_SIZE = 36
 TICK_LABEL_SIZE = 28
 TICK_LABEL_SIZE_SMALL = 24
 
-LEGEND_FONTSIZE = 14
-LEGEND_FONTSIZE_SMALL = 12
+# Legend sizes (global and a smaller variant for dense, per-subject panels)
+LEGEND_FONTSIZE = 18
+LEGEND_FONTSIZE_SMALL = 14
 LEGEND_MARKERSCALE = 1.6
 LEGEND_BORDERPAD = 0.6
 LEGEND_HANDLELENGTH = 3.0
+LEGEND_LABELSPACING = 0.7
+LEGEND_BORDERAXESPAD = 0.9
+
+# Stacked per-subject figure specific sizes
+STACKED_AXES_LABEL_SIZE = 22
+STACKED_TICK_LABEL_SIZE = 14
+STACKED_SUBJECT_FONTSIZE = 30
 
 plt.style.use('seaborn-v0_8-whitegrid')
 plt.rcParams.update({
@@ -723,7 +730,7 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
     ax.set_xticks(ticks)
     ax.set_xlim(0.8, N_MINUTES + 0.2)
     ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
-    legend = ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    legend = ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
 
@@ -754,7 +761,7 @@ def create_task_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
     ax.set_xticks(ticks)
     ax.set_xlim(0.8, N_MINUTES + 0.2)
     ax.grid(True, alpha=0.3)
-    legend = ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    legend = ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
     plt.tight_layout()
@@ -781,7 +788,7 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str, df_raw: Op
     ticks = list(range(1, N_MINUTES + 1))
     ax1.set_xticks(ticks)
     ax1.set_xlim(0.8, N_MINUTES + 0.2)
-    leg1 = ax1.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    leg1 = ax1.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg1.get_frame().set_facecolor('white')
     leg1.get_frame().set_alpha(0.9)
 
@@ -794,7 +801,7 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str, df_raw: Op
     ax2.grid(True, alpha=0.3)
     ax2.set_xticks(ticks)
     ax2.set_xlim(0.8, N_MINUTES + 0.2)
-    leg2 = ax2.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    leg2 = ax2.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg2.get_frame().set_facecolor('white')
     leg2.get_frame().set_alpha(0.9)
 
@@ -945,7 +952,7 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     ax1.fill_between(x, rs_mean_h - rs_sem_h, rs_mean_h + rs_sem_h, color=COLOR_RS_HIGH, alpha=0.25)
     l2 = ax1.plot(x, rs_mean_l, color=COLOR_RS_LOW, lw=2.0, label='Low')[0]
     ax1.fill_between(x, rs_mean_l - rs_sem_l, rs_mean_l + rs_sem_l, color=COLOR_RS_LOW, alpha=0.25)
-    leg1 = ax1.legend([l1, l2], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    leg1 = ax1.legend([l1, l2], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg1.get_frame().set_facecolor('white'); leg1.get_frame().set_alpha(0.9)
     ax1.set_xlabel('Time (minutes)'); ax1.set_ylabel('SMNA AUC'); ax1.set_title('Resting State (RS)', fontweight='bold')
     ax1.grid(True, which='major', axis='y', alpha=0.25); ax1.grid(False, which='major', axis='x')
@@ -957,7 +964,7 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     ax2.fill_between(x, dmt_mean_h - dmt_sem_h, dmt_mean_h + dmt_sem_h, color=COLOR_DMT_HIGH, alpha=0.25)
     l4 = ax2.plot(x, dmt_mean_l, color=COLOR_DMT_LOW, lw=2.0, label='Low')[0]
     ax2.fill_between(x, dmt_mean_l - dmt_sem_l, dmt_mean_l + dmt_sem_l, color=COLOR_DMT_LOW, alpha=0.25)
-    leg2 = ax2.legend([l3, l4], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    leg2 = ax2.legend([l3, l4], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg2.get_frame().set_facecolor('white'); leg2.get_frame().set_alpha(0.9)
     ax2.set_xlabel('Time (minutes)'); ax2.set_title('DMT', fontweight='bold')
     ax2.grid(True, which='major', axis='y', alpha=0.25); ax2.grid(False, which='major', axis='x')
@@ -1032,7 +1039,7 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     ax.fill_between(x, mean_h - sem_h, mean_h + sem_h, color=COLOR_DMT_HIGH, alpha=0.25)
     l2 = ax.plot(x, mean_l, color=COLOR_DMT_LOW, lw=2.0, label='Low')[0]
     ax.fill_between(x, mean_l - sem_l, mean_l + sem_l, color=COLOR_DMT_LOW, alpha=0.25)
-    leg = ax.legend([l1, l2], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+    leg = ax.legend([l1, l2], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg.get_frame().set_facecolor('white'); leg.get_frame().set_alpha(0.9)
     ax.set_xlabel('Time (minutes)'); ax.set_ylabel('SMNA AUC'); ax.set_title('DMT', fontweight='bold')
     ax.grid(True, which='major', axis='y', alpha=0.25); ax.grid(False, which='major', axis='x')
@@ -1058,6 +1065,146 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
             f.write('\n'.join(lines))
     except Exception:
         pass
+    return out_path
+
+def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
+    """Create a stacked per-subject figure (RS left, DMT right) using per-minute SMNA AUC (1..9).
+
+    Saves results/eda/smna/plots/stacked_subs_smna.png
+    """
+    rows: List[Dict] = []
+    for subject in SUJETOS_VALIDADOS_EDA:
+        try:
+            # DMT High/Low by session mapping
+            high_session, low_session = determine_sessions(subject)
+            p_dmt_h, p_dmt_l = build_cvx_paths(subject, high_session, low_session)
+            dmt_h = load_cvx_smna(p_dmt_h)
+            dmt_l = load_cvx_smna(p_dmt_l)
+            if None in (dmt_h, dmt_l):
+                continue
+            th, yh = dmt_h; tl, yl = dmt_l
+            auc_dmt_h = [compute_auc_minute_window(th, yh, m) for m in range(N_MINUTES)]
+            auc_dmt_l = [compute_auc_minute_window(tl, yl, m) for m in range(N_MINUTES)]
+            if None in auc_dmt_h or None in auc_dmt_l:
+                continue
+
+            # RS session1/session2, map to High/Low using recorded dose per session
+            p_rs1 = build_rs_cvx_path(subject, 'session1')
+            p_rs2 = build_rs_cvx_path(subject, 'session2')
+            rs1 = load_cvx_smna(p_rs1)
+            rs2 = load_cvx_smna(p_rs2)
+            if None in (rs1, rs2):
+                continue
+            t1, y1 = rs1; t2, y2 = rs2
+            auc_rs1 = [compute_auc_minute_window(t1, y1, m) for m in range(N_MINUTES)]
+            auc_rs2 = [compute_auc_minute_window(t2, y2, m) for m in range(N_MINUTES)]
+            if None in auc_rs1 or None in auc_rs2:
+                continue
+
+            try:
+                dose_s1 = get_dosis_sujeto(subject, 1)
+            except Exception:
+                dose_s1 = 'Alta'
+            cond1 = 'High' if str(dose_s1).lower().startswith('alta') or str(dose_s1).lower().startswith('a') else 'Low'
+            cond2 = 'Low' if cond1 == 'High' else 'High'
+            if cond1 == 'High':
+                auc_rs_h, auc_rs_l = auc_rs1, auc_rs2
+            else:
+                auc_rs_h, auc_rs_l = auc_rs2, auc_rs1
+
+            rows.append({
+                'subject': subject,
+                'minutes': list(range(1, N_MINUTES + 1)),
+                'rs_high': np.asarray(auc_rs_h, dtype=float),
+                'rs_low': np.asarray(auc_rs_l, dtype=float),
+                'dmt_high': np.asarray(auc_dmt_h, dtype=float),
+                'dmt_low': np.asarray(auc_dmt_l, dtype=float),
+            })
+        except Exception:
+            continue
+
+    if not rows:
+        return None
+
+    n = len(rows)
+    fig, axes = plt.subplots(
+        n,
+        2,
+        figsize=(18, max(6.0, 3.2 * n)),
+        sharex=True,
+        sharey=True,
+        gridspec_kw={'hspace': 0.8, 'wspace': 0.35}
+    )
+    if n == 1:
+        axes = np.array([axes])
+
+    minute_ticks = list(range(1, N_MINUTES + 1))
+
+    from matplotlib.lines import Line2D
+
+    for i, row in enumerate(rows):
+        ax_rs = axes[i, 0]
+        ax_dmt = axes[i, 1]
+
+        # RS panel
+        ax_rs.plot(minute_ticks, row['rs_high'], color=COLOR_RS_HIGH, lw=1.8, marker='o', markersize=4)
+        ax_rs.plot(minute_ticks, row['rs_low'], color=COLOR_RS_LOW, lw=1.8, marker='o', markersize=4)
+        ax_rs.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_rs.set_ylabel('SMNA AUC', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_rs.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
+        ax_rs.set_title('Resting State (RS)', fontweight='bold')
+        ax_rs.set_xlim(0.8, N_MINUTES + 0.2)
+        ax_rs.grid(True, which='major', axis='y', alpha=0.25)
+        ax_rs.grid(False, which='major', axis='x')
+        legend_rs = ax_rs.legend(handles=[
+            Line2D([0], [0], color=COLOR_RS_HIGH, lw=1.8, marker='o', markersize=4, label='RS High'),
+            Line2D([0], [0], color=COLOR_RS_LOW, lw=1.8, marker='o', markersize=4, label='RS Low'),
+        ], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE_SMALL, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+        legend_rs.get_frame().set_facecolor('white')
+        legend_rs.get_frame().set_alpha(0.9)
+
+        # DMT panel
+        ax_dmt.plot(minute_ticks, row['dmt_high'], color=COLOR_DMT_HIGH, lw=1.8, marker='o', markersize=4)
+        ax_dmt.plot(minute_ticks, row['dmt_low'], color=COLOR_DMT_LOW, lw=1.8, marker='o', markersize=4)
+        ax_dmt.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_dmt.set_ylabel('SMNA AUC', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_dmt.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
+        ax_dmt.set_title('DMT', fontweight='bold')
+        ax_dmt.set_xlim(0.8, N_MINUTES + 0.2)
+        ax_dmt.grid(True, which='major', axis='y', alpha=0.25)
+        ax_dmt.grid(False, which='major', axis='x')
+        legend_dmt = ax_dmt.legend(handles=[
+            Line2D([0], [0], color=COLOR_DMT_HIGH, lw=1.8, marker='o', markersize=4, label='DMT High'),
+            Line2D([0], [0], color=COLOR_DMT_LOW, lw=1.8, marker='o', markersize=4, label='DMT Low'),
+        ], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE_SMALL, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
+        legend_dmt.get_frame().set_facecolor('white')
+        legend_dmt.get_frame().set_alpha(0.9)
+
+        ax_rs.set_xticks(minute_ticks)
+        ax_dmt.set_xticks(minute_ticks)
+
+    fig.tight_layout(pad=2.0)
+
+    # Subject labels centered between columns
+    for i, row in enumerate(rows):
+        pos_left = axes[i, 0].get_position()
+        pos_right = axes[i, 1].get_position()
+        y_center = (pos_left.y0 + pos_left.y1) / 2.0
+        x_center = (pos_left.x1 + pos_right.x0) / 2.0
+        fig.text(
+            x_center,
+            y_center + 0.02,
+            row['subject'],
+            ha='center',
+            va='bottom',
+            fontweight='bold',
+            fontsize=STACKED_SUBJECT_FONTSIZE,
+            transform=fig.transFigure,
+        )
+
+    out_path = os.path.join(out_dir, 'plots', 'stacked_subs_smna.png')
+    plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    plt.close()
     return out_path
 
 def create_effect_sizes_table(coef_df: pd.DataFrame, output_path: str) -> None:
@@ -1181,6 +1328,9 @@ def main() -> bool:
         # Combined summary (first 9 min) and DMT-only extended
         create_combined_summary_plot(out_dir)
         create_dmt_only_20min_plot(out_dir)
+
+        # Stacked per-subject (per-minute AUC)
+        create_stacked_subjects_plot(out_dir)
 
         # Captions
         generate_captions_file(out_dir, len(df['subject'].unique()))

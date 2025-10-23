@@ -2,7 +2,7 @@
 """
 Generate publication-ready composite panels for EDA figures (Nature Human Behaviour).
 
-This script stitches already-generated PNG plots into two final panels:
+This script stitches already-generated PNG plots into three final panels:
 
 Panel 1 (2x2 grid):
   A (top-left):   results/eda/scl/plots/all_subs_eda_scl.png
@@ -14,9 +14,14 @@ Panel 2 (1x2 vertical):
   A (top):        results/eda/scl/plots/all_subs_dmt_eda_scl.png
   B (bottom):     results/eda/smna/plots/all_subs_dmt_smna.png
 
+Panel 3 (1x2 horizontal):
+  A (left):       results/eda/scl/plots/stacked_subs_eda_scl.png
+  B (right):      results/eda/smna/plots/stacked_subs_smna.png
+
 Outputs:
   results/eda/panels/panel_1.png
   results/eda/panels/panel_2.png
+  results/eda/panels/panel_3.png
 """
 
 import os
@@ -56,7 +61,7 @@ def _place(ax, img, label: str, label_xy: Tuple[float, float] = (0.01, 0.97)):
         transform=ax.transAxes,
         ha='left',
         va='top',
-        fontsize=24,
+        fontsize=30,
         fontweight='bold',
         color='black',
     )
@@ -77,30 +82,43 @@ def create_panel_one() -> str:
         _load_image(D_path),
     ]
 
-    # Enlarge the overall canvas without distorting individual subplot proportions
-    # Much larger canvas; keep equal row heights so A==B and C==D in height
-    fig, axes = plt.subplots(2, 2, figsize=(38, 16), constrained_layout=False)
-    _place(axes[0, 0], imgs[0], 'A')
-    _place(axes[0, 1], imgs[1], 'B')
-    _place(axes[1, 0], imgs[2], 'C')
-    _place(axes[1, 1], imgs[3], 'D')
+    # GridSpec con márgenes mínimos y separación horizontal casi nula
+    fig = plt.figure(figsize=(34, 16))
+    gs = fig.add_gridspec(2, 2, 
+                          wspace=-0.15,   # Espacio horizontal negativo para solapar levemente
+                          hspace=0.08,    # Espacio vertical mínimo
+                          left=0.01,      # Margen izquierdo
+                          right=0.99,     # Margen derecho
+                          top=0.99,       # Margen superior
+                          bottom=0.01)    # Margen inferior
+    
+    axes = [
+        fig.add_subplot(gs[0, 0]),
+        fig.add_subplot(gs[0, 1]),
+        fig.add_subplot(gs[1, 0]),
+        fig.add_subplot(gs[1, 1]),
+    ]
+    
+    _place(axes[0], imgs[0], 'A')
+    _place(axes[1], imgs[1], 'B')
+    _place(axes[2], imgs[2], 'C')
+    _place(axes[3], imgs[3], 'D')
 
-    plt.tight_layout(pad=0.8)
-
-    # Sanity check: ensure heights match between columns within each row
+    # Sanity check
     try:
-        hA = axes[0, 0].get_position().height
-        hB = axes[0, 1].get_position().height
-        hC = axes[1, 0].get_position().height
-        hD = axes[1, 1].get_position().height
+        hA = axes[0].get_position().height
+        hB = axes[1].get_position().height
+        hC = axes[2].get_position().height
+        hD = axes[3].get_position().height
         if abs(hA - hB) > 1e-3 or abs(hC - hD) > 1e-3:
             print(f"[WARN] Row heights differ: A={hA:.4f}, B={hB:.4f}, C={hC:.4f}, D={hD:.4f}")
         else:
             print(f"[OK] Row heights equal: A=B={hA:.4f}, C=D={hC:.4f}")
     except Exception:
         pass
+    
     out_path = os.path.join(OUT_DIR, 'panel_1.png')
-    plt.savefig(out_path, dpi=400, bbox_inches='tight')
+    plt.savefig(out_path, dpi=400, bbox_inches='tight')#, pad_inches=0.05)
     plt.close()
     return out_path
 
@@ -126,11 +144,47 @@ def create_panel_two() -> str:
     return out_path
 
 
+def create_panel_three() -> str:
+    os.makedirs(OUT_DIR, exist_ok=True)
+
+    A_path = os.path.join(ROOT, 'scl', 'plots', 'stacked_subs_eda_scl.png')
+    B_path = os.path.join(ROOT, 'smna', 'plots', 'stacked_subs_smna.png')
+
+    A_img = _load_image(A_path)
+    B_img = _load_image(B_path)
+
+    # GridSpec con separación mínima entre subplots
+    fig = plt.figure(figsize=(12, 26))
+    gs = fig.add_gridspec(1, 2,
+                          wspace=0.05,    # Separación horizontal mínima
+                          hspace=0.0,
+                          left=0.01,
+                          right=0.99,
+                          top=0.99,
+                          bottom=0.01)
+    
+    axes = [
+        fig.add_subplot(gs[0, 0]),
+        fig.add_subplot(gs[0, 1]),
+    ]
+    
+    # Posicionar letras aún más arriba y a la izquierda para evitar superposición completa
+    _place(axes[0], A_img, 'A', label_xy=(-0.05, 1.05))
+    _place(axes[1], B_img, 'B', label_xy=(-0.05, 1.05))
+
+    out_path = os.path.join(OUT_DIR, 'panel_3.png')
+    plt.savefig(out_path, dpi=400, bbox_inches='tight')
+    plt.close()
+    return out_path
+
+
 def main() -> None:
     p1 = create_panel_one()
     print(f"Panel 1 saved to: {p1}")
     p2 = create_panel_two()
     print(f"Panel 2 saved to: {p2}")
+    p3 = create_panel_three()
+    print(f"Panel 3 saved to: {p3}")
 
 
 if __name__ == '__main__':
