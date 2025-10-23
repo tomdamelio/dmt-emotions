@@ -25,6 +25,7 @@ Outputs:
 """
 
 import os
+from pathlib import Path
 from typing import List, Tuple
 
 import matplotlib
@@ -33,8 +34,11 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
 
-ROOT = os.path.join('results', 'eda')
-OUT_DIR = os.path.join(ROOT, 'panels')
+# Get project root (parent of scripts directory)
+SCRIPT_DIR = Path(__file__).parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+ROOT = PROJECT_ROOT / 'results' / 'eda'
+OUT_DIR = ROOT / 'panels'
 
 
 def _load_image(path: str):
@@ -68,12 +72,12 @@ def _place(ax, img, label: str, label_xy: Tuple[float, float] = (0.01, 0.97)):
 
 
 def create_panel_one() -> str:
-    os.makedirs(OUT_DIR, exist_ok=True)
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    A_path = os.path.join(ROOT, 'scl', 'plots', 'all_subs_eda_scl.png')
-    B_path = os.path.join(ROOT, 'scl', 'plots', 'lme_coefficient_plot.png')
-    C_path = os.path.join(ROOT, 'smna', 'plots', 'all_subs_smna.png')
-    D_path = os.path.join(ROOT, 'smna', 'plots', 'lme_coefficient_plot.png')
+    A_path = str(ROOT / 'scl' / 'plots' / 'all_subs_eda_scl.png')
+    B_path = str(ROOT / 'scl' / 'plots' / 'lme_coefficient_plot.png')
+    C_path = str(ROOT / 'smna' / 'plots' / 'all_subs_smna.png')
+    D_path = str(ROOT / 'smna' / 'plots' / 'lme_coefficient_plot.png')
 
     imgs = [
         _load_image(A_path),
@@ -117,17 +121,17 @@ def create_panel_one() -> str:
     except Exception:
         pass
     
-    out_path = os.path.join(OUT_DIR, 'panel_1.png')
+    out_path = str(OUT_DIR / 'panel_1.png')
     plt.savefig(out_path, dpi=400, bbox_inches='tight')#, pad_inches=0.05)
     plt.close()
     return out_path
 
 
 def create_panel_two() -> str:
-    os.makedirs(OUT_DIR, exist_ok=True)
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    A_path = os.path.join(ROOT, 'scl', 'plots', 'all_subs_dmt_eda_scl.png')
-    B_path = os.path.join(ROOT, 'smna', 'plots', 'all_subs_dmt_smna.png')
+    A_path = str(ROOT / 'scl' / 'plots' / 'all_subs_dmt_eda_scl.png')
+    B_path = str(ROOT / 'smna' / 'plots' / 'all_subs_dmt_smna.png')
 
     A_img = _load_image(A_path)
     B_img = _load_image(B_path)
@@ -138,17 +142,17 @@ def create_panel_two() -> str:
     _place(axes[1], B_img, 'B')
 
     plt.tight_layout(pad=0.8)
-    out_path = os.path.join(OUT_DIR, 'panel_2.png')
+    out_path = str(OUT_DIR / 'panel_2.png')
     plt.savefig(out_path, dpi=400, bbox_inches='tight')
     plt.close()
     return out_path
 
 
 def create_panel_three() -> str:
-    os.makedirs(OUT_DIR, exist_ok=True)
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    A_path = os.path.join(ROOT, 'scl', 'plots', 'stacked_subs_eda_scl.png')
-    B_path = os.path.join(ROOT, 'smna', 'plots', 'stacked_subs_smna.png')
+    A_path = str(ROOT / 'scl' / 'plots' / 'stacked_subs_eda_scl.png')
+    B_path = str(ROOT / 'smna' / 'plots' / 'stacked_subs_smna.png')
 
     A_img = _load_image(A_path)
     B_img = _load_image(B_path)
@@ -172,7 +176,7 @@ def create_panel_three() -> str:
     _place(axes[0], A_img, 'A', label_xy=(-0.05, 1.05))
     _place(axes[1], B_img, 'B', label_xy=(-0.05, 1.05))
 
-    out_path = os.path.join(OUT_DIR, 'panel_3.png')
+    out_path = str(OUT_DIR / 'panel_3.png')
     plt.savefig(out_path, dpi=400, bbox_inches='tight')
     plt.close()
     return out_path
