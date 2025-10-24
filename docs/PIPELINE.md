@@ -143,9 +143,22 @@ Directorio que seguirá el estándar **BIDS-Derivatives** para almacenar datos p
 - **Archivo de validación**:
   - `validation_log.json`: Log de validación de todos los sujetos por señal (EDA, ECG, RESP)
   
+- **Script de validación interactiva**: `test/test_phys_preprocessing.py`
+  - **Propósito**: Script usado para realizar la validación manual de calidad de señales fisiológicas
+  - **Proceso**:
+    1. Carga los CSVs procesados de `preprocess_phys.py`
+    2. Genera plots interactivos de NeuroKit para cada señal
+    3. Para EDA: genera plots adicionales de CVX decomposition (EDL, SMNA, EDR) con eventos EmotiPhai superpuestos
+    4. Solicita al usuario evaluar la calidad de cada señal (categorías: good, acceptable, maybe, bad)
+    5. Permite agregar notas cualitativas sobre artefactos, ruido, etc.
+    6. Actualiza automáticamente `validation_log.json` con las evaluaciones
+  - **⚠️ IMPORTANTE**: Este script **NO debe correrse nuevamente** salvo que sea estrictamente necesario revalidar señales, ya que la validación manual es un proceso largo y laborioso (evalúa ~20 sujetos × 3 señales × 4 archivos = ~240 archivos)
+  - **Uso**: Solo si necesitas re-evaluar sujetos específicos o validar datos reprocesados
+  
 - **Criterio de validación**:
   - Cada sujeto debe tener los 4 archivos (DMT_1, DMT_2, Reposo_1, Reposo_2) clasificados como 'good' o 'acceptable' para ser incluido
   - Sujetos con señales 'poor' o 'bad' son excluidos para esa modalidad
+  - Evaluación visual basada en plots de NeuroKit y análisis de componentes EDA
   
 - **Resultado**: Listas de sujetos validados registradas en `config.py`:
   - `SUJETOS_VALIDADOS_EDA`: 11 sujetos (S04, S05, S06, S07, S09, S13, S16, S17, S18, S19, S20)
@@ -303,15 +316,103 @@ Los siguientes tres scripts procesan diferentes componentes de la señal EDA y g
 
 ---
 
-### 5) Análisis de ECG y Respiración (pendientes)
+### 5) Análisis de ECG (Electrocardiografía)
+
+Los siguientes dos scripts procesan la señal ECG para obtener métricas de frecuencia cardíaca (HR) y variabilidad de la frecuencia cardíaca (HRV), generando modelos estadísticos LME con corrección FDR y visualizaciones.
+
+#### 5.1) **Script**: `scripts/run_ecg_hr_analysis.py`
+- **Componente**: HR (Heart Rate / Frecuencia Cardíaca)
+- **Input**:
+  - CSVs de ECG: `*_ecg.csv` desde `../data/derivatives/phys/ecg/dmt_{high,low}/`
+  - Solo sujetos de `SUJETOS_VALIDADOS_ECG` (15 sujetos)
+  - Columna utilizada: `ECG_Rate` (bpm)
+  - Ventana de análisis: **primeros 9 minutos** (0-8 min)
+  
+- **Proceso**:
+  1. Carga señal `ECG_Rate` (HR instantánea en bpm) de NeuroKit
+  2. **Sin corrección de baseline** por defecto (flag `BASELINE_CORRECTION=False`)
+  3. Calcula **HR media por minuto** (1-min windows) para cada condición (Task × Dose: RS/DMT × Low/High)
+  4. Ajusta **modelo LME** (Linear Mixed Effects):
+     - Formula: `HR ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c`
+     - Efectos aleatorios: `~ 1 | subject`
+  5. Aplica **corrección BH-FDR** por familias de hipótesis (Task, Dose, Interaction)
+  6. Genera plots de diagnóstico, coeficientes, medias marginales, interacciones
+  7. Crea plots de series temporales completas (9 min) con significancia FDR (High vs Low)
+  8. Genera plot stacked por sujeto individual
+  
+- **Output**:
+  - `results/ecg/hr/`:
+    - `hr_minute_long_data.csv`: Datos en formato long (HR media por minuto)
+    - `lme_analysis_report.txt`: Reporte completo del modelo LME con coeficientes y p-valores FDR
+    - `model_summary.txt`: Resumen del modelo
+    - `captions_hr.txt`: Captions para figuras
+  - `results/ecg/hr/plots/`:
+    - `lme_coefficient_plot.png`: Coeficientes β con IC 95%
+    - `marginal_means_all_conditions.png`: Medias marginales por condición
+    - `task_main_effect.png`: Efecto principal de Task
+    - `task_dose_interaction.png`: Interacción Task × Dose
+    - `all_subs_ecg_hr.png`: **Plot grupal RS+DMT (9 min)** con shading FDR
+    - `all_subs_dmt_ecg_hr.png`: **Plot DMT-only extendido (~19 min)** con shading FDR
+    - `stacked_subs_ecg_hr.png`: **Plot stacked por sujeto (9 min)**
+    - `lme_diagnostics.png`: Diagnósticos del modelo
+    - `effect_sizes_table.csv`, `summary_statistics.csv`
+  - `results/ecg/hr/fdr_segments_all_subs_ecg_hr.txt`: Reporte de segmentos FDR (9 min, RS+DMT)
+  - `results/ecg/hr/fdr_segments_all_subs_dmt_ecg_hr.txt`: Reporte de segmentos FDR (19 min, DMT-only)
+
+- **Comando**:
+  ```bash
+  python scripts/run_ecg_hr_analysis.py
+  ```
+
+#### 5.2) **Script**: `scripts/run_ecg_hrv_analysis.py`
+- **Componente**: HRV (Heart Rate Variability / Variabilidad de la Frecuencia Cardíaca)
+- **Input**: 
+  - Mismos CSVs de ECG, columna `ECG_R_Peaks` (binaria)
+  - Extracción de intervalos RR desde R-peaks
+  - Ventana de análisis: **primeros 9 minutos**
+  
+- **Proceso**:
+  1. Extrae intervalos RR desde `ECG_R_Peaks` (detección binaria de picos R)
+  2. Filtra RR fisiológicamente plausibles (300-2000 ms)
+  3. Calcula **HRV features por minuto**:
+     - **Primaria**: RMSSD (Root Mean Square of Successive Differences)
+     - **Secundarias**: SDNN, pNN50, LF, HF, LF/HF, SD1, SD2
+     - Frecuencia: Interpolación a 4 Hz, Welch PSD, bandas LF (0.04-0.15 Hz) / HF (0.15-0.40 Hz)
+  4. Ajusta **modelo LME** con RMSSD como DV:
+     - Formula: `RMSSD ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c`
+  5. Aplica **corrección BH-FDR** por familias
+  6. Genera plots con timecourse discreto (puntos por minuto) y FDR por minuto
+  7. Exporta todas las features HRV en CSVs por sujeto-condición
+  
+- **Output**:
+  - `results/ecg/hrv/`:
+    - `hrv_rmssd_long_data.csv`: Datos en formato long (RMSSD por minuto)
+    - `features_per_minute/`: CSVs con todas las features HRV por sujeto-condición
+    - `lme_analysis_report.txt`: Reporte del modelo HRV
+    - `model_summary.txt`: Resumen del modelo
+    - `captions_hrv.txt`: Captions para figuras
+  - `results/ecg/hrv/plots/`:
+    - `lme_coefficient_plot.png`: Coeficientes β con IC 95%
+    - `marginal_means_all_conditions.png`: Medias marginales por condición
+    - `task_main_effect.png`: Efecto principal de Task
+    - `task_dose_interaction.png`: Interacción Task × Dose
+    - `timecourse_hrv_rmssd.png`: **Plot discreto (9 min)** con shading FDR por minuto
+    - `stacked_subs_ecg_hrv.png`: **Plot stacked por sujeto (9 min)**
+    - `lme_diagnostics.png`: Diagnósticos del modelo
+    - `effect_sizes_table.csv`
+  - `results/ecg/hrv/fdr_minutes_all_subs_ecg_hrv.txt`: Reporte de minutos FDR significativos
+      
+- **Comando**:
+  ```bash
+  python scripts/run_ecg_hrv_analysis.py
+  ```
+
+---
+
+### 6) Análisis de Respiración (pendiente)
 
 Los siguientes análisis están planificados pero aún no implementados:
 
-- **ECG (Heart Rate / HRV)**:
-  - Análisis de frecuencia cardíaca y variabilidad
-  - Sujetos validados: 15 (ver `SUJETOS_VALIDADOS_ECG` en `config.py`)
-  - Input: CSVs de `../data/derivatives/phys/ecg/`
-  
 - **Respiración**:
   - Análisis de patrones respiratorios y variabilidad
   - Sujetos validados: 12 (ver `SUJETOS_VALIDADOS_RESP` en `config.py`)
@@ -332,10 +433,14 @@ python scripts/run_eda_scl_analysis.py   # SCL/EDL (tónico)
 python scripts/run_eda_smna_analysis.py  # SMNA (fásico continuo)
 python scripts/run_eda_scr_analysis.py   # SCR (eventos discretos)
 
-# 4. Generación de paneles compuestos
+# 4. Generación de paneles compuestos EDA
 python scripts/generate_eda_figures.py
 
-# 5. Análisis de ECG y RESP (pendientes)
+# 5. Análisis de ECG (los dos scripts pueden correrse en paralelo)
+python scripts/run_ecg_hr_analysis.py    # Heart Rate (HR)
+python scripts/run_ecg_hrv_analysis.py   # Heart Rate Variability (HRV)
+
+# 6. Análisis de RESP (pendiente)
 ```
 
 ---

@@ -1,0 +1,10 @@
+FDR COMPARISON: High vs Low by Minute (RMSSD)
+Alpha = 0.05
+
+RS Panel:
+  Significant minutes (count=0):
+    - None
+
+DMT Panel:
+  Significant minutes (count=0):
+    - None
