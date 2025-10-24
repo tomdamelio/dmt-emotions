@@ -1,0 +1,21 @@
+---
+inclusion: always
+---
+# .cursor/rules/style.mdc
+---
+description: "Convenciones de estilo simplificadas para código Python científico"
+alwaysApply: true
+---
+## Code Style
+
+- Recommended maximum line length = 100 characters (flexible).
+- Use descriptive variable names: snake_case for variables and functions; UPPER_SNAKE_CASE for constants; PascalCase for classes.
+- Avoid dead or commented code that is not used.
+- Commit only UTF-8 text files (`.py`, `.toml`, `.md`, etc.) - never binary notebooks.
+- Code must be readable, consistent, and functional.
+  
+### Checklist
+- [ ] No single-letter identifiers beyond trivial indexes (`i`, `j`, `k`).
+- [ ] The code is functional and does what it is intended to do.
+- [ ] The style is consistent within each module.
+

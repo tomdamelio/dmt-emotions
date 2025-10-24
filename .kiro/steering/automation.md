@@ -1,0 +1,18 @@
+---
+inclusion: always
+---
+# .cursor/rules/automation.mdc
+---
+description: "Automation - Simplificada para iteraciones rápidas"
+alwaysApply: true
+---
+## Automation
+
+### Rules
+- Enfoque simplificado para permitir iteraciones rápidas.
+- CI: GitHub Actions simplificadas según sea necesario.
+- Cualquier pipeline de investigación multi-paso debe ser documentado de manera clara.
+
+### Checklist
+- [ ] El código es funcional y cumple con su propósito principal.
+- [ ] Se mantiene documentación básica sobre los pasos a seguir.
