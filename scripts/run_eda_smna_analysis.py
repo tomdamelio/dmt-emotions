@@ -667,14 +667,16 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
 
     for _, row in coef_df.iterrows():
         y_pos = y_positions[row['order']]
-        linewidth = 3.5 if row['significant'] else 2.5
-        alpha = 1.0 if row['significant'] else 0.8
-        marker_size = 70 if row['significant'] else 55
-
+        # Tamaño uniforme para todos los elementos
+        linewidth = 6.5
+        alpha = 1.0
+        marker_size = 200
+        # Línea del CI muy gruesa
         ax.plot([row['ci_lower'], row['ci_upper']], [y_pos, y_pos], color=row['color'], linewidth=linewidth, alpha=alpha)
-        ax.scatter(row['beta'], y_pos, color=row['color'], s=marker_size, alpha=alpha, edgecolors='white', linewidths=1)
+        # Círculo del coeficiente grande con borde del mismo color
+        ax.scatter(row['beta'], y_pos, color=row['color'], s=marker_size, alpha=alpha, edgecolors=row['color'], linewidths=3.5, zorder=3)
 
-    ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=1)
+    ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=2.0)
     ax.set_yticks(y_positions)
     ax.set_yticklabels(coef_df['label'], fontsize=33)
     ax.set_xlabel('Coefficient Estimate (β)\nwith 95% CI')

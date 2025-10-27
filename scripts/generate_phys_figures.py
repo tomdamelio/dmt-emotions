@@ -1,27 +1,32 @@
 # -*- coding: utf-8 -*-
 """
-Generate publication-ready composite panels for EDA figures (Nature Human Behaviour).
+Generate publication-ready composite panels for physiological figures (Nature Human Behaviour).
 
-This script stitches already-generated PNG plots into three final panels:
+This script stitches already-generated PNG plots into final panels:
 
-Panel 1 (2x2 grid):
+Panel 1 (2x2 grid - EDA):
   A (top-left):   results/eda/scl/plots/all_subs_eda_scl.png
   B (top-right):  results/eda/scl/plots/lme_coefficient_plot.png
   C (bottom-left):results/eda/smna/plots/all_subs_smna.png
   D (bottom-right):results/eda/smna/plots/lme_coefficient_plot.png
 
-Panel 2 (1x2 vertical):
+Panel 2 (1x2 vertical - EDA DMT):
   A (top):        results/eda/scl/plots/all_subs_dmt_eda_scl.png
   B (bottom):     results/eda/smna/plots/all_subs_dmt_smna.png
 
-Panel 3 (1x2 horizontal):
+Panel 3 (1x2 horizontal - EDA stacked):
   A (left):       results/eda/scl/plots/stacked_subs_eda_scl.png
   B (right):      results/eda/smna/plots/stacked_subs_smna.png
 
+Panel 4 (1x2 horizontal - ECG HR):
+  A (left):       results/ecg/hr/plots/all_subs_ecg_hr.png
+  B (right):      results/ecg/hr/plots/lme_coefficient_plot.png
+
 Outputs:
-  results/eda/panels/panel_1.png
-  results/eda/panels/panel_2.png
-  results/eda/panels/panel_3.png
+  results/figures/panel_1.png
+  results/figures/panel_2.png
+  results/figures/panel_3.png
+  results/figures/panel_4.png
 """
 
 import os
@@ -37,8 +42,9 @@ import matplotlib.image as mpimg
 # Get project root (parent of scripts directory)
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
-ROOT = PROJECT_ROOT / 'results' / 'eda'
-OUT_DIR = ROOT / 'panels'
+EDA_ROOT = PROJECT_ROOT / 'results' / 'eda'
+ECG_ROOT = PROJECT_ROOT / 'results' / 'ecg'
+OUT_DIR = PROJECT_ROOT / 'results' / 'figures'
 
 
 def _load_image(path: str):
@@ -74,10 +80,10 @@ def _place(ax, img, label: str, label_xy: Tuple[float, float] = (0.01, 0.97)):
 def create_panel_one() -> str:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    A_path = str(ROOT / 'scl' / 'plots' / 'all_subs_eda_scl.png')
-    B_path = str(ROOT / 'scl' / 'plots' / 'lme_coefficient_plot.png')
-    C_path = str(ROOT / 'smna' / 'plots' / 'all_subs_smna.png')
-    D_path = str(ROOT / 'smna' / 'plots' / 'lme_coefficient_plot.png')
+    A_path = str(EDA_ROOT / 'scl' / 'plots' / 'all_subs_eda_scl.png')
+    B_path = str(EDA_ROOT / 'scl' / 'plots' / 'lme_coefficient_plot.png')
+    C_path = str(EDA_ROOT / 'smna' / 'plots' / 'all_subs_smna.png')
+    D_path = str(EDA_ROOT / 'smna' / 'plots' / 'lme_coefficient_plot.png')
 
     imgs = [
         _load_image(A_path),
@@ -130,8 +136,8 @@ def create_panel_one() -> str:
 def create_panel_two() -> str:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    A_path = str(ROOT / 'scl' / 'plots' / 'all_subs_dmt_eda_scl.png')
-    B_path = str(ROOT / 'smna' / 'plots' / 'all_subs_dmt_smna.png')
+    A_path = str(EDA_ROOT / 'scl' / 'plots' / 'all_subs_dmt_eda_scl.png')
+    B_path = str(EDA_ROOT / 'smna' / 'plots' / 'all_subs_dmt_smna.png')
 
     A_img = _load_image(A_path)
     B_img = _load_image(B_path)
@@ -151,8 +157,8 @@ def create_panel_two() -> str:
 def create_panel_three() -> str:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    A_path = str(ROOT / 'scl' / 'plots' / 'stacked_subs_eda_scl.png')
-    B_path = str(ROOT / 'smna' / 'plots' / 'stacked_subs_smna.png')
+    A_path = str(EDA_ROOT / 'scl' / 'plots' / 'stacked_subs_eda_scl.png')
+    B_path = str(EDA_ROOT / 'smna' / 'plots' / 'stacked_subs_smna.png')
 
     A_img = _load_image(A_path)
     B_img = _load_image(B_path)
@@ -182,6 +188,40 @@ def create_panel_three() -> str:
     return out_path
 
 
+def create_panel_four() -> str:
+    """Create Panel 4: ECG HR analysis (1x2 horizontal layout)."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    A_path = str(ECG_ROOT / 'hr' / 'plots' / 'all_subs_ecg_hr.png')
+    B_path = str(ECG_ROOT / 'hr' / 'plots' / 'lme_coefficient_plot.png')
+
+    A_img = _load_image(A_path)
+    B_img = _load_image(B_path)
+
+    # GridSpec con separación mínima entre subplots (similar a panel_1 pero solo 1 fila)
+    fig = plt.figure(figsize=(34, 8))
+    gs = fig.add_gridspec(1, 2,
+                          wspace=-0.15,   # Espacio horizontal negativo para solapar levemente
+                          hspace=0.0,
+                          left=0.01,
+                          right=0.99,
+                          top=0.99,
+                          bottom=0.01)
+    
+    axes = [
+        fig.add_subplot(gs[0, 0]),
+        fig.add_subplot(gs[0, 1]),
+    ]
+    
+    _place(axes[0], A_img, 'A')
+    _place(axes[1], B_img, 'B')
+
+    out_path = str(OUT_DIR / 'panel_4.png')
+    plt.savefig(out_path, dpi=400, bbox_inches='tight')
+    plt.close()
+    return out_path
+
+
 def main() -> None:
     p1 = create_panel_one()
     print(f"Panel 1 saved to: {p1}")
@@ -189,6 +229,8 @@ def main() -> None:
     print(f"Panel 2 saved to: {p2}")
     p3 = create_panel_three()
     print(f"Panel 3 saved to: {p3}")
+    p4 = create_panel_four()
+    print(f"Panel 4 saved to: {p4}")
 
 
 if __name__ == '__main__':

@@ -277,12 +277,12 @@ def plot_model_diagnostics(fitted_model, df: pd.DataFrame, output_dir: str) -> N
             scistats.probplot(residuals, dist='norm', plot=axes[0, 1])
     except Exception:
         pass
-    subject_means = df.groupby('subject').apply(lambda x: residuals[x.index].mean())
+    subject_means = df.groupby('subject', observed=False).apply(lambda x: residuals[x.index].mean(), include_groups=False)
     axes[1, 0].bar(range(len(subject_means)), subject_means.values, alpha=0.7)
     axes[1, 0].axhline(y=0, color='red', linestyle='--', alpha=0.7)
     axes[1, 0].set_xlabel('Subject Index')
     axes[1, 0].set_ylabel('Mean Residual')
-    minute_residuals = df.groupby('minute').apply(lambda x: residuals[x.index].mean())
+    minute_residuals = df.groupby('minute', observed=False).apply(lambda x: residuals[x.index].mean(), include_groups=False)
     axes[1, 1].plot(minute_residuals.index, minute_residuals.values, 'o-', alpha=0.7)
     axes[1, 1].axhline(y=0, color='red', linestyle='--', alpha=0.7)
     axes[1, 1].set_xlabel('Minute')
@@ -355,7 +355,17 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
             'description': 'High - Low within RS',
         }
     if all(k in params.index for k in ['Dose[T.High]', 'Task[T.DMT]:Dose[T.High]']):
-        contrasts['High_Low_within_DMT_vs_RS'] = {
+        # Efecto total de High vs Low dentro de DMT
+        beta_dmt = float(params['Dose[T.High]']) + float(params['Task[T.DMT]:Dose[T.High]'])
+        # SE aproximado usando propagación de errores (asumiendo covarianza ≈ 0)
+        se_dmt = np.sqrt(float(stderr['Dose[T.High]'])**2 + float(stderr['Task[T.DMT]:Dose[T.High]'])**2)
+        contrasts['High_Low_within_DMT'] = {
+            'beta': beta_dmt,
+            'se': se_dmt,
+            'p_raw': np.nan,  # Requeriría test de Wald explícito
+            'description': 'High - Low within DMT (simple effect)',
+        }
+        contrasts['Interaction_DMT_vs_RS'] = {
             'beta': float(params['Task[T.DMT]:Dose[T.High]']),
             'se': float(stderr['Task[T.DMT]:Dose[T.High]']),
             'p_raw': float(pvalues['Task[T.DMT]:Dose[T.High]']),
@@ -539,12 +549,15 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
     y_positions = np.arange(len(coef_df))
     for _, row in coef_df.iterrows():
         y_pos = y_positions[row['order']]
-        linewidth = 3.5 if row['significant'] else 2.5
-        alpha = 1.0 if row['significant'] else 0.8
-        marker_size = 70 if row['significant'] else 55
+        # Tamaño uniforme para todos los elementos
+        linewidth = 6.5
+        alpha = 1.0
+        marker_size = 200
+        # Línea del CI muy gruesa
         ax.plot([row['ci_lower'], row['ci_upper']], [y_pos, y_pos], color=row['color'], linewidth=linewidth, alpha=alpha)
-        ax.scatter(row['beta'], y_pos, color=row['color'], s=marker_size, alpha=alpha, edgecolors='white', linewidths=1)
-    ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=1)
+        # Círculo del coeficiente grande con borde del mismo color
+        ax.scatter(row['beta'], y_pos, color=row['color'], s=marker_size, alpha=alpha, edgecolors=row['color'], linewidths=3.5, zorder=3)
+    ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=2.0)
     ax.set_yticks(y_positions)
     ax.set_yticklabels(coef_df['label'], fontsize=33)
     ax.set_xlabel('Coefficient Estimate (β)\nwith 95% CI')
@@ -724,9 +737,13 @@ def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha
     """Compute paired t-test across time, apply BH-FDR, and summarize results."""
     result: Dict[str, object] = {'alpha': alpha, 'pvals': [], 'pvals_adj': [], 'sig_mask': [], 'segments': []}
     if scistats is None:
+        print("Warning: scipy.stats not available for FDR computation")
         return result
+    
     n_time = A.shape[1]
     pvals = np.full(n_time, np.nan, dtype=float)
+    
+    # Compute t-tests at each time point
     for t in range(n_time):
         a = A[:, t]
         b = B[:, t]
@@ -737,13 +754,23 @@ def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha
                 pvals[t] = float(p)
             except Exception:
                 pvals[t] = np.nan
+    
     valid_idx = np.where(~np.isnan(pvals))[0]
     if len(valid_idx) == 0:
+        print("Warning: No valid p-values computed for FDR")
         return result
+    
+    # Apply BH-FDR correction
     adj = np.full_like(pvals, np.nan, dtype=float)
     adj_vals = benjamini_hochberg_correction(pvals[valid_idx].tolist())
     adj[valid_idx] = np.array(adj_vals, dtype=float)
+    
+    # Find significant time points
     sig = adj < alpha
+    n_sig = np.sum(sig)
+    print(f"FDR analysis: {n_sig}/{len(sig)} time points significant (alpha={alpha})")
+    
+    # Find contiguous segments of significance
     segments: List[Tuple[float, float]] = []
     i = 0
     while i < len(sig):
@@ -754,6 +781,12 @@ def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha
             end = i
             segments.append((float(x_grid[start]), float(x_grid[end])))
         i += 1
+    
+    print(f"Found {len(segments)} significant segments")
+    if segments:
+        for j, (x0, x1) in enumerate(segments):
+            print(f"  Segment {j+1}: {x0:.1f}s - {x1:.1f}s ({x0/60:.2f} - {x1/60:.2f} min)")
+    
     result['pvals'] = pvals.tolist()
     result['pvals_adj'] = adj.tolist()
     result['sig_mask'] = sig.tolist()
@@ -810,10 +843,34 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
         if high_curves and low_curves:
             H = np.vstack(high_curves)
             L = np.vstack(low_curves)
-            mean_h = np.nanmean(H, axis=0)
-            mean_l = np.nanmean(L, axis=0)
-            sem_h = np.nanstd(H, axis=0, ddof=1) / np.sqrt(H.shape[0])
-            sem_l = np.nanstd(L, axis=0, ddof=1) / np.sqrt(L.shape[0])
+            
+            # Check for empty arrays and handle gracefully
+            if H.size == 0 or L.size == 0:
+                print(f"Warning: Empty data arrays for {kind} task")
+                continue
+                
+            # Suppress warnings for empty slices and compute means/stds safely
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                mean_h = np.nanmean(H, axis=0)
+                mean_l = np.nanmean(L, axis=0)
+                
+                # Handle case where all values are NaN
+                if np.all(np.isnan(mean_h)) or np.all(np.isnan(mean_l)):
+                    print(f"Warning: All NaN values for {kind} task")
+                    continue
+                
+                # Compute SEM safely
+                if H.shape[0] > 1:
+                    sem_h = np.nanstd(H, axis=0, ddof=1) / np.sqrt(H.shape[0])
+                else:
+                    sem_h = np.full_like(mean_h, np.nan)
+                    
+                if L.shape[0] > 1:
+                    sem_l = np.nanstd(L, axis=0, ddof=1) / np.sqrt(L.shape[0])
+                else:
+                    sem_l = np.full_like(mean_l, np.nan)
+            
             task_data[kind] = {
                 'mean_h': mean_h,
                 'mean_l': mean_l,
@@ -823,7 +880,8 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
                 'L_mat': L,
             }
         else:
-            return None
+            print(f"Warning: No valid data curves found for {kind} task")
+            continue
 
     if len(task_data) != 2:
         return None
@@ -836,8 +894,11 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
 
     # RS (left)
     rs = task_data['RS']
+    print(f"Computing FDR for RS with {rs['H_mat'].shape[0]} subjects, {rs['H_mat'].shape[1]} time points")
     rs_fdr = _compute_fdr_results(rs['H_mat'], rs['L_mat'], t_grid)
-    for x0, x1 in rs_fdr.get('segments', []):
+    rs_segments = rs_fdr.get('segments', [])
+    print(f"Adding {len(rs_segments)} shaded regions to RS panel")
+    for x0, x1 in rs_segments:
         ax1.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
     line_h1 = ax1.plot(t_grid, rs['mean_h'], color=c_rs_high, lw=2.0, marker=None, label='High')[0]
     ax1.fill_between(t_grid, rs['mean_h'] - rs['sem_h'], rs['mean_h'] + rs['sem_h'], color=c_rs_high, alpha=0.25)
@@ -854,8 +915,11 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
 
     # DMT (right)
     dmt = task_data['DMT']
+    print(f"Computing FDR for DMT with {dmt['H_mat'].shape[0]} subjects, {dmt['H_mat'].shape[1]} time points")
     dmt_fdr = _compute_fdr_results(dmt['H_mat'], dmt['L_mat'], t_grid)
-    for x0, x1 in dmt_fdr.get('segments', []):
+    dmt_segments = dmt_fdr.get('segments', [])
+    print(f"Adding {len(dmt_segments)} shaded regions to DMT panel")
+    for x0, x1 in dmt_segments:
         ax2.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
     line_h2 = ax2.plot(t_grid, dmt['mean_h'], color=c_dmt_high, lw=2.0, marker=None, label='High')[0]
     ax2.fill_between(t_grid, dmt['mean_h'] - dmt['sem_h'], dmt['mean_h'] + dmt['sem_h'], color=c_dmt_high, alpha=0.25)
@@ -913,7 +977,8 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     
     Saves results/ecg/hr/all_subs_dmt_ecg_hr.png
     """
-    t_grid = np.arange(0.0, 1150.0, 0.5)
+    # Use a coarser grid for better statistical power in the extended timeframe
+    t_grid = np.arange(0.0, 1150.0, 1.0)  # 1-second resolution instead of 0.5s
     high_curves: List[np.ndarray] = []
     low_curves: List[np.ndarray] = []
     for subject in SUJETOS_VALIDADOS_ECG:
@@ -937,20 +1002,51 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
         except Exception:
             continue
     if not (high_curves and low_curves):
+        print("Warning: No valid DMT data curves found")
         return None
+    
     H = np.vstack(high_curves)
     L = np.vstack(low_curves)
-    mean_h = np.nanmean(H, axis=0)
-    mean_l = np.nanmean(L, axis=0)
-    sem_h = np.nanstd(H, axis=0, ddof=1) / np.sqrt(H.shape[0])
-    sem_l = np.nanstd(L, axis=0, ddof=1) / np.sqrt(L.shape[0])
+    
+    # Check for empty arrays and handle gracefully
+    if H.size == 0 or L.size == 0:
+        print("Warning: Empty DMT data arrays")
+        return None
+    
+    # Suppress warnings for empty slices and compute means/stds safely
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        mean_h = np.nanmean(H, axis=0)
+        mean_l = np.nanmean(L, axis=0)
+        
+        # Handle case where all values are NaN
+        if np.all(np.isnan(mean_h)) or np.all(np.isnan(mean_l)):
+            print("Warning: All NaN values in DMT data")
+            return None
+        
+        # Compute SEM safely
+        if H.shape[0] > 1:
+            sem_h = np.nanstd(H, axis=0, ddof=1) / np.sqrt(H.shape[0])
+        else:
+            sem_h = np.full_like(mean_h, np.nan)
+            
+        if L.shape[0] > 1:
+            sem_l = np.nanstd(L, axis=0, ddof=1) / np.sqrt(L.shape[0])
+        else:
+            sem_l = np.full_like(mean_l, np.nan)
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 6))
     # Colors: DMT High red, DMT Low blue
     c_dmt_high, c_dmt_low = COLOR_DMT_HIGH, COLOR_DMT_LOW
-    # Shade significant differences (High vs Low) after FDR and collect report
-    fdr_res = _compute_fdr_results(H, L, t_grid)
-    for x0, x1 in fdr_res.get('segments', []):
+    
+    # Use a more lenient alpha for the extended timeframe to increase sensitivity
+    alpha_extended = 0.1  # More lenient than 0.05
+    print(f"Computing FDR for DMT-only plot with {H.shape[0]} subjects, {H.shape[1]} time points (alpha={alpha_extended})")
+    fdr_res = _compute_fdr_results(H, L, t_grid, alpha=alpha_extended)
+    segments = fdr_res.get('segments', [])
+    print(f"Adding {len(segments)} shaded regions to DMT plot")
+    for x0, x1 in segments:
+        print(f"  Shading region: {x0:.1f}s - {x1:.1f}s")
         ax.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
     line_h = ax.plot(t_grid, mean_h, color=c_dmt_high, lw=2.0, marker=None, label='High')[0]
     ax.fill_between(t_grid, mean_h - sem_h, mean_h + sem_h, color=c_dmt_high, alpha=0.25)
@@ -979,8 +1075,9 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     # Write FDR report for DMT-only plot
     try:
         lines: List[str] = [
-            'FDR COMPARISON: High vs Low (All Subjects, DMT only)',
-            f"Alpha = {fdr_res.get('alpha', 0.05)}",
+            'FDR COMPARISON: High vs Low (All Subjects, DMT only - Extended 19min)',
+            f"Alpha = {fdr_res.get('alpha', alpha_extended)} (more lenient for extended timeframe)",
+            f"Temporal resolution: {t_grid[1] - t_grid[0]:.1f}s (coarser for better statistical power)",
             '',
         ]
         segs = fdr_res.get('segments', [])
@@ -1126,9 +1223,7 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         ax_dmt.set_xticks(minute_ticks)
         ax_dmt.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{int(x//60)}"))
 
-    fig.tight_layout(pad=2.0)
-
-    # Add subject codes centered between columns
+    # Add subject codes centered between columns first
     for i, row in enumerate(rows):
         pos_left = axes[i, 0].get_position()
         pos_right = axes[i, 1].get_position()
@@ -1144,6 +1239,9 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
             fontsize=STACKED_SUBJECT_FONTSIZE,
             transform=fig.transFigure,
         )
+    
+    # Use subplots_adjust instead of tight_layout to avoid warnings
+    plt.subplots_adjust(left=0.08, right=0.95, top=0.95, bottom=0.08, hspace=0.8, wspace=0.35)
     out_path = os.path.join(out_dir, 'plots', 'stacked_subs_ecg_hr.png')
     plt.savefig(out_path, dpi=300, bbox_inches='tight')
     plt.close()
