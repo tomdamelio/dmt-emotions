@@ -1,0 +1,48 @@
+================================================================================
+LME Model Summary: RRV_RMSSD
+================================================================================
+
+                   Mixed Linear Model Regression Results
+============================================================================
+Model:                  MixedLM       Dependent Variable:       RRV_RMSSD   
+No. Observations:       416           Method:                   REML        
+No. Groups:             12            Scale:                    2402056.1883
+Min. group size:        32            Log-Likelihood:           -3617.6831  
+Max. group size:        36            Converged:                Yes         
+Mean group size:        34.7                                                
+----------------------------------------------------------------------------
+                           Coef.    Std.Err.   z    P>|z|   [0.025   0.975] 
+----------------------------------------------------------------------------
+Intercept                  1610.746  283.074  5.690 0.000  1055.931 2165.561
+Task[T.DMT]                1262.295  214.926  5.873 0.000   841.046 1683.543
+Dose[T.High]                274.668  214.926  1.278 0.201  -146.580  695.916
+Task[T.DMT]:Dose[T.High]   -682.243  303.952 -2.245 0.025 -1277.978  -86.508
+minute_c                    -18.864   51.919 -0.363 0.716  -120.624   82.896
+Task[T.DMT]:minute_c       -206.761   59.883 -3.453 0.001  -324.131  -89.392
+Dose[T.High]:minute_c        35.636   59.883  0.595 0.552   -81.733  153.006
+Group Var                684213.367  210.330                                
+============================================================================
+
+
+Model Fit Statistics:
+  AIC: nan
+  BIC: nan
+  Log-Likelihood: -3617.68
+
+Coefficients with FDR Correction:
+             Coefficient    Estimate         SE         z      p_value  p_value_fdr  significant_fdr
+               Intercept 1610.745826 283.073979  5.690194 1.268952e-08 1.268952e-08            False
+             Task[T.DMT] 1262.294537 214.926472  5.873146 4.276017e-09 4.276017e-09            False
+            Dose[T.High]  274.668176 214.926472  1.277963 2.012623e-01 2.012623e-01            False
+Task[T.DMT]:Dose[T.High] -682.243245 303.951931 -2.244576 2.479536e-02 2.479536e-02            False
+                minute_c  -18.864149  51.919226 -0.363336 7.163535e-01 7.163535e-01            False
+    Task[T.DMT]:minute_c -206.761243  59.883498 -3.452725 5.549548e-04 5.549548e-04            False
+   Dose[T.High]:minute_c   35.636306  59.883498  0.595094 5.517807e-01 5.517807e-01            False
+               Group Var    0.284845   0.135709  2.098933 3.582279e-02 3.582279e-02            False
+
+Marginal Means (Task × Dose):
+Task Dose        Mean         SE
+  RS  Low 1600.248661 115.884509
+  RS High 1874.916837 147.422739
+ DMT  Low 2862.543198 234.363185
+ DMT High 2454.968130 177.660753

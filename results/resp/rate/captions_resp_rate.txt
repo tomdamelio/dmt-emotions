@@ -1,0 +1,39 @@
+Figure: LME Coefficients (RSP_Rate)
+
+Point estimates (β) and 95% CIs for fixed effects from the mixed model. Reference line at zero aids interpretation. Significant effects are visually emphasized.
+
+
+
+Figure: Marginal Means Over Time (RS vs DMT × High vs Low)
+
+Group-level mean ± 95% CI of RSP_Rate (rpm) across the first 9 minutes for each condition (RS Low/High, DMT Low/High). Legends indicate dose levels; shading shows uncertainty.
+
+
+
+Figure: Main Task Effect Over Time
+
+Mean ± 95% CI for RS and DMT (averaged across dose) across minutes 0–8. Illustrates overall task separation and temporal trend.
+
+
+
+Figure: Task × Dose Interaction (Panels)
+
+Left: RS Low vs High; Right: DMT Low vs High. Lines show mean ± 95% CI across minutes 0–8. Highlights how dose effects differ between tasks.
+
+
+
+Figure: Group-level RSP_Rate Timecourse (9 min)
+
+Two panels (RS, DMT) showing mean ± SEM over time; High vs Low dose with legends. Gray shading indicates FDR-significant differences (High vs Low) across time. Time axis in minutes (0–9).
+
+
+
+Figure: DMT-only RSP_Rate Timecourse (~19 min)
+
+Extended timecourse plot showing DMT High vs Low over approximately 19 minutes. Gray shading indicates FDR-significant differences (High vs Low) across time. Mean ± SEM for all subjects. Time axis in minutes (0–19).
+
+
+
+Figure: Stacked Per-Subject RSP_Rate Timecourse (9 min)
+
+Individual subject traces for RS (left) and DMT (right) conditions. High/Low dose traces shown in respective colors. Subject codes centered between panels.

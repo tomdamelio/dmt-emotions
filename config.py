@@ -108,19 +108,11 @@ SUJETOS_VALIDADOS_ECG = [
     'S15', 'S16', 'S18', 'S19', 'S20'
 ] # 11 sujetos 
 
-SUJETOS_VALIDADOS_ECG_deprecated = [
-    'S05', 'S07', 'S08', 'S10', 'S11', 
-    'S12', 'S15', 'S18', 'S19', 'S20'
-] # 10 sujetos 
-
-SUJETOS_VALIDADOS_ECG_deprecated_2 = [
-    'S04', 'S05', 'S06', 'S07', 'S08', 'S09', 'S10', 'S11', 'S12', 'S13',
-    'S15', 'S16', 'S18', 'S19', 'S20'
-] # 15 sujetos 
-
 SUJETOS_VALIDADOS_RESP = [
-    'S04', 'S05', 'S06', 'S07', 'S09', 'S13', 'S15', 'S16', 'S17', 'S18', 'S19', 'S20'
-] # 12 sujetos
+    'S04', 'S05', 'S06', 'S07', 'S13',
+    'S15', 'S16', 'S17', 'S18', 'S20'
+] # 10 sujetos
+
 
 # =============================================================================
 # CONFIGURACIÓN DE EXPERIMENTOS

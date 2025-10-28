@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-Unified HR (Heart Rate) Analysis: LME modeling and visualization (first 9 minutes).
+Unified RSP_RVT (Respiratory Volume per Time) Analysis: LME modeling and visualization (first 9 minutes).
 
-This script processes ECG-derived heart rate (HR) from NeuroKit ECG_Rate column:
-  1) Build long-format per-minute HR dataset (mean HR per minute, 0–8)
+This script processes respiration-derived respiratory volume per time (RSP_RVT) from NeuroKit RSP_RVT column:
+  1) Build long-format per-minute RSP_RVT dataset (mean RVT per minute, 0–8)
   2) Fit LME with Task × Dose and time effects; apply BH-FDR per family
   3) Create coefficient, marginal means, interaction, diagnostics plots
   4) Write model summary as TXT and figure captions
   5) Generate group-level timecourse plot for the first 9 minutes with FDR
 
-Outputs are written to: results/ecg/hr/
+Outputs are written to: results/resp/rvt/
 
 Run:
-  python scripts/run_ecg_hr_analysis.py
+  python scripts/run_resp_rvt_analysis.py
 """
 
 import os
@@ -31,7 +31,7 @@ from matplotlib.ticker import FuncFormatter
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from config import (
     DERIVATIVES_DATA,
-    SUJETOS_VALIDADOS_ECG,
+    SUJETOS_VALIDADOS_RESP,  
     get_dosis_sujeto,
     NEUROKIT_PARAMS,
 )
@@ -115,26 +115,26 @@ def determine_sessions(subject: str) -> Tuple[str, str]:
     return 'session2', 'session1'
 
 
-def build_ecg_paths(subject: str, high_session: str, low_session: str) -> Tuple[str, str]:
-    """Build paths to DMT High and Low ECG CSVs."""
-    base_high = os.path.join(DERIVATIVES_DATA, 'phys', 'ecg', 'dmt_high')
-    base_low = os.path.join(DERIVATIVES_DATA, 'phys', 'ecg', 'dmt_low')
+def build_resp_paths(subject: str, high_session: str, low_session: str) -> Tuple[str, str]:
+    """Build paths to DMT High and Low RESP CSVs."""
+    base_high = os.path.join(DERIVATIVES_DATA, 'phys', 'resp', 'dmt_high')
+    base_low = os.path.join(DERIVATIVES_DATA, 'phys', 'resp', 'dmt_low')
     high_csv = os.path.join(base_high, f"{subject}_dmt_{high_session}_high.csv")
     low_csv = os.path.join(base_low, f"{subject}_dmt_{low_session}_low.csv")
     return high_csv, low_csv
 
 
-def build_rs_ecg_path(subject: str, session: str) -> str:
-    """Build path to RS ECG CSV."""
+def build_rs_resp_path(subject: str, session: str) -> str:
+    """Build path to RS RESP CSV."""
     ses_num = 1 if session == 'session1' else 2
     dose = get_dosis_sujeto(subject, ses_num)  # 'Alta' or 'Baja'
     cond = 'high' if str(dose).lower().startswith('alta') or str(dose).lower().startswith('a') else 'low'
-    base = os.path.join(DERIVATIVES_DATA, 'phys', 'ecg', f'dmt_{cond}')
+    base = os.path.join(DERIVATIVES_DATA, 'phys', 'resp', f'dmt_{cond}')
     return os.path.join(base, f"{subject}_rs_{session}_{cond}.csv")
 
 
-def load_ecg_csv(csv_path: str) -> Optional[pd.DataFrame]:
-    """Load ECG CSV and validate required columns."""
+def load_resp_csv(csv_path: str) -> Optional[pd.DataFrame]:
+    """Load RESP CSV and validate required columns."""
     if not os.path.exists(csv_path):
         return None
     try:
@@ -143,91 +143,91 @@ def load_ecg_csv(csv_path: str) -> Optional[pd.DataFrame]:
         return None
     
     # Validate required columns
-    if 'ECG_Rate' not in df.columns:
+    if 'RSP_RVT' not in df.columns:
         return None
     
     # Reconstruct time if missing
     if 'time' not in df.columns:
-        sr = NEUROKIT_PARAMS.get('sampling_rate_default', 250)
+        sr = NEUROKIT_PARAMS.get('sampling_rvt_default', 250)
         df['time'] = np.arange(len(df)) / float(sr)
     
     return df
 
 
-def compute_hr_mean_per_minute(t: np.ndarray, hr: np.ndarray, minute: int) -> Optional[float]:
-    """Compute mean HR for a specific minute window."""
+def compute_rvt_mean_per_minute(t: np.ndarray, rvt: np.ndarray, minute: int) -> Optional[float]:
+    """Compute mean RSP_RVT for a specific minute window."""
     start_time = minute * 60.0
     end_time = (minute + 1) * 60.0
     mask = (t >= start_time) & (t < end_time)
     if not np.any(mask):
         return None
-    hr_win = hr[mask]
-    hr_win_valid = hr_win[(hr_win >= 35) & (hr_win <= 200)]  # Physiological range
-    if len(hr_win_valid) < 2:
+    rvt_win = rvt[mask]
+    rvt_win_valid = rvt_win[(rvt_win > 0) & (rvt_win < 50000)]  # Physiological range (RVT = Amplitude × Rate)
+    if len(rvt_win_valid) < 2:
         return None
-    return float(np.nanmean(hr_win_valid))
+    return float(np.nanmean(rvt_win_valid))
 
 
-def prepare_long_data_hr() -> pd.DataFrame:
-    """Build long-format per-minute HR table (first 9 minutes)."""
+def prepare_long_data_resp_rvt() -> pd.DataFrame:
+    """Build long-format per-minute RSP_RVT table (first 9 minutes)."""
     rows: List[Dict] = []
-    for subject in SUJETOS_VALIDADOS_ECG:
+    for subject in SUJETOS_VALIDADOS_RESP:
         high_session, low_session = determine_sessions(subject)
-        dmt_high_path, dmt_low_path = build_ecg_paths(subject, high_session, low_session)
-        rs_high_path = build_rs_ecg_path(subject, high_session)
-        rs_low_path = build_rs_ecg_path(subject, low_session)
+        dmt_high_path, dmt_low_path = build_resp_paths(subject, high_session, low_session)
+        rs_high_path = build_rs_resp_path(subject, high_session)
+        rs_low_path = build_rs_resp_path(subject, low_session)
 
-        dmt_high = load_ecg_csv(dmt_high_path)
-        dmt_low = load_ecg_csv(dmt_low_path)
-        rs_high = load_ecg_csv(rs_high_path)
-        rs_low = load_ecg_csv(rs_low_path)
+        dmt_high = load_resp_csv(dmt_high_path)
+        dmt_low = load_resp_csv(dmt_low_path)
+        rs_high = load_resp_csv(rs_high_path)
+        rs_low = load_resp_csv(rs_low_path)
         
         if any(x is None for x in (dmt_high, dmt_low, rs_high, rs_low)):
             continue
 
-        # Extract time and HR
+        # Extract time and RSP_RVT
         t_dmt_high = dmt_high['time'].to_numpy()
-        hr_dmt_high = pd.to_numeric(dmt_high['ECG_Rate'], errors='coerce').to_numpy()
+        rvt_dmt_high = pd.to_numeric(dmt_high['RSP_RVT'], errors='coerce').to_numpy()
         t_dmt_low = dmt_low['time'].to_numpy()
-        hr_dmt_low = pd.to_numeric(dmt_low['ECG_Rate'], errors='coerce').to_numpy()
+        rvt_dmt_low = pd.to_numeric(dmt_low['RSP_RVT'], errors='coerce').to_numpy()
         t_rs_high = rs_high['time'].to_numpy()
-        hr_rs_high = pd.to_numeric(rs_high['ECG_Rate'], errors='coerce').to_numpy()
+        rvt_rs_high = pd.to_numeric(rs_high['RSP_RVT'], errors='coerce').to_numpy()
         t_rs_low = rs_low['time'].to_numpy()
-        hr_rs_low = pd.to_numeric(rs_low['ECG_Rate'], errors='coerce').to_numpy()
+        rvt_rs_low = pd.to_numeric(rs_low['RSP_RVT'], errors='coerce').to_numpy()
 
         # Optional baseline correction
         if BASELINE_CORRECTION:
             # Subtract mean of first minute
-            baseline_dmt_high = compute_hr_mean_per_minute(t_dmt_high, hr_dmt_high, 0)
-            baseline_dmt_low = compute_hr_mean_per_minute(t_dmt_low, hr_dmt_low, 0)
-            baseline_rs_high = compute_hr_mean_per_minute(t_rs_high, hr_rs_high, 0)
-            baseline_rs_low = compute_hr_mean_per_minute(t_rs_low, hr_rs_low, 0)
+            baseline_dmt_high = compute_rvt_mean_per_minute(t_dmt_high, rvt_dmt_high, 0)
+            baseline_dmt_low = compute_rvt_mean_per_minute(t_dmt_low, rvt_dmt_low, 0)
+            baseline_rs_high = compute_rvt_mean_per_minute(t_rs_high, rvt_rs_high, 0)
+            baseline_rs_low = compute_rvt_mean_per_minute(t_rs_low, rvt_rs_low, 0)
             if baseline_dmt_high is not None:
-                hr_dmt_high = hr_dmt_high - baseline_dmt_high
+                rvt_dmt_high = rvt_dmt_high - baseline_dmt_high
             if baseline_dmt_low is not None:
-                hr_dmt_low = hr_dmt_low - baseline_dmt_low
+                rvt_dmt_low = rvt_dmt_low - baseline_dmt_low
             if baseline_rs_high is not None:
-                hr_rs_high = hr_rs_high - baseline_rs_high
+                rvt_rs_high = rvt_rs_high - baseline_rs_high
             if baseline_rs_low is not None:
-                hr_rs_low = hr_rs_low - baseline_rs_low
+                rvt_rs_low = rvt_rs_low - baseline_rs_low
 
         for minute in range(N_MINUTES):
-            hr_dmt_h = compute_hr_mean_per_minute(t_dmt_high, hr_dmt_high, minute)
-            hr_dmt_l = compute_hr_mean_per_minute(t_dmt_low, hr_dmt_low, minute)
-            hr_rs_h = compute_hr_mean_per_minute(t_rs_high, hr_rs_high, minute)
-            hr_rs_l = compute_hr_mean_per_minute(t_rs_low, hr_rs_low, minute)
+            rvt_dmt_h = compute_rvt_mean_per_minute(t_dmt_high, rvt_dmt_high, minute)
+            rvt_dmt_l = compute_rvt_mean_per_minute(t_dmt_low, rvt_dmt_low, minute)
+            rvt_rs_h = compute_rvt_mean_per_minute(t_rs_high, rvt_rs_high, minute)
+            rvt_rs_l = compute_rvt_mean_per_minute(t_rs_low, rvt_rs_low, minute)
             
-            if None not in (hr_dmt_h, hr_dmt_l, hr_rs_h, hr_rs_l):
+            if None not in (rvt_dmt_h, rvt_dmt_l, rvt_rs_h, rvt_rs_l):
                 minute_label = minute + 1  # store minutes as 1..9 instead of 0..8
                 rows.extend([
-                    {'subject': subject, 'minute': minute_label, 'Task': 'DMT', 'Dose': 'High', 'HR': hr_dmt_h},
-                    {'subject': subject, 'minute': minute_label, 'Task': 'DMT', 'Dose': 'Low', 'HR': hr_dmt_l},
-                    {'subject': subject, 'minute': minute_label, 'Task': 'RS', 'Dose': 'High', 'HR': hr_rs_h},
-                    {'subject': subject, 'minute': minute_label, 'Task': 'RS', 'Dose': 'Low', 'HR': hr_rs_l},
+                    {'subject': subject, 'minute': minute_label, 'Task': 'DMT', 'Dose': 'High', 'RSP_RVT': rvt_dmt_h},
+                    {'subject': subject, 'minute': minute_label, 'Task': 'DMT', 'Dose': 'Low', 'RSP_RVT': rvt_dmt_l},
+                    {'subject': subject, 'minute': minute_label, 'Task': 'RS', 'Dose': 'High', 'RSP_RVT': rvt_rs_h},
+                    {'subject': subject, 'minute': minute_label, 'Task': 'RS', 'Dose': 'Low', 'RSP_RVT': rvt_rs_l},
                 ])
 
     if not rows:
-        raise ValueError('No valid HR data found for any subject!')
+        raise ValueError('No valid RSP_RVT data found for any subject!')
 
     df = pd.DataFrame(rows)
     df['Task'] = pd.Categorical(df['Task'], categories=['RS', 'DMT'], ordered=True)
@@ -241,7 +241,7 @@ def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
     if mixedlm is None:
         return None, {'error': 'statsmodels not available'}
     try:
-        formula = 'HR ~ Task * Dose + minute_c + Task:minute_c + Dose:minute_c'
+        formula = 'RSP_RVT ~ Task * Dose + minute_c + Task:minute_c + Dose:minute_c'
         model = mixedlm(formula, df, groups=df['subject'])  # type: ignore[arg-type]
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter('always')
@@ -379,7 +379,7 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
 def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, df: pd.DataFrame, output_dir: str) -> str:
     lines: List[str] = [
         '=' * 80,
-        'LME ANALYSIS REPORT: HR (Heart Rate) by Minute (first 9 minutes)',
+        'LME ANALYSIS REPORT: RSP_RVT (Respiratory Volume per Time (RVT)) by Minute (first 9 minutes)',
         '=' * 80,
         '',
         f"Analysis date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}",
@@ -388,11 +388,11 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, d
         'DESIGN:',
         '  Within-subjects 2×2: Task (RS vs DMT) × Dose (Low vs High)',
         '  Time windows: 9 one-minute windows (0-8 minutes)',
-        '  Dependent variable: Mean HR per minute (bpm)',
+        '  Dependent variable: Mean RSP_RVT per minute (a.u./min)',
         f'  Baseline correction: {BASELINE_CORRECTION}',
         '',
         'MODEL SPECIFICATION:',
-        '  Fixed effects: HR ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c',
+        '  Fixed effects: RSP_RVT ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c',
         '  Random effects: ~ 1 | subject',
         '  Where minute_c = minute - mean(minute) [centered time]',
         '',
@@ -434,10 +434,10 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, d
             sig = '***' if res['p_raw'] < 0.001 else '**' if res['p_raw'] < 0.01 else '*' if res['p_raw'] < 0.05 else ''
             lines.extend([f"  {res['description']}:", f"    β = {res['beta']:8.4f}, SE = {res['se']:6.4f}, p = {res['p_raw']:6.4f} {sig}", ''])
     lines.extend(['', 'DATA SUMMARY:', '-' * 30])
-    cell = df.groupby(['Task', 'Dose'], observed=False)['HR'].agg(['count', 'mean', 'std']).round(4)
-    lines.extend(['Cell means (HR by Task × Dose):', str(cell), ''])
-    trend = df.groupby('minute', observed=False)['HR'].agg(['count', 'mean', 'std']).round(4)
-    lines.extend(['Time trend (HR by minute):', str(trend), ''])
+    cell = df.groupby(['Task', 'Dose'], observed=False)['RSP_RVT'].agg(['count', 'mean', 'std']).round(4)
+    lines.extend(['Cell means (RSP_RVT by Task × Dose):', str(cell), ''])
+    trend = df.groupby('minute', observed=False)['RSP_RVT'].agg(['count', 'mean', 'std']).round(4)
+    lines.extend(['Time trend (RSP_RVT by minute):', str(trend), ''])
     lines.extend(['', '=' * 80])
     out_path = os.path.join(output_dir, 'lme_analysis_report.txt')
     with open(out_path, 'w', encoding='utf-8') as f:
@@ -570,7 +570,7 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
 
 
 def compute_empirical_means_and_ci(df: pd.DataFrame, confidence: float = 0.95) -> pd.DataFrame:
-    grouped = df.groupby(['minute', 'Task', 'Dose'], observed=False)['HR']
+    grouped = df.groupby(['minute', 'Task', 'Dose'], observed=False)['RSP_RVT']
     stats_df = grouped.agg(['count', 'mean', 'std', 'sem']).reset_index()
     stats_df.columns = ['minute', 'Task', 'Dose', 'n', 'mean', 'std', 'se']
     stats_df['condition'] = stats_df['Task'].astype(str) + '_' + stats_df['Dose'].astype(str)
@@ -603,7 +603,7 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
         ax.plot(cond_data['minute'], cond_data['mean'], color=color, linewidth=2.5, label=condition.replace('_', ' '), marker='o', markersize=5)
         ax.fill_between(cond_data['minute'], cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
     ax.set_xlabel('Time (minutes)')
-    ax.set_ylabel('HR (bpm)')
+    ax.set_ylabel('RSP_RVT (a.u./min)')
     ticks = list(range(1, N_MINUTES + 1))
     ax.set_xticks(ticks)
     ax.set_xlim(0.8, N_MINUTES + 0.2)
@@ -630,7 +630,7 @@ def create_task_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
         ax.plot(task_data['minute'], task_data['mean'], color=color, linewidth=3, label=f'{task}', marker='o', markersize=6)
         ax.fill_between(task_data['minute'], task_data['ci_lower'], task_data['ci_upper'], color=color, alpha=0.2)
     ax.set_xlabel('Time (minutes)')
-    ax.set_ylabel('HR (bpm)')
+    ax.set_ylabel('RSP_RVT (a.u./min)')
     ticks = list(range(1, N_MINUTES + 1))
     ax.set_xticks(ticks)
     ax.set_xlim(0.8, N_MINUTES + 0.2)
@@ -651,7 +651,7 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str) -> None:
         ax1.plot(cond_data['minute'], cond_data['mean'], color=color, linewidth=2.5, label=condition.replace('RS_', ''), marker='o', markersize=4)
         ax1.fill_between(cond_data['minute'], cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
     ax1.set_xlabel('Time (minutes)')
-    ax1.set_ylabel('HR (bpm)')
+    ax1.set_ylabel('RSP_RVT (a.u./min)')
     ax1.grid(True, which='major', axis='y', alpha=0.25)
     ax1.grid(False, which='major', axis='x')
     ticks = list(range(1, N_MINUTES + 1))
@@ -683,7 +683,7 @@ def create_effect_sizes_table(coef_df: pd.DataFrame, output_path: str) -> None:
     table[numeric] = table[numeric].round(4)
     table['interpretation'] = table.apply(lambda r: (
         f"{'Significant' if r['p_fdr'] < 0.05 else 'Non-significant'} "
-        f"{'increase' if r['beta'] > 0 else 'decrease'} in HR"), axis=1)
+        f"{'increase' if r['beta'] > 0 else 'decrease'} in RSP_RVT"), axis=1)
     table.to_csv(output_path, index=False)
 
 
@@ -693,7 +693,7 @@ def create_model_summary_txt(diagnostics: Dict, coef_df: pd.DataFrame, output_pa
         '=' * 60,
         '',
         'Fixed Effects Formula:',
-        'HR ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c',
+        'RSP_RVT ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c',
         '',
         'Random Effects: ~ 1 | subject',
         '',
@@ -802,31 +802,31 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     for kind in ['RS', 'DMT']:
         high_curves: List[np.ndarray] = []
         low_curves: List[np.ndarray] = []
-        for subject in SUJETOS_VALIDADOS_ECG:
+        for subject in SUJETOS_VALIDADOS_RESP:
             try:
                 if kind == 'DMT':
                     high_session, low_session = determine_sessions(subject)
-                    p_high, p_low = build_ecg_paths(subject, high_session, low_session)
-                    d_high = load_ecg_csv(p_high)
-                    d_low = load_ecg_csv(p_low)
+                    p_high, p_low = build_resp_paths(subject, high_session, low_session)
+                    d_high = load_resp_csv(p_high)
+                    d_low = load_resp_csv(p_low)
                     if any(x is None for x in (d_high, d_low)):
                         continue
                     th = d_high['time'].to_numpy()
-                    yh = pd.to_numeric(d_high['ECG_Rate'], errors='coerce').to_numpy()
+                    yh = pd.to_numeric(d_high['RSP_RVT'], errors='coerce').to_numpy()
                     tl = d_low['time'].to_numpy()
-                    yl = pd.to_numeric(d_low['ECG_Rate'], errors='coerce').to_numpy()
+                    yl = pd.to_numeric(d_low['RSP_RVT'], errors='coerce').to_numpy()
                 else:  # RS
                     high_session, low_session = determine_sessions(subject)
-                    p_rsh = build_rs_ecg_path(subject, high_session)
-                    p_rsl = build_rs_ecg_path(subject, low_session)
-                    r_high = load_ecg_csv(p_rsh)
-                    r_low = load_ecg_csv(p_rsl)
+                    p_rsh = build_rs_resp_path(subject, high_session)
+                    p_rsl = build_rs_resp_path(subject, low_session)
+                    r_high = load_resp_csv(p_rsh)
+                    r_low = load_resp_csv(p_rsl)
                     if any(x is None for x in (r_high, r_low)):
                         continue
                     th = r_high['time'].to_numpy()
-                    yh = pd.to_numeric(r_high['ECG_Rate'], errors='coerce').to_numpy()
+                    yh = pd.to_numeric(r_high['RSP_RVT'], errors='coerce').to_numpy()
                     tl = r_low['time'].to_numpy()
-                    yl = pd.to_numeric(r_low['ECG_Rate'], errors='coerce').to_numpy()
+                    yl = pd.to_numeric(r_low['RSP_RVT'], errors='coerce').to_numpy()
 
                 # Trim to 0..540s
                 mh = (th >= 0.0) & (th <= 540.0)
@@ -908,7 +908,7 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     legend1.get_frame().set_facecolor('white')
     legend1.get_frame().set_alpha(0.9)
     ax1.set_xlabel('Time (minutes)')
-    ax1.set_ylabel(r'$\mathbf{Electrocardiography}$' + '\nHR (bpm)', fontsize=28)
+    ax1.set_ylabel(r'$\mathbf{Respiration}$' + '\nRVT (a.u./min)', fontsize=28)
     ax1.set_title('Resting State (RS)', fontweight='bold')
     ax1.grid(True, which='major', axis='y', alpha=0.25)
     ax1.grid(False, which='major', axis='x')
@@ -941,7 +941,7 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
         ax.set_xlim(0.0, 540.0)
 
     plt.tight_layout()
-    out_path = os.path.join(out_dir, 'plots', 'all_subs_ecg_hr.png')
+    out_path = os.path.join(out_dir, 'plots', 'all_subs_resp_rvt.png')
     plt.savefig(out_path, dpi=400, bbox_inches='tight')
     plt.close()
 
@@ -965,7 +965,7 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
             report_lines.append('')
         _panel_section('RS', rs_fdr)
         _panel_section('DMT', dmt_fdr)
-        with open(os.path.join(out_dir, 'fdr_segments_all_subs_ecg_hr.txt'), 'w', encoding='utf-8') as f:
+        with open(os.path.join(out_dir, 'fdr_segments_all_subs_resp_rvt.txt'), 'w', encoding='utf-8') as f:
             f.write('\n'.join(report_lines))
     except Exception:
         pass
@@ -975,24 +975,24 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
 def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     """Create DMT-only extended plot (~19 minutes) with FDR shading.
     
-    Saves results/ecg/hr/all_subs_dmt_ecg_hr.png
+    Saves results/resp/rvt/all_subs_dmt_resp_hr.png
     """
     # Use a coarser grid for better statistical power in the extended timeframe
     t_grid = np.arange(0.0, 1150.0, 1.0)  # 1-second resolution instead of 0.5s
     high_curves: List[np.ndarray] = []
     low_curves: List[np.ndarray] = []
-    for subject in SUJETOS_VALIDADOS_ECG:
+    for subject in SUJETOS_VALIDADOS_RESP:
         try:
             high_session, low_session = determine_sessions(subject)
-            p_high, p_low = build_ecg_paths(subject, high_session, low_session)
-            d_high = load_ecg_csv(p_high)
-            d_low = load_ecg_csv(p_low)
+            p_high, p_low = build_resp_paths(subject, high_session, low_session)
+            d_high = load_resp_csv(p_high)
+            d_low = load_resp_csv(p_low)
             if any(x is None for x in (d_high, d_low)):
                 continue
             th = d_high['time'].to_numpy()
-            yh = pd.to_numeric(d_high['ECG_Rate'], errors='coerce').to_numpy()
+            yh = pd.to_numeric(d_high['RSP_RVT'], errors='coerce').to_numpy()
             tl = d_low['time'].to_numpy()
-            yl = pd.to_numeric(d_low['ECG_Rate'], errors='coerce').to_numpy()
+            yl = pd.to_numeric(d_low['RSP_RVT'], errors='coerce').to_numpy()
             mh = (th >= 0.0) & (th < 1150.0)
             ml = (tl >= 0.0) & (tl < 1150.0)
             th, yh = th[mh], yh[mh]
@@ -1057,7 +1057,7 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
     ax.set_xlabel('Time (minutes)')
-    ax.set_ylabel(r'$\mathbf{Electrocardiography}$' + '\nHR (bpm)', fontsize=28)
+    ax.set_ylabel(r'$\mathbf{Respiration}$' + '\nRVT (a.u./min)', fontsize=28)
     ax.set_title('DMT', fontweight='bold')
     # Subtle grid: y-only, light alpha
     ax.grid(True, which='major', axis='y', alpha=0.25)
@@ -1068,7 +1068,7 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     ax.set_xlim(0.0, 1150.0)
 
     plt.tight_layout()
-    out_path = os.path.join(out_dir, 'plots', 'all_subs_dmt_ecg_hr.png')
+    out_path = os.path.join(out_dir, 'plots', 'all_subs_dmt_resp_rvt.png')
     plt.savefig(out_path, dpi=400, bbox_inches='tight')
     plt.close()
 
@@ -1089,7 +1089,7 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
         p_adj = [v for v in fdr_res.get('pvals_adj', []) if isinstance(v, (int, float)) and not np.isnan(v)]
         if p_adj:
             lines.append(f"Min p_FDR: {np.nanmin(p_adj):.6f}; Median p_FDR: {np.nanmedian(p_adj):.6f}")
-        with open(os.path.join(out_dir, 'fdr_segments_all_subs_dmt_ecg_hr.txt'), 'w', encoding='utf-8') as f:
+        with open(os.path.join(out_dir, 'fdr_segments_all_subs_dmt_resp_rvt.txt'), 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines))
     except Exception:
         pass
@@ -1100,35 +1100,35 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
     """Create a stacked per-subject figure (RS left, DMT right) for 9 minutes."""
     limit_sec = 550.0
     rows: List[Dict] = []
-    for subject in SUJETOS_VALIDADOS_ECG:
+    for subject in SUJETOS_VALIDADOS_RESP:
         try:
             # DMT
             high_session, low_session = determine_sessions(subject)
-            p_high, p_low = build_ecg_paths(subject, high_session, low_session)
-            d_high = load_ecg_csv(p_high)
-            d_low = load_ecg_csv(p_low)
+            p_high, p_low = build_resp_paths(subject, high_session, low_session)
+            d_high = load_resp_csv(p_high)
+            d_low = load_resp_csv(p_low)
             if any(x is None for x in (d_high, d_low)):
                 continue
             th = d_high['time'].to_numpy()
-            yh = pd.to_numeric(d_high['ECG_Rate'], errors='coerce').to_numpy()
+            yh = pd.to_numeric(d_high['RSP_RVT'], errors='coerce').to_numpy()
             tl = d_low['time'].to_numpy()
-            yl = pd.to_numeric(d_low['ECG_Rate'], errors='coerce').to_numpy()
+            yl = pd.to_numeric(d_low['RSP_RVT'], errors='coerce').to_numpy()
             mh = (th >= 0.0) & (th <= limit_sec)
             ml = (tl >= 0.0) & (tl <= limit_sec)
             th, yh = th[mh], yh[mh]
             tl, yl = tl[ml], yl[ml]
 
             # RS
-            p_r1 = build_rs_ecg_path(subject, 'session1')
-            p_r2 = build_rs_ecg_path(subject, 'session2')
-            r1 = load_ecg_csv(p_r1)
-            r2 = load_ecg_csv(p_r2)
+            p_r1 = build_rs_resp_path(subject, 'session1')
+            p_r2 = build_rs_resp_path(subject, 'session2')
+            r1 = load_resp_csv(p_r1)
+            r2 = load_resp_csv(p_r2)
             if any(x is None for x in (r1, r2)):
                 continue
             tr1 = r1['time'].to_numpy()
-            yr1 = pd.to_numeric(r1['ECG_Rate'], errors='coerce').to_numpy()
+            yr1 = pd.to_numeric(r1['RSP_RVT'], errors='coerce').to_numpy()
             tr2 = r2['time'].to_numpy()
-            yr2 = pd.to_numeric(r2['ECG_Rate'], errors='coerce').to_numpy()
+            yr2 = pd.to_numeric(r2['RSP_RVT'], errors='coerce').to_numpy()
             m1 = (tr1 >= 0.0) & (tr1 <= limit_sec)
             m2 = (tr2 >= 0.0) & (tr2 <= limit_sec)
             tr1, yr1 = tr1[m1], yr1[m1]
@@ -1187,7 +1187,7 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         else:
             ax_rs.plot(row['t_rs2'], row['y_rs2'], color=c_rs_low, lw=1.4)
         ax_rs.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
-        ax_rs.set_ylabel(r'$\mathbf{Electrocardiography}$' + '\nHR (bpm)', fontsize=12)
+        ax_rs.set_ylabel(r'$\mathbf{Respiration}$' + '\nRVT (a.u./min)', fontsize=STACKED_AXES_LABEL_SIZE)
         ax_rs.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_rs.set_title('Resting State (RS)', fontweight='bold')
         ax_rs.set_xlim(0.0, limit_sec)
@@ -1204,7 +1204,7 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         ax_dmt.plot(row['t_dmt_h'], row['y_dmt_h'], color=c_dmt_high, lw=1.4)
         ax_dmt.plot(row['t_dmt_l'], row['y_dmt_l'], color=c_dmt_low, lw=1.4)
         ax_dmt.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
-        ax_dmt.set_ylabel(r'$\mathbf{Electrocardiography}$' + '\nHR (bpm)', fontsize=12)
+        ax_dmt.set_ylabel(r'$\mathbf{Respiration}$' + '\nRVT (a.u./min)', fontsize=STACKED_AXES_LABEL_SIZE)
         ax_dmt.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_dmt.set_title('DMT', fontweight='bold')
         ax_dmt.set_xlim(0.0, limit_sec)
@@ -1242,7 +1242,7 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
             fontsize=STACKED_SUBJECT_FONTSIZE,
             transform=fig.transFigure,
         )
-    out_path = os.path.join(out_dir, 'plots', 'stacked_subs_ecg_hr.png')
+    out_path = os.path.join(out_dir, 'plots', 'stacked_subs_resp_rvt.png')
     plt.savefig(out_path, dpi=300, bbox_inches='tight')
     plt.close()
     return out_path
@@ -1250,12 +1250,12 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
 
 def generate_captions_file(output_dir: str) -> None:
     captions = [
-        'Figure: LME Coefficients (HR)\n\n'
+        'Figure: LME Coefficients (RSP_RVT)\n\n'
         'Point estimates (β) and 95% CIs for fixed effects from the mixed model. '
         'Reference line at zero aids interpretation. Significant effects are visually emphasized.',
         '',
         'Figure: Marginal Means Over Time (RS vs DMT × High vs Low)\n\n'
-        'Group-level mean ± 95% CI of HR (bpm) across the first 9 minutes for each condition (RS Low/High, DMT Low/High). '
+        'Group-level mean ± 95% CI of RSP_RVT (a.u./min) across the first 9 minutes for each condition (RS Low/High, DMT Low/High). '
         'Legends indicate dose levels; shading shows uncertainty.',
         '',
         'Figure: Main Task Effect Over Time\n\n'
@@ -1266,34 +1266,34 @@ def generate_captions_file(output_dir: str) -> None:
         'Left: RS Low vs High; Right: DMT Low vs High. Lines show mean ± 95% CI across minutes 0–8. '
         'Highlights how dose effects differ between tasks.',
         '',
-        'Figure: Group-level HR Timecourse (9 min)\n\n'
+        'Figure: Group-level RSP_RVT Timecourse (9 min)\n\n'
         'Two panels (RS, DMT) showing mean ± SEM over time; High vs Low dose with legends. '
         'Gray shading indicates FDR-significant differences (High vs Low) across time. '
         'Time axis in minutes (0–9).',
         '',
-        'Figure: DMT-only HR Timecourse (~19 min)\n\n'
+        'Figure: DMT-only RSP_RVT Timecourse (~19 min)\n\n'
         'Extended timecourse plot showing DMT High vs Low over approximately 19 minutes. '
         'Gray shading indicates FDR-significant differences (High vs Low) across time. '
         'Mean ± SEM for all subjects. Time axis in minutes (0–19).',
         '',
-        'Figure: Stacked Per-Subject HR Timecourse (9 min)\n\n'
+        'Figure: Stacked Per-Subject RSP_RVT Timecourse (9 min)\n\n'
         'Individual subject traces for RS (left) and DMT (right) conditions. '
         'High/Low dose traces shown in respective colors. Subject codes centered between panels.',
     ]
-    with open(os.path.join(output_dir, 'captions_hr.txt'), 'w', encoding='utf-8') as f:
+    with open(os.path.join(output_dir, 'captions_resp_rvt.txt'), 'w', encoding='utf-8') as f:
         f.write('\n\n'.join(captions))
 
 
 def main() -> bool:
-    out_dir = os.path.join('results', 'ecg', 'hr')
+    out_dir = os.path.join('results', 'resp', 'rvt')
     plots_dir = os.path.join(out_dir, 'plots')
     os.makedirs(plots_dir, exist_ok=True)
     try:
         # Data
-        print("Preparing long-format HR data...")
-        df = prepare_long_data_hr()
-        df.to_csv(os.path.join(out_dir, 'hr_minute_long_data.csv'), index=False)
-        print(f"  ✓ Loaded {len(df['subject'].unique())} subjects with {len(df)} observations")
+        print("Preparing long-format RSP_RVT data...")
+        df = prepare_long_data_resp_rvt()
+        df.to_csv(os.path.join(out_dir, 'resp_rvt_minute_long_data.csv'), index=False)
+        print(f"  Loaded {len(df['subject'].unique())} subjects with {len(df)} observations")
         
         # LME
         print("Fitting LME model...")
@@ -1304,7 +1304,7 @@ def main() -> bool:
         print("Performing hypothesis testing with FDR correction...")
         hyp = hypothesis_testing_with_fdr(fitted)
         report_path = generate_report(fitted, diagnostics, hyp, df, out_dir)
-        print(f"  ✓ Report saved: {report_path}")
+        print(f"  Report saved: {report_path}")
         
         # Coefficients
         print("Generating plots...")
@@ -1347,9 +1347,9 @@ def main() -> bool:
         # Captions
         generate_captions_file(out_dir)
         
-        print(f"\n✓ HR analysis complete! Results in: {out_dir}")
+        print(f"\nRespiration RVT analysis complete! Results in: {out_dir}")
     except Exception as e:
-        print(f'HR analysis failed: {e}')
+        print(f'Respiration RVT analysis failed: {e}')
         import traceback
         traceback.print_exc()
         return False

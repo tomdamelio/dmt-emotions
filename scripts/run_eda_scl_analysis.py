@@ -342,9 +342,13 @@ def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha
     """
     result: Dict[str, object] = {'alpha': alpha, 'pvals': [], 'pvals_adj': [], 'sig_mask': [], 'segments': []}
     if scistats is None:
+        print("Warning: scipy.stats not available for FDR computation")
         return result
+    
     n_time = A.shape[1]
     pvals = np.full(n_time, np.nan, dtype=float)
+    
+    # Compute t-tests at each time point
     for t in range(n_time):
         a = A[:, t]
         b = B[:, t]
@@ -355,13 +359,23 @@ def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha
                 pvals[t] = float(p)
             except Exception:
                 pvals[t] = np.nan
+    
     valid_idx = np.where(~np.isnan(pvals))[0]
     if len(valid_idx) == 0:
+        print("Warning: No valid p-values computed for FDR")
         return result
+    
+    # Apply BH-FDR correction
     adj = np.full_like(pvals, np.nan, dtype=float)
     adj_vals = benjamini_hochberg_correction(pvals[valid_idx].tolist())
     adj[valid_idx] = np.array(adj_vals, dtype=float)
+    
+    # Find significant time points
     sig = adj < alpha
+    n_sig = np.sum(sig)
+    print(f"FDR analysis: {n_sig}/{len(sig)} time points significant (alpha={alpha})")
+    
+    # Find contiguous segments of significance
     segments: List[Tuple[float, float]] = []
     i = 0
     while i < len(sig):
@@ -372,6 +386,12 @@ def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha
             end = i
             segments.append((float(x_grid[start]), float(x_grid[end])))
         i += 1
+    
+    print(f"Found {len(segments)} significant segments")
+    if segments:
+        for j, (x0, x1) in enumerate(segments):
+            print(f"  Segment {j+1}: {x0:.1f}s - {x1:.1f}s ({x0/60:.2f} - {x1/60:.2f} min)")
+    
     result['pvals'] = pvals.tolist()
     result['pvals_adj'] = adj.tolist()
     result['sig_mask'] = sig.tolist()
@@ -844,10 +864,34 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
         if high_curves and low_curves:
             H = np.vstack(high_curves)
             L = np.vstack(low_curves)
-            mean_h = np.nanmean(H, axis=0)
-            mean_l = np.nanmean(L, axis=0)
-            sem_h = np.nanstd(H, axis=0, ddof=1) / np.sqrt(H.shape[0])
-            sem_l = np.nanstd(L, axis=0, ddof=1) / np.sqrt(L.shape[0])
+            
+            # Check for empty arrays and handle gracefully
+            if H.size == 0 or L.size == 0:
+                print(f"Warning: Empty data arrays for {kind} task")
+                continue
+                
+            # Suppress warnings for empty slices and compute means/stds safely
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                mean_h = np.nanmean(H, axis=0)
+                mean_l = np.nanmean(L, axis=0)
+                
+                # Handle case where all values are NaN
+                if np.all(np.isnan(mean_h)) or np.all(np.isnan(mean_l)):
+                    print(f"Warning: All NaN values for {kind} task")
+                    continue
+                
+                # Compute SEM safely
+                if H.shape[0] > 1:
+                    sem_h = np.nanstd(H, axis=0, ddof=1) / np.sqrt(H.shape[0])
+                else:
+                    sem_h = np.full_like(mean_h, np.nan)
+                    
+                if L.shape[0] > 1:
+                    sem_l = np.nanstd(L, axis=0, ddof=1) / np.sqrt(L.shape[0])
+                else:
+                    sem_l = np.full_like(mean_l, np.nan)
+            
             task_data[kind] = {
                 'mean_h': mean_h,
                 'mean_l': mean_l,
@@ -857,7 +901,8 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
                 'L_mat': L,
             }
         else:
-            return None
+            print(f"Warning: No valid data curves found for {kind} task")
+            continue
 
     if len(task_data) != 2:
         return None
@@ -872,8 +917,11 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     # RS (left)
     rs = task_data['RS']
     # Shade significant differences (High vs Low) and collect report
+    print(f"Computing FDR for RS with {rs['H_mat'].shape[0]} subjects, {rs['H_mat'].shape[1]} time points")
     rs_fdr = _compute_fdr_results(rs['H_mat'], rs['L_mat'], t_grid)
-    for x0, x1 in rs_fdr.get('segments', []):
+    rs_segments = rs_fdr.get('segments', [])
+    print(f"Adding {len(rs_segments)} shaded regions to RS panel")
+    for x0, x1 in rs_segments:
         ax1.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
     line_h1 = ax1.plot(t_grid, rs['mean_h'], color=c_rs_high, lw=2.0, marker=None, label='High')[0]
     ax1.fill_between(t_grid, rs['mean_h'] - rs['sem_h'], rs['mean_h'] + rs['sem_h'], color=c_rs_high, alpha=0.25)
@@ -883,15 +931,18 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     legend1.get_frame().set_facecolor('white')
     legend1.get_frame().set_alpha(0.9)
     ax1.set_xlabel('Time (minutes)')
-    ax1.set_ylabel('ΔSCL (µS)')
+    ax1.set_ylabel(r'$\mathbf{Electrodermal\ Activity}$' + '\nΔSCL (µS)', fontsize=28)
     ax1.set_title('Resting State (RS)', fontweight='bold')
     ax1.grid(True, which='major', axis='y', alpha=0.25)
     ax1.grid(False, which='major', axis='x')
 
     # DMT (right)
     dmt = task_data['DMT']
+    print(f"Computing FDR for DMT with {dmt['H_mat'].shape[0]} subjects, {dmt['H_mat'].shape[1]} time points")
     dmt_fdr = _compute_fdr_results(dmt['H_mat'], dmt['L_mat'], t_grid)
-    for x0, x1 in dmt_fdr.get('segments', []):
+    dmt_segments = dmt_fdr.get('segments', [])
+    print(f"Adding {len(dmt_segments)} shaded regions to DMT panel")
+    for x0, x1 in dmt_segments:
         ax2.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
     line_h2 = ax2.plot(t_grid, dmt['mean_h'], color=c_dmt_high, lw=2.0, marker=None, label='High')[0]
     ax2.fill_between(t_grid, dmt['mean_h'] - dmt['sem_h'], dmt['mean_h'] + dmt['sem_h'], color=c_dmt_high, alpha=0.25)
@@ -974,20 +1025,51 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
         except Exception:
             continue
     if not (high_curves and low_curves):
+        print("Warning: No valid DMT data curves found")
         return None
+    
     H = np.vstack(high_curves)
     L = np.vstack(low_curves)
-    mean_h = np.nanmean(H, axis=0)
-    mean_l = np.nanmean(L, axis=0)
-    sem_h = np.nanstd(H, axis=0, ddof=1) / np.sqrt(H.shape[0])
-    sem_l = np.nanstd(L, axis=0, ddof=1) / np.sqrt(L.shape[0])
+    
+    # Check for empty arrays and handle gracefully
+    if H.size == 0 or L.size == 0:
+        print("Warning: Empty DMT data arrays")
+        return None
+    
+    # Suppress warnings for empty slices and compute means/stds safely
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        mean_h = np.nanmean(H, axis=0)
+        mean_l = np.nanmean(L, axis=0)
+        
+        # Handle case where all values are NaN
+        if np.all(np.isnan(mean_h)) or np.all(np.isnan(mean_l)):
+            print("Warning: All NaN values in DMT data")
+            return None
+        
+        # Compute SEM safely
+        if H.shape[0] > 1:
+            sem_h = np.nanstd(H, axis=0, ddof=1) / np.sqrt(H.shape[0])
+        else:
+            sem_h = np.full_like(mean_h, np.nan)
+            
+        if L.shape[0] > 1:
+            sem_l = np.nanstd(L, axis=0, ddof=1) / np.sqrt(L.shape[0])
+        else:
+            sem_l = np.full_like(mean_l, np.nan)
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 6))
     # Colors: DMT High red, DMT Low blue
     c_dmt_high, c_dmt_low = COLOR_DMT_HIGH, COLOR_DMT_LOW
-    # Shade significant differences (High vs Low) after FDR and collect report
-    fdr_res = _compute_fdr_results(H, L, t_grid)
-    for x0, x1 in fdr_res.get('segments', []):
+    
+    # Use standard alpha=0.05 for consistency across all plots
+    alpha_standard = 0.05
+    print(f"Computing FDR for DMT-only plot with {H.shape[0]} subjects, {H.shape[1]} time points (alpha={alpha_standard})")
+    fdr_res = _compute_fdr_results(H, L, t_grid, alpha=alpha_standard)
+    segments = fdr_res.get('segments', [])
+    print(f"Adding {len(segments)} shaded regions to DMT plot")
+    for x0, x1 in segments:
+        print(f"  Shading region: {x0:.1f}s - {x1:.1f}s")
         ax.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
     line_h = ax.plot(t_grid, mean_h, color=c_dmt_high, lw=2.0, marker=None, label='High')[0]
     ax.fill_between(t_grid, mean_h - sem_h, mean_h + sem_h, color=c_dmt_high, alpha=0.25)
@@ -998,7 +1080,7 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
     ax.set_xlabel('Time (minutes)')
-    ax.set_ylabel('ΔSCL (µS)')
+    ax.set_ylabel(r'$\mathbf{Electrodermal\ Activity}$' + '\nΔSCL (µS)', fontsize=28)
     ax.set_title('DMT', fontweight='bold')
     # Subtle grid: y-only, light alpha
     ax.grid(True, which='major', axis='y', alpha=0.25)
@@ -1018,8 +1100,9 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     # Write FDR report for DMT-only plot
     try:
         lines: List[str] = [
-            'FDR COMPARISON: High vs Low (All Subjects, DMT only)',
-            f"Alpha = {fdr_res.get('alpha', 0.05)}",
+            'FDR COMPARISON: High vs Low (All Subjects, DMT only - Extended 19min)',
+            f"Alpha = {fdr_res.get('alpha', alpha_standard)}",
+            f"Temporal resolution: {t_grid[1] - t_grid[0]:.1f}s",
             '',
         ]
         segs = fdr_res.get('segments', [])
@@ -1127,7 +1210,7 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         else:
             ax_rs.plot(row['t_rs2'], row['y_rs2'], color=c_rs_low, lw=1.4)
         ax_rs.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
-        ax_rs.set_ylabel('ΔSCL (µS)', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_rs.set_ylabel(r'$\mathbf{Electrodermal\ Activity}$' + '\nΔSCL (µS)', fontsize=12)
         ax_rs.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_rs.set_title('Resting State (RS)', fontweight='bold')
         ax_rs.set_xlim(0.0, limit_sec)
@@ -1144,7 +1227,7 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         ax_dmt.plot(row['t_dmt_h'], row['y_dmt_h'], color=c_dmt_high, lw=1.4)
         ax_dmt.plot(row['t_dmt_l'], row['y_dmt_l'], color=c_dmt_low, lw=1.4)
         ax_dmt.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
-        ax_dmt.set_ylabel('ΔSCL (µS)', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_dmt.set_ylabel(r'$\mathbf{Electrodermal\ Activity}$' + '\nΔSCL (µS)', fontsize=12)
         ax_dmt.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_dmt.set_title('DMT', fontweight='bold')
         ax_dmt.set_xlim(0.0, limit_sec)
