@@ -90,11 +90,15 @@ plt.rcParams.update({
     'ytick.labelsize': TICK_LABEL_SIZE_SMALL,
 })
 
-# Fixed colors to match the project's convention
-COLOR_RS_HIGH = 'tab:green'
-COLOR_RS_LOW = 'tab:purple'
-COLOR_DMT_HIGH = 'tab:red'
-COLOR_DMT_LOW = 'tab:blue'
+# Respiration modality uses green color scheme from tab20c palette
+# High and Low are consistent across RS and DMT using first and third gradients of green
+# tab20c has 20 colors in 5 groups of 4 gradients each
+# Green group: indices 8-11 (darkest to lightest)
+tab20c_colors = plt.cm.tab20c.colors
+COLOR_RS_HIGH = tab20c_colors[8]   # First green gradient (darkest/most intense) for High
+COLOR_RS_LOW = tab20c_colors[10]   # Third green gradient (lighter) for Low
+COLOR_DMT_HIGH = tab20c_colors[8]  # Same intense green for High
+COLOR_DMT_LOW = tab20c_colors[10]  # Same lighter green for Low
 
 # Analysis window: first 9 minutes
 N_MINUTES = 9  # minutes 0..8
@@ -513,10 +517,12 @@ def prepare_coefficient_data(coefficients: Dict) -> pd.DataFrame:
         'Dose[T.High]:minute_c': 'Dose × Time',
         'Task[T.DMT]:Dose[T.High]': 'Task × Dose'
     }
+    # Use Respiration modality color (green tones from tab20c) with distinct shades for visual distinction
+    # Green group from tab20c: indices 8-11 (darkest to lightest)
     fam_colors = {
-        'Task': COLOR_DMT_HIGH,
-        'Dose': COLOR_RS_HIGH,
-        'Interaction': COLOR_DMT_LOW,
+        'Task': tab20c_colors[8],      # First green gradient (darkest/most intense)
+        'Dose': tab20c_colors[9],      # Second green gradient (medium)
+        'Interaction': tab20c_colors[10],  # Third green gradient (lighter)
     }
     rows: List[Dict] = []
     for i, p in enumerate(order):
@@ -908,7 +914,13 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     legend1.get_frame().set_facecolor('white')
     legend1.get_frame().set_alpha(0.9)
     ax1.set_xlabel('Time (minutes)')
-    ax1.set_ylabel(r'$\mathbf{Respiration}$' + '\nRVT (a.u./min)', fontsize=28)
+    # Use green color from tab20c for Respiration (RESP/RVT modality) - only first line colored
+    ax1.text(-0.20, 0.5, 'Respiration', transform=ax1.transAxes, 
+             fontsize=28, fontweight='bold', color=tab20c_colors[8],
+             rotation=90, va='center', ha='center')
+    ax1.text(-0.12, 0.5, 'RVT (a.u./min)', transform=ax1.transAxes, 
+             fontsize=28, fontweight='normal', color='black', 
+             rotation=90, va='center', ha='center')
     ax1.set_title('Resting State (RS)', fontweight='bold')
     ax1.grid(True, which='major', axis='y', alpha=0.25)
     ax1.grid(False, which='major', axis='x')
@@ -1313,13 +1325,8 @@ def main() -> bool:
         create_coefficient_plot(coef_df, os.path.join(plots_dir, 'lme_coefficient_plot.png'))
         create_effect_sizes_table(coef_df, os.path.join(plots_dir, 'effect_sizes_table.csv'))
         
-        # Marginal means + derived plots
-        stats_df = compute_empirical_means_and_ci(df)
-        create_marginal_means_plot(stats_df, os.path.join(plots_dir, 'marginal_means_all_conditions.png'))
-        create_task_effect_plot(stats_df, os.path.join(plots_dir, 'task_main_effect.png'))
-        create_interaction_plot(stats_df, os.path.join(plots_dir, 'task_dose_interaction.png'))
-        
         # Summary statistics
+        stats_df = compute_empirical_means_and_ci(df)
         overall = stats_df.groupby('condition').agg({
             'mean': 'mean',
             'se': lambda x: np.sqrt(np.sum(x**2) / max(len(x), 1)),

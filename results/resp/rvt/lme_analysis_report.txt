@@ -2,7 +2,7 @@
 LME ANALYSIS REPORT: RSP_RVT (Respiratory Volume per Time (RVT)) by Minute (first 9 minutes)
 ================================================================================
 
-Analysis date: 2025-10-28 15:08:16
+Analysis date: 2025-10-29 13:04:30
 Dataset: 360 observations from 10 subjects
 
 DESIGN:

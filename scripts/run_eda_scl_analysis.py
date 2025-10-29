@@ -91,11 +91,15 @@ plt.rcParams.update({
     'ytick.labelsize': TICK_LABEL_SIZE_SMALL,
 })
 
-# Fixed colors to match the project's convention
-COLOR_RS_HIGH = 'tab:green'
-COLOR_RS_LOW = 'tab:purple'
-COLOR_DMT_HIGH = 'tab:red'
-COLOR_DMT_LOW = 'tab:blue'
+# EDA modality uses blue color scheme from tab20c palette
+# High and Low are consistent across RS and DMT using first and third gradients of blue
+# tab20c has 20 colors in 5 groups of 4 gradients each
+# Blue group: indices 4-7 (darkest to lightest)
+tab20c_colors = plt.cm.tab20c.colors
+COLOR_RS_HIGH = tab20c_colors[4]   # First blue gradient (darkest/most intense) for High
+COLOR_RS_LOW = tab20c_colors[6]    # Third blue gradient (lighter) for Low
+COLOR_DMT_HIGH = tab20c_colors[4]  # Same intense blue for High
+COLOR_DMT_LOW = tab20c_colors[6]   # Same lighter blue for Low
 
 # Analysis window: first 9 minutes
 N_MINUTES = 9  # minutes 0..8
@@ -173,7 +177,7 @@ def compute_auc_minute_window(t: np.ndarray, y: np.ndarray, minute: int) -> Opti
     y_win = y[mask]
     if len(t_win) < 2:
         return None
-    return float(np.trapz(y_win, t_win))
+    return float(np.trapezoid(y_win, t_win))
 
 
 def prepare_long_data_scl() -> pd.DataFrame:
@@ -261,12 +265,12 @@ def plot_model_diagnostics(fitted_model, df: pd.DataFrame, output_dir: str) -> N
             scistats.probplot(residuals, dist='norm', plot=axes[0, 1])
     except Exception:
         pass
-    subject_means = df.groupby('subject').apply(lambda x: residuals[x.index].mean())
+    subject_means = df.groupby('subject', observed=False).apply(lambda x: residuals[x.index].mean(), include_groups=False)
     axes[1, 0].bar(range(len(subject_means)), subject_means.values, alpha=0.7)
     axes[1, 0].axhline(y=0, color='red', linestyle='--', alpha=0.7)
     axes[1, 0].set_xlabel('Subject Index')
     axes[1, 0].set_ylabel('Mean Residual')
-    minute_residuals = df.groupby('minute').apply(lambda x: residuals[x.index].mean())
+    minute_residuals = df.groupby('minute', observed=False).apply(lambda x: residuals[x.index].mean(), include_groups=False)
     axes[1, 1].plot(minute_residuals.index, minute_residuals.values, 'o-', alpha=0.7)
     axes[1, 1].axhline(y=0, color='red', linestyle='--', alpha=0.7)
     axes[1, 1].set_xlabel('Minute')
@@ -515,9 +519,9 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, d
             sig = '***' if res['p_raw'] < 0.001 else '**' if res['p_raw'] < 0.01 else '*' if res['p_raw'] < 0.05 else ''
             lines.extend([f"  {res['description']}:", f"    β = {res['beta']:8.4f}, SE = {res['se']:6.4f}, p = {res['p_raw']:6.4f} {sig}", ''])
     lines.extend(['', 'DATA SUMMARY:', '-' * 30])
-    cell = df.groupby(['Task', 'Dose'])['AUC'].agg(['count', 'mean', 'std']).round(4)
+    cell = df.groupby(['Task', 'Dose'], observed=False)['AUC'].agg(['count', 'mean', 'std']).round(4)
     lines.extend(['Cell means (AUC by Task × Dose):', str(cell), ''])
-    trend = df.groupby('minute')['AUC'].agg(['count', 'mean', 'std']).round(4)
+    trend = df.groupby('minute', observed=False)['AUC'].agg(['count', 'mean', 'std']).round(4)
     lines.extend(['Time trend (AUC by minute):', str(trend), ''])
     lines.extend(['', '=' * 80])
     out_path = os.path.join(output_dir, 'lme_analysis_report.txt')
@@ -594,10 +598,12 @@ def prepare_coefficient_data(coefficients: Dict) -> pd.DataFrame:
         'Dose[T.High]:minute_c': 'Dose × Time',
         'Task[T.DMT]:Dose[T.High]': 'Task × Dose'
     }
+    # Use EDA modality color (blue tones from tab20c) with distinct shades for visual distinction
+    # Blue group from tab20c: indices 4-7 (darkest to lightest)
     fam_colors = {
-        'Task': COLOR_DMT_HIGH,
-        'Dose': COLOR_RS_HIGH,
-        'Interaction': COLOR_DMT_LOW,
+        'Task': tab20c_colors[4],      # First blue gradient (darkest/most intense)
+        'Dose': tab20c_colors[5],      # Second blue gradient (medium)
+        'Interaction': tab20c_colors[6],  # Third blue gradient (lighter)
     }
     rows: List[Dict] = []
     for i, p in enumerate(order):
@@ -651,7 +657,7 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
 
 
 def compute_empirical_means_and_ci(df: pd.DataFrame, confidence: float = 0.95) -> pd.DataFrame:
-    grouped = df.groupby(['minute', 'Task', 'Dose'])['AUC']
+    grouped = df.groupby(['minute', 'Task', 'Dose'], observed=False)['AUC']
     stats_df = grouped.agg(['count', 'mean', 'std', 'sem']).reset_index()
     stats_df.columns = ['minute', 'Task', 'Dose', 'n', 'mean', 'std', 'se']
     stats_df['condition'] = stats_df['Task'].astype(str) + '_' + stats_df['Dose'].astype(str)
@@ -931,7 +937,13 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     legend1.get_frame().set_facecolor('white')
     legend1.get_frame().set_alpha(0.9)
     ax1.set_xlabel('Time (minutes)')
-    ax1.set_ylabel(r'$\mathbf{Electrodermal\ Activity}$' + '\nΔSCL (µS)', fontsize=28)
+    # Use blue color from tab20c for Electrodermal Activity (EDA/SCL modality) - only first line colored
+    ax1.text(-0.20, 0.5, 'Electrodermal Activity', transform=ax1.transAxes, 
+             fontsize=28, fontweight='bold', color=tab20c_colors[4],
+             rotation=90, va='center', ha='center')
+    ax1.text(-0.12, 0.5, 'ΔSCL (µS)', transform=ax1.transAxes, 
+             fontsize=28, fontweight='normal', color='black', 
+             rotation=90, va='center', ha='center')
     ax1.set_title('Resting State (RS)', fontweight='bold')
     ax1.grid(True, which='major', axis='y', alpha=0.25)
     ax1.grid(False, which='major', axis='x')
@@ -1080,7 +1092,13 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
     ax.set_xlabel('Time (minutes)')
-    ax.set_ylabel(r'$\mathbf{Electrodermal\ Activity}$' + '\nΔSCL (µS)', fontsize=28)
+    # Use blue color from tab20c for Electrodermal Activity (EDA/SCL modality) - only first line colored
+    ax.text(-0.20, 0.5, 'Electrodermal Activity', transform=ax.transAxes, 
+            fontsize=28, fontweight='bold', color=tab20c_colors[4],
+            rotation=90, va='center', ha='center')
+    ax.text(-0.12, 0.5, 'ΔSCL (µS)', transform=ax.transAxes, 
+            fontsize=28, fontweight='normal', color='black', 
+            rotation=90, va='center', ha='center')
     ax.set_title('DMT', fontweight='bold')
     # Subtle grid: y-only, light alpha
     ax.grid(True, which='major', axis='y', alpha=0.25)
@@ -1319,12 +1337,8 @@ def main() -> bool:
         coef_df = prepare_coefficient_data(coefs)
         create_coefficient_plot(coef_df, os.path.join(plots_dir, 'lme_coefficient_plot.png'))
         create_effect_sizes_table(coef_df, os.path.join(plots_dir, 'effect_sizes_table.csv'))
-        # Marginal means + derived plots
-        stats_df = compute_empirical_means_and_ci(df)
-        create_marginal_means_plot(stats_df, os.path.join(plots_dir, 'marginal_means_all_conditions.png'))
-        create_task_effect_plot(stats_df, os.path.join(plots_dir, 'task_main_effect.png'))
-        create_interaction_plot(stats_df, os.path.join(plots_dir, 'task_dose_interaction.png'))
         # Summary statistics
+        stats_df = compute_empirical_means_and_ci(df)
         overall = stats_df.groupby('condition').agg({
             'mean': 'mean',
             'se': lambda x: np.sqrt(np.sum(x**2) / max(len(x), 1)),
