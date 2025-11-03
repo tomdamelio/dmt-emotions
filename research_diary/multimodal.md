@@ -22,23 +22,32 @@ Empecemos modificando `run_ecg_hr_analysis.py` para ver si esto genera los cambi
 
 [x] Crear la caption de este panel multimodal en la seccion de resultados del paper  (y eliminar luego todas las figuras que ya no van ahi)
 
-SEGUIR DESDE ACA ->
 
-[ ] Pasar todas las figuras que correspondan a material suplementario.
 
-1. Figuras de las 3 medidas de 19 min long (o dejo solo la de ECG como esta ahora?)
-2. Figras de las 3 medidas stackeadas para todos lso participantes (o stackeo nomas para los sujetos qeu tenga para las 3 medidas?)
+[x] Pasar todas las figuras que correspondan a material suplementario.
+
+1. Figuras de las 3 medidas de 19 min long (o dejo solo la de ECG como esta ahora?). Dejo solo la de ECG, como esta ahora.
+2. Figras de las 3 medidas stackeadas para todos lso participantes (o stackeo nomas para los sujetos qeu tenga para las 3 medidas?). Por ahora stackeo todas.
 
 - Adaptar las captions y el texto de la seccion de resulados de forma acorde a estas nuevas figuras
 - Cambiar tambien (y extender) la seccion de materiales suplementarios.
 
-[ ] Arreglar los filenames de las figuras, dejando claro cuales son figuras principales (numeradas en orden) y cuales de materiales suplementarios (y eliminar los paneles deprecados)
+[x] Arreglar los filenames de las figuras, dejando claro cuales son figuras principales (numeradas en orden) y cuales de materiales suplementarios (y eliminar los paneles deprecados)
+
+SEGUIR DESDE ACA ->
+
+[ ] Revisar que la caption de la tabla S1 este bien (esta chequeando eso desde chatgpt y claude). Si eso no marca errores, seguir con el resto de los comentarios del documento.
 
 [ ] Revisar todos los comentarios que estan en el documento
 
+Mostrar a diego esto (al menos figuras principales, etc).
+Pasarselo maximo el martes a la noche, para que Diego pueda revisarlo en el tren el miercoles y jueves
 
 Analisis multimodales
 ---------------------
+
+Diego me dijo que podria iterar con chatgpt para usar los 6 o 7 sujetos, y hacer un LME con esos participantes.
+De esta forma, ademas de tener coeficientes por cada una de las condiciones, ademas tendria un coeficientes particulares por el tipo de señal y un coeficiente por el promedio de señales. Hace sentido esto? iterarlo con chatgpt.
 
 [ ] Hacer analisis multimodales con los 6 sujetos compartidos con las 3 señales fisiologicas:
 S04, S06, S07, S16, S18, S20 (n = 6).
