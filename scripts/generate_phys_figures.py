@@ -12,18 +12,23 @@ Figure 1 (3x2 grid - Combined HR, SCL, RVT):
   E (row3-left):  results/resp/rvt/plots/all_subs_resp_rvt.png
   F (row3-right): results/resp/rvt/plots/lme_coefficient_plot.png
 
-Figure S1 (1x2 horizontal - EDA SMNA):
+Figure S1 (single panel - DMT ECG HR extended):
+  results/ecg/hr/plots/all_subs_dmt_ecg_hr.png
+
+Figure S2 (1x2 horizontal - EDA SMNA):
   A (left):       results/eda/smna/plots/all_subs_smna.png
   B (right):      results/eda/smna/plots/lme_coefficient_plot.png
 
-Figure S2 (1x2 horizontal - EDA stacked):
-  A (left):       results/eda/scl/plots/stacked_subs_eda_scl.png
-  B (right):      results/eda/smna/plots/stacked_subs_smna.png
+Figure S3 (1x3 horizontal - Stacked subjects for all modalities):
+  A (left):       results/ecg/hr/plots/stacked_subs_ecg_hr.png
+  B (center):     results/eda/scl/plots/stacked_subs_eda_scl.png
+  C (right):      results/resp/rvt/plots/stacked_subs_resp_rvt.png
 
 Outputs:
   results/figures/figure_1.png
   results/figures/figure_S1.png
   results/figures/figure_S2.png
+  results/figures/figure_S3.png
 """
 
 import os
@@ -172,7 +177,31 @@ def create_figure_one() -> str:
 
 
 def create_figure_S1() -> str:
-    """Create Figure S1: EDA SMNA analysis (1x2 horizontal layout)."""
+    """Create Figure S1: DMT ECG HR extended timecourse (single panel)."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Simply copy the DMT extended HR plot
+    source_path = str(ECG_ROOT / 'hr' / 'plots' / 'all_subs_dmt_ecg_hr.png')
+    img = _load_image(source_path)
+    
+    if img is None:
+        print(f"[ERROR] Could not load {source_path}")
+        return ""
+    
+    # Create a simple figure with the image
+    fig = plt.figure(figsize=(12, 6))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.axis('off')
+    ax.imshow(img)
+    
+    out_path = str(OUT_DIR / 'figure_S1.png')
+    plt.savefig(out_path, dpi=400, bbox_inches='tight')
+    plt.close()
+    return out_path
+
+
+def create_figure_S2() -> str:
+    """Create Figure S2: EDA SMNA analysis (1x2 horizontal layout)."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     A_path = str(EDA_ROOT / 'smna' / 'plots' / 'all_subs_smna.png')
@@ -213,42 +242,70 @@ def create_figure_S1() -> str:
         offset = left_offset if i == 0 else right_offset
         fig.text(pos.x0 - 0.01, pos.y1 + offset, label, fontsize=30, fontweight='bold', ha='left', va='top')
 
-    out_path = str(OUT_DIR / 'figure_S1.png')
+    out_path = str(OUT_DIR / 'figure_S2.png')
     plt.savefig(out_path, dpi=400, bbox_inches='tight')
     plt.close()
     return out_path
 
 
-def create_figure_S2() -> str:
-    """Create Figure S2: EDA stacked subjects (1x2 horizontal layout)."""
+def create_figure_S3() -> str:
+    """Create Figure S3: Stacked subjects for all modalities (1x3 horizontal layout)."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    A_path = str(EDA_ROOT / 'scl' / 'plots' / 'stacked_subs_eda_scl.png')
-    B_path = str(EDA_ROOT / 'smna' / 'plots' / 'stacked_subs_smna.png')
+    A_path = str(ECG_ROOT / 'hr' / 'plots' / 'stacked_subs_ecg_hr.png')
+    B_path = str(EDA_ROOT / 'scl' / 'plots' / 'stacked_subs_eda_scl.png')
+    C_path = str(RESP_ROOT / 'rvt' / 'plots' / 'stacked_subs_resp_rvt.png')
 
     A_img = _load_image(A_path)
     B_img = _load_image(B_path)
+    C_img = _load_image(C_path)
 
-    # GridSpec con separación mínima entre subplots
-    fig = plt.figure(figsize=(12, 28))
-    gs = fig.add_gridspec(1, 2,
-                          wspace=0.05,    # Separación horizontal mínima
-                          hspace=0.0,
-                          left=0.01,
-                          right=0.99,
-                          top=0.99,
-                          bottom=0.01)
+    # Create figure without GridSpec - use manual positioning
+    fig = plt.figure(figsize=(30, 28))
     
-    axes = [
-        fig.add_subplot(gs[0, 0]),
-        fig.add_subplot(gs[0, 1]),
-    ]
+    # Calculate aspect ratios for all images
+    if A_img is not None:
+        A_aspect = A_img.shape[0] / A_img.shape[1]
+    if B_img is not None:
+        B_aspect = B_img.shape[0] / B_img.shape[1]
+    if C_img is not None:
+        C_aspect = C_img.shape[0] / C_img.shape[1]
     
-    # Posicionar letras aún más arriba y a la izquierda para evitar superposición completa
-    _place(axes[0], A_img, 'A', label_xy=(-0.03, 1.08))
-    _place(axes[1], B_img, 'B', label_xy=(-0.03, 1.08))
+    # Define positions manually - all with same top (y1 = 0.99)
+    # Each subplot gets equal width with almost no spacing
+    subplot_width = 0.33
+    spacing = -0.005
+    top = 0.99
+    
+    # Calculate heights based on aspect ratios to maintain image proportions
+    A_height = subplot_width * A_aspect if A_img is not None else 0.9
+    B_height = subplot_width * B_aspect if B_img is not None else 0.9
+    C_height = subplot_width * C_aspect if C_img is not None else 0.9
+    
+    # Create axes with manual positions [x0, y0, width, height]
+    # All start from same top, but have different heights
+    ax_A = fig.add_axes([0.01, top - A_height, subplot_width, A_height])
+    ax_B = fig.add_axes([0.01 + subplot_width + spacing, top - B_height, subplot_width, B_height])
+    ax_C = fig.add_axes([0.01 + 2*(subplot_width + spacing), top - C_height, subplot_width, C_height])
+    
+    axes = [ax_A, ax_B, ax_C]
+    imgs = [A_img, B_img, C_img]
+    
+    # Place images
+    for ax, img in zip(axes, imgs):
+        ax.axis('off')
+        if img is not None:
+            ax.imshow(img)
+    
+    # Place labels using figure coordinates
+    labels = ['A', 'B', 'C']
+    offset = 0.02
+    
+    for ax, label in zip(axes, labels):
+        pos = ax.get_position()
+        fig.text(pos.x0 - 0.005, pos.y1 + offset, label, fontsize=30, fontweight='bold', ha='left', va='top')
 
-    out_path = str(OUT_DIR / 'figure_S2.png')
+    out_path = str(OUT_DIR / 'figure_S3.png')
     plt.savefig(out_path, dpi=400, bbox_inches='tight')
     plt.close()
     return out_path
@@ -261,6 +318,8 @@ def main() -> None:
     print(f"Figure S1 saved to: {figS1}")
     figS2 = create_figure_S2()
     print(f"Figure S2 saved to: {figS2}")
+    figS3 = create_figure_S3()
+    print(f"Figure S3 saved to: {figS3}")
 
 
 if __name__ == '__main__':

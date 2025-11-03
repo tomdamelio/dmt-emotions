@@ -2,8 +2,8 @@
 LME ANALYSIS REPORT: RSP_RVT (Respiratory Volume per Time (RVT)) by Minute (first 9 minutes)
 ================================================================================
 
-Analysis date: 2025-10-29 13:04:30
-Dataset: 360 observations from 10 subjects
+Analysis date: 2025-11-03 11:41:08
+Dataset: 432 observations from 12 subjects
 
 DESIGN:
   Within-subjects 2×2: Task (RS vs DMT) × Dose (Low vs High)
@@ -19,12 +19,12 @@ MODEL SPECIFICATION:
 MODEL FIT STATISTICS:
   AIC: nan
   BIC: nan
-  Log-likelihood: -1619.03
-  N observations: 360
-  N subjects: 10
+  Log-likelihood: -1963.94
+  N observations: 432
+  N subjects: 12
   Random effects variance:             Group
-Group  283.929072
-  Residual variance: 466.834852
+Group  237.268843
+  Residual variance: 510.819930
 
 Model converged without warnings
 
@@ -34,47 +34,47 @@ HYPOTHESIS TESTING RESULTS (with BH-FDR correction):
 FAMILY TASK:
 ------------------------------
   Task[T.DMT]:
-    β =  -0.1194, SE = 3.2209
-    95% CI: [ -6.4322,   6.1934]
-    p_raw = 0.9704, p_FDR = 0.9704 
+    β =  -0.5199, SE = 3.0757
+    95% CI: [ -6.5481,   5.5082]
+    p_raw = 0.8658, p_FDR = 0.8658 
 
   Task[T.DMT]:minute_c:
-    β =  -0.2020, SE = 0.8821
-    95% CI: [ -1.9308,   1.5269]
-    p_raw = 0.8189, p_FDR = 0.9704 
+    β =   0.3100, SE = 0.8423
+    95% CI: [ -1.3408,   1.9609]
+    p_raw = 0.7128, p_FDR = 0.8658 
 
 
 FAMILY DOSE:
 ------------------------------
   Dose[T.High]:
-    β =   5.0864, SE = 3.2209
-    95% CI: [ -1.2264,  11.3993]
-    p_raw = 0.1143, p_FDR = 0.2286 
+    β =   6.8336, SE = 3.0757
+    95% CI: [  0.8054,  12.8617]
+    p_raw = 0.0263, p_FDR = 0.0526 
 
   Dose[T.High]:minute_c:
-    β =  -0.6190, SE = 0.8821
-    95% CI: [ -2.3478,   1.1099]
-    p_raw = 0.4829, p_FDR = 0.4829 
+    β =   0.1795, SE = 0.8423
+    95% CI: [ -1.4714,   1.8304]
+    p_raw = 0.8313, p_FDR = 0.8313 
 
 
 FAMILY INTERACTION:
 ------------------------------
   Task[T.DMT]:Dose[T.High]:
-    β =  11.1635, SE = 4.5550
-    95% CI: [  2.2359,  20.0912]
-    p_raw = 0.0143, p_FDR = 0.0143 *
+    β =  14.3527, SE = 4.3496
+    95% CI: [  5.8276,  22.8779]
+    p_raw = 0.0010, p_FDR = 0.0010 ***
 
 
 CONDITIONAL CONTRASTS:
 ------------------------------
   High - Low within RS:
-    β =   5.0864, SE = 3.2209, p = 0.1143 
+    β =   6.8336, SE = 3.0757, p = 0.0263 *
 
   High - Low within DMT (simple effect):
-    β =  16.2500, SE = 5.5787, p =    nan 
+    β =  21.1863, SE = 5.3272, p =    nan 
 
   (High - Low within DMT) - (High - Low within RS):
-    β =  11.1635, SE = 4.5550, p = 0.0143 *
+    β =  14.3527, SE = 4.3496, p = 0.0010 ***
 
 
 DATA SUMMARY:
@@ -82,23 +82,23 @@ DATA SUMMARY:
 Cell means (RSP_RVT by Task × Dose):
            count     mean      std
 Task Dose                         
-RS   Low      90  46.2769  26.5366
-     High     90  51.3634  24.8811
-DMT  Low      90  46.1576  22.3752
-     High     90  62.4075  32.7440
+RS   Low     108  44.1959  25.4084
+     High    108  51.0295  23.2913
+DMT  Low     108  43.6760  21.6003
+     High    108  64.8623  35.6134
 
 Time trend (RSP_RVT by minute):
         count     mean      std
 minute                         
-1          40  49.6164  21.6754
-2          40  47.3852  25.0097
-3          40  51.9553  26.5952
-4          40  50.2780  27.2365
-5          40  52.8619  26.3361
-6          40  53.4101  27.9642
-7          40  53.7657  30.5066
-8          40  51.8047  31.2690
-9          40  52.8847  32.3770
+1          48  48.8173  20.7826
+2          48  45.3690  24.1092
+3          48  50.8309  25.7471
+4          48  49.0790  26.1969
+5          48  52.4421  26.5271
+6          48  53.2102  29.0711
+7          48  54.6236  34.7021
+8          48  51.8879  33.1138
+9          48  52.2081  32.4006
 
 
 ================================================================================

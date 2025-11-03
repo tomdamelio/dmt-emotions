@@ -2,8 +2,8 @@
 LME ANALYSIS REPORT: HR (Heart Rate) by Minute (first 9 minutes)
 ================================================================================
 
-Analysis date: 2025-10-29 13:04:39
-Dataset: 396 observations from 11 subjects
+Analysis date: 2025-11-03 11:42:44
+Dataset: 540 observations from 15 subjects
 
 DESIGN:
   Within-subjects 2×2: Task (RS vs DMT) × Dose (Low vs High)
@@ -19,12 +19,12 @@ MODEL SPECIFICATION:
 MODEL FIT STATISTICS:
   AIC: nan
   BIC: nan
-  Log-likelihood: -1479.05
-  N observations: 396
-  N subjects: 11
-  Random effects variance:            Group
-Group  78.650872
-  Residual variance: 97.328278
+  Log-likelihood: -2039.66
+  N observations: 540
+  N subjects: 15
+  Random effects variance:             Group
+Group  146.336224
+  Residual variance: 102.929558
 
 Model converged without warnings
 
@@ -34,47 +34,47 @@ HYPOTHESIS TESTING RESULTS (with BH-FDR correction):
 FAMILY TASK:
 ------------------------------
   Task[T.DMT]:
-    β =  10.8283, SE = 1.4022
-    95% CI: [  8.0800,  13.5766]
+    β =  12.7116, SE = 1.2349
+    95% CI: [ 10.2913,  15.1319]
     p_raw = 0.0000, p_FDR = 0.0000 ***
 
   Task[T.DMT]:minute_c:
-    β =  -2.4170, SE = 0.3840
-    95% CI: [ -3.1696,  -1.6643]
+    β =  -2.4160, SE = 0.3382
+    95% CI: [ -3.0788,  -1.7531]
     p_raw = 0.0000, p_FDR = 0.0000 ***
 
 
 FAMILY DOSE:
 ------------------------------
   Dose[T.High]:
-    β =  -2.2057, SE = 1.4022
-    95% CI: [ -4.9540,   0.5426]
-    p_raw = 0.1157, p_FDR = 0.2314 
+    β =  -0.6993, SE = 1.2349
+    95% CI: [ -3.1196,   1.7209]
+    p_raw = 0.5712, p_FDR = 0.5712 
 
   Dose[T.High]:minute_c:
-    β =   0.3412, SE = 0.3840
-    95% CI: [ -0.4114,   1.0939]
-    p_raw = 0.3742, p_FDR = 0.3742 
+    β =   0.4128, SE = 0.3382
+    95% CI: [ -0.2500,   1.0757]
+    p_raw = 0.2222, p_FDR = 0.4443 
 
 
 FAMILY INTERACTION:
 ------------------------------
   Task[T.DMT]:Dose[T.High]:
-    β =  15.8396, SE = 1.9830
-    95% CI: [ 11.9529,  19.7263]
+    β =  12.0720, SE = 1.7464
+    95% CI: [  8.6492,  15.4948]
     p_raw = 0.0000, p_FDR = 0.0000 ***
 
 
 CONDITIONAL CONTRASTS:
 ------------------------------
   High - Low within RS:
-    β =  -2.2057, SE = 1.4022, p = 0.1157 
+    β =  -0.6993, SE = 1.2349, p = 0.5712 
 
   High - Low within DMT (simple effect):
-    β =  13.6339, SE = 2.4287, p =    nan 
+    β =  11.3726, SE = 2.1388, p =    nan 
 
   (High - Low within DMT) - (High - Low within RS):
-    β =  15.8396, SE = 1.9830, p = 0.0000 ***
+    β =  12.0720, SE = 1.7464, p = 0.0000 ***
 
 
 DATA SUMMARY:
@@ -82,23 +82,23 @@ DATA SUMMARY:
 Cell means (HR by Task × Dose):
            count     mean      std
 Task Dose                         
-RS   Low      99  68.0182   9.2877
-     High     99  65.8125   9.1876
-DMT  Low      99  78.8465  13.8516
-     High     99  92.4804  19.7636
+RS   Low     135  68.8865   8.8011
+     High    135  68.1872  13.3769
+DMT  Low     135  81.5981  16.6993
+     High    135  92.9708  22.4175
 
 Time trend (HR by minute):
         count     mean      std
 minute                         
-1          44  76.3196  15.2273
-2          44  81.6604  21.6782
-3          44  82.0623  22.2641
-4          44  78.5569  18.3692
-5          44  76.6240  17.0505
-6          44  74.9100  15.6489
-7          44  73.3697  14.5190
-8          44  72.1532  13.5273
-9          44  70.9482  12.4336
+1          60  78.0972  18.1464
+2          60  83.4910  23.4480
+3          60  83.4424  23.3867
+4          60  80.1848  20.0872
+5          60  78.0174  18.5186
+6          60  76.3899  17.6055
+7          60  75.0303  16.1398
+8          60  73.7011  15.2616
+9          60  72.8418  14.5238
 
 
 ================================================================================
