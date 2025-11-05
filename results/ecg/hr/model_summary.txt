@@ -2,7 +2,7 @@ LME MODEL SUMMARY
 ============================================================
 
 Fixed Effects Formula:
-HR ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c
+HR ~ State*Dose + minute_c + State:minute_c + Dose:minute_c
 
 Random Effects: ~ 1 | subject
 
@@ -14,6 +14,6 @@ N observations: 396
 N subjects: 11
 
 Significant Fixed Effects (p_FDR < 0.05):
-• Task (DMT vs RS): β = 10.828 ***
-• Task × Time: β = -2.417 ***
-• Task × Dose: β = 15.840 ***
+• State (DMT vs RS): β = 10.828 ***
+• State × Time: β = -2.417 ***
+• State × Dose: β = 15.840 ***

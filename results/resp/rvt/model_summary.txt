@@ -2,7 +2,7 @@ LME MODEL SUMMARY
 ============================================================
 
 Fixed Effects Formula:
-RSP_RVT ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c
+RSP_RVT ~ State*Dose + minute_c + State:minute_c + Dose:minute_c
 
 Random Effects: ~ 1 | subject
 
@@ -14,4 +14,4 @@ N observations: 432
 N subjects: 12
 
 Significant Fixed Effects (p_FDR < 0.05):
-• Task × Dose: β = 14.353 ***
+• State × Dose: β = 14.353 ***

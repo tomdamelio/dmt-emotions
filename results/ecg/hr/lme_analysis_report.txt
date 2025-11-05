@@ -2,17 +2,17 @@
 LME ANALYSIS REPORT: HR (Heart Rate) by Minute (first 9 minutes)
 ================================================================================
 
-Analysis date: 2025-11-03 12:24:15
+Analysis date: 2025-11-05 21:39:50
 Dataset: 396 observations from 11 subjects
 
 DESIGN:
-  Within-subjects 2×2: Task (RS vs DMT) × Dose (Low vs High)
+  Within-subjects 2×2: State (RS vs DMT) × Dose (Low vs High)
   Time windows: 9 one-minute windows (0-8 minutes)
   Dependent variable: Mean HR per minute (bpm)
   Baseline correction: False
 
 MODEL SPECIFICATION:
-  Fixed effects: HR ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c
+  Fixed effects: HR ~ State*Dose + minute_c + State:minute_c + Dose:minute_c
   Random effects: ~ 1 | subject
   Where minute_c = minute - mean(minute) [centered time]
 
@@ -31,14 +31,14 @@ Model converged without warnings
 HYPOTHESIS TESTING RESULTS (with BH-FDR correction):
 ============================================================
 
-FAMILY TASK:
+FAMILY STATE:
 ------------------------------
-  Task[T.DMT]:
+  State[T.DMT]:
     β =  10.8283, SE = 1.4022
     95% CI: [  8.0800,  13.5766]
     p_raw = 0.0000, p_FDR = 0.0000 ***
 
-  Task[T.DMT]:minute_c:
+  State[T.DMT]:minute_c:
     β =  -2.4170, SE = 0.3840
     95% CI: [ -3.1696,  -1.6643]
     p_raw = 0.0000, p_FDR = 0.0000 ***
@@ -59,7 +59,7 @@ FAMILY DOSE:
 
 FAMILY INTERACTION:
 ------------------------------
-  Task[T.DMT]:Dose[T.High]:
+  State[T.DMT]:Dose[T.High]:
     β =  15.8396, SE = 1.9830
     95% CI: [ 11.9529,  19.7263]
     p_raw = 0.0000, p_FDR = 0.0000 ***
@@ -79,13 +79,13 @@ CONDITIONAL CONTRASTS:
 
 DATA SUMMARY:
 ------------------------------
-Cell means (HR by Task × Dose):
-           count     mean      std
-Task Dose                         
-RS   Low      99  68.0182   9.2877
-     High     99  65.8125   9.1876
-DMT  Low      99  78.8465  13.8516
-     High     99  92.4804  19.7636
+Cell means (HR by State × Dose):
+            count     mean      std
+State Dose                         
+RS    Low      99  68.0182   9.2877
+      High     99  65.8125   9.1876
+DMT   Low      99  78.8465  13.8516
+      High     99  92.4804  19.7636
 
 Time trend (HR by minute):
         count     mean      std

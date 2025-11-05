@@ -2,16 +2,16 @@
 LME ANALYSIS REPORT: SCL AUC by Minute (first 9 minutes)
 ================================================================================
 
-Analysis date: 2025-10-29 13:02:25
+Analysis date: 2025-11-05 21:41:40
 Dataset: 396 observations from 11 subjects
 
 DESIGN:
-  Within-subjects 2×2: Task (RS vs DMT) × Dose (Low vs High)
+  Within-subjects 2×2: State (RS vs DMT) × Dose (Low vs High)
   Time windows: 9 one-minute windows (0-8 minutes)
   Dependent variable: AUC of baseline-corrected SCL (EDL)
 
 MODEL SPECIFICATION:
-  Fixed effects: AUC ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c
+  Fixed effects: AUC ~ State*Dose + minute_c + State:minute_c + Dose:minute_c
   Random effects: ~ 1 | subject
   Where minute_c = minute - mean(minute) [centered time]
 
@@ -30,14 +30,14 @@ Model converged without warnings
 HYPOTHESIS TESTING RESULTS (with BH-FDR correction):
 ============================================================
 
-FAMILY TASK:
+FAMILY STATE:
 ------------------------------
-  Task[T.DMT]:
+  State[T.DMT]:
     β =  46.7370, SE = 5.9471
     95% CI: [ 35.0809,  58.3930]
     p_raw = 0.0000, p_FDR = 0.0000 ***
 
-  Task[T.DMT]:minute_c:
+  State[T.DMT]:minute_c:
     β =   3.0012, SE = 1.6287
     95% CI: [ -0.1909,   6.1934]
     p_raw = 0.0654, p_FDR = 0.0654 
@@ -58,7 +58,7 @@ FAMILY DOSE:
 
 FAMILY INTERACTION:
 ------------------------------
-  Task[T.DMT]:Dose[T.High]:
+  State[T.DMT]:Dose[T.High]:
     β =  19.8206, SE = 8.4104
     95% CI: [  3.3364,  36.3047]
     p_raw = 0.0184, p_FDR = 0.0184 *
@@ -75,13 +75,13 @@ CONDITIONAL CONTRASTS:
 
 DATA SUMMARY:
 ------------------------------
-Cell means (AUC by Task × Dose):
-           count     mean      std
-Task Dose                         
-RS   Low      99 -48.5338  45.8639
-     High     99 -30.7040  31.1985
-DMT  Low      99  -1.7968  74.5546
-     High     99  35.8535  69.5650
+Cell means (AUC by State × Dose):
+            count     mean      std
+State Dose                         
+RS    Low      99 -48.5338  45.8639
+      High     99 -30.7040  31.1985
+DMT   Low      99  -1.7968  74.5546
+      High     99  35.8535  69.5650
 
 Time trend (AUC by minute):
         count     mean      std

@@ -10,12 +10,12 @@ Group-level mean ± 95% CI of SMNA AUC across the first 9 minutes for each condi
 
 
 
-Figure: Main Task Effect Over Time
+Figure: Main State Effect Over Time
 
-Mean ± 95% CI for RS and DMT (averaged across dose) across minutes 0–8. Illustrates overall task separation and temporal trend.
+Mean ± 95% CI for RS and DMT (averaged across dose) across minutes 0–8. Illustrates overall state separation and temporal trend.
 
 
 
-Figure: Task × Dose Interaction (Panels)
+Figure: State × Dose Interaction (Panels)
 
-Left: RS Low vs High; Right: DMT Low vs High. Lines show mean ± 95% CI across minutes 0–8. Highlights how dose effects differ between tasks.
+Left: RS Low vs High; Right: DMT Low vs High. Lines show mean ± 95% CI across minutes 0–8. Highlights how dose effects differ between states.

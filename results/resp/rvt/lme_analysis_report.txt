@@ -2,17 +2,17 @@
 LME ANALYSIS REPORT: RSP_RVT (Respiratory Volume per Time (RVT)) by Minute (first 9 minutes)
 ================================================================================
 
-Analysis date: 2025-11-03 12:16:01
+Analysis date: 2025-11-05 21:43:45
 Dataset: 432 observations from 12 subjects
 
 DESIGN:
-  Within-subjects 2×2: Task (RS vs DMT) × Dose (Low vs High)
+  Within-subjects 2×2: State (RS vs DMT) × Dose (Low vs High)
   Time windows: 9 one-minute windows (0-8 minutes)
   Dependent variable: Mean RSP_RVT per minute (a.u./min)
   Baseline correction: False
 
 MODEL SPECIFICATION:
-  Fixed effects: RSP_RVT ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c
+  Fixed effects: RSP_RVT ~ State*Dose + minute_c + State:minute_c + Dose:minute_c
   Random effects: ~ 1 | subject
   Where minute_c = minute - mean(minute) [centered time]
 
@@ -31,14 +31,14 @@ Model converged without warnings
 HYPOTHESIS TESTING RESULTS (with BH-FDR correction):
 ============================================================
 
-FAMILY TASK:
+FAMILY STATE:
 ------------------------------
-  Task[T.DMT]:
+  State[T.DMT]:
     β =  -0.5199, SE = 3.0757
     95% CI: [ -6.5481,   5.5082]
     p_raw = 0.8658, p_FDR = 0.8658 
 
-  Task[T.DMT]:minute_c:
+  State[T.DMT]:minute_c:
     β =   0.3100, SE = 0.8423
     95% CI: [ -1.3408,   1.9609]
     p_raw = 0.7128, p_FDR = 0.8658 
@@ -59,7 +59,7 @@ FAMILY DOSE:
 
 FAMILY INTERACTION:
 ------------------------------
-  Task[T.DMT]:Dose[T.High]:
+  State[T.DMT]:Dose[T.High]:
     β =  14.3527, SE = 4.3496
     95% CI: [  5.8276,  22.8779]
     p_raw = 0.0010, p_FDR = 0.0010 ***
@@ -79,13 +79,13 @@ CONDITIONAL CONTRASTS:
 
 DATA SUMMARY:
 ------------------------------
-Cell means (RSP_RVT by Task × Dose):
-           count     mean      std
-Task Dose                         
-RS   Low     108  44.1959  25.4084
-     High    108  51.0295  23.2913
-DMT  Low     108  43.6760  21.6003
-     High    108  64.8623  35.6134
+Cell means (RSP_RVT by State × Dose):
+            count     mean      std
+State Dose                         
+RS    Low     108  44.1959  25.4084
+      High    108  51.0295  23.2913
+DMT   Low     108  43.6760  21.6003
+      High    108  64.8623  35.6134
 
 Time trend (RSP_RVT by minute):
         count     mean      std

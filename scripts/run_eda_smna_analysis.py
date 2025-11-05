@@ -5,7 +5,7 @@ Unified SMNA Analysis: LME modeling and visualization (first 9 minutes).
 This script combines and streamlines the SMNA AUC LME analysis and plotting into
 one reproducible pipeline that:
   1) Prepares long-format SMNA AUC data by minute (0-8) across conditions
-  2) Fits an LME model with Task × Dose and time effects
+  2) Fits an LME model with State × Dose and time effects
   3) Applies BH-FDR to families of hypotheses
   4) Produces publication-ready plots with consistent aesthetics
   5) Writes a plain-text model summary and captions for figures
@@ -181,7 +181,7 @@ def prepare_long_data() -> pd.DataFrame:
     """Prepare data in long format for LME analysis (first 9 minutes).
 
     Returns:
-        DataFrame with columns: subject, minute, Task, Dose, AUC, minute_c
+        DataFrame with columns: subject, minute, State, Dose, AUC, minute_c
     """
     rows: List[Dict] = []
     n_processed = 0
@@ -216,10 +216,10 @@ def prepare_long_data() -> pd.DataFrame:
             if None not in (auc_dmt_high, auc_dmt_low, auc_rs_high, auc_rs_low):
                 minute_label = minute + 1
                 subject_rows.extend([
-                    {'subject': subject, 'minute': minute_label, 'Task': 'DMT', 'Dose': 'High', 'AUC': auc_dmt_high},
-                    {'subject': subject, 'minute': minute_label, 'Task': 'DMT', 'Dose': 'Low', 'AUC': auc_dmt_low},
-                    {'subject': subject, 'minute': minute_label, 'Task': 'RS', 'Dose': 'High', 'AUC': auc_rs_high},
-                    {'subject': subject, 'minute': minute_label, 'Task': 'RS', 'Dose': 'Low', 'AUC': auc_rs_low},
+                    {'subject': subject, 'minute': minute_label, 'State': 'DMT', 'Dose': 'High', 'AUC': auc_dmt_high},
+                    {'subject': subject, 'minute': minute_label, 'State': 'DMT', 'Dose': 'Low', 'AUC': auc_dmt_low},
+                    {'subject': subject, 'minute': minute_label, 'State': 'RS', 'Dose': 'High', 'AUC': auc_rs_high},
+                    {'subject': subject, 'minute': minute_label, 'State': 'RS', 'Dose': 'Low', 'AUC': auc_rs_low},
                 ])
 
         if subject_rows:
@@ -232,7 +232,7 @@ def prepare_long_data() -> pd.DataFrame:
     df = pd.DataFrame(rows)
 
     # Set categorical variables with proper ordering
-    df['Task'] = pd.Categorical(df['Task'], categories=['RS', 'DMT'], ordered=True)
+    df['State'] = pd.Categorical(df['State'], categories=['RS', 'DMT'], ordered=True)
     df['Dose'] = pd.Categorical(df['Dose'], categories=['Low', 'High'], ordered=True)
     df['subject'] = pd.Categorical(df['subject'])
 
@@ -246,7 +246,7 @@ def prepare_long_data() -> pd.DataFrame:
 def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
     """Fit the LME model with specified fixed and random effects."""
     try:
-        formula = "AUC ~ Task * Dose + minute_c + Task:minute_c + Dose:minute_c"
+        formula = "AUC ~ State * Dose + minute_c + State:minute_c + Dose:minute_c"
         model = mixedlm(formula, df, groups=df["subject"])  # type: ignore[arg-type]
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
@@ -412,12 +412,12 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
         'conf_int': conf_int.to_dict(),
     }
 
-    families: Dict[str, List[str]] = {'Task': [], 'Dose': [], 'Interaction': []}
+    families: Dict[str, List[str]] = {'State': [], 'Dose': [], 'Interaction': []}
 
-    # Family (i): Task effects
-    for param in ['Task[T.DMT]', 'Task[T.DMT]:minute_c']:
+    # Family (i): State effects
+    for param in ['State[T.DMT]', 'State[T.DMT]:minute_c']:
         if param in pvalues.index:
-            families['Task'].append(param)
+            families['State'].append(param)
 
     # Family (ii): Dose effects
     for param in ['Dose[T.High]', 'Dose[T.High]:minute_c']:
@@ -425,7 +425,7 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
             families['Dose'].append(param)
 
     # Family (iii): Interaction
-    for param in ['Task[T.DMT]:Dose[T.High]']:
+    for param in ['State[T.DMT]:Dose[T.High]']:
         if param in pvalues.index:
             families['Interaction'].append(param)
 
@@ -456,11 +456,11 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
             'p_raw': float(pvalues['Dose[T.High]']),
             'description': 'High - Low within RS',
         }
-    if all(p in params.index for p in ['Dose[T.High]', 'Task[T.DMT]:Dose[T.High]']):
+    if all(p in params.index for p in ['Dose[T.High]', 'State[T.DMT]:Dose[T.High]']):
         contrasts['High_Low_within_DMT_vs_RS'] = {
-            'beta': float(params['Task[T.DMT]:Dose[T.High]']),
-            'se': float(stderr['Task[T.DMT]:Dose[T.High]']),
-            'p_raw': float(pvalues['Task[T.DMT]:Dose[T.High]']),
+            'beta': float(params['State[T.DMT]:Dose[T.High]']),
+            'se': float(stderr['State[T.DMT]:Dose[T.High]']),
+            'p_raw': float(pvalues['State[T.DMT]:Dose[T.High]']),
             'description': '(High - Low within DMT) - (High - Low within RS)',
         }
 
@@ -482,12 +482,12 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, d
         f"Dataset: {len(df)} observations from {len(df['subject'].unique())} subjects",
         "",
         "DESIGN:",
-        "  Within-subjects 2×2: Task (RS vs DMT) × Dose (Low vs High)",
+        "  Within-subjects 2×2: State (RS vs DMT) × Dose (Low vs High)",
         "  Time windows: 9 one-minute windows (0-8 minutes)",
         "  Dependent variable: AUC of SMNA signal",
         "",
         "MODEL SPECIFICATION:",
-        "  Fixed effects: AUC ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c",
+        "  Fixed effects: AUC ~ State*Dose + minute_c + State:minute_c + Dose:minute_c",
         "  Random effects: ~ 1 | subject",
         "  Where minute_c = minute - mean(minute) [centered time]",
         "",
@@ -542,8 +542,8 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, d
 
     # Data summary
     report_lines.extend(["", "DATA SUMMARY:", "-" * 30])
-    summary_stats = df.groupby(['Task', 'Dose'], observed=False)['AUC'].agg(['count', 'mean', 'std']).round(4)
-    report_lines.extend(["Cell means (AUC by Task × Dose):", str(summary_stats), ""]) 
+    summary_stats = df.groupby(['State', 'Dose'], observed=False)['AUC'].agg(['count', 'mean', 'std']).round(4)
+    report_lines.extend(["Cell means (AUC by State × Dose):", str(summary_stats), ""]) 
     time_stats = df.groupby('minute', observed=False)['AUC'].agg(['count', 'mean', 'std']).round(4)
     report_lines.extend(["Time trend (AUC by minute):", str(time_stats), ""]) 
 
@@ -567,8 +567,8 @@ def load_lme_results_from_report(report_path: str) -> Dict:
 
     for i, line in enumerate(lines):
         line = line.strip()
-        if line.startswith('FAMILY TASK:'):
-            current_family = 'Task'
+        if line.startswith('FAMILY STATE:'):
+            current_family = 'State'
         elif line.startswith('FAMILY DOSE:'):
             current_family = 'Dose'
         elif line.startswith('FAMILY INTERACTION:'):
@@ -620,23 +620,23 @@ def load_lme_results_from_report(report_path: str) -> Dict:
 
 def prepare_coefficient_data(coefficients: Dict) -> pd.DataFrame:
     param_order = [
-        'Task[T.DMT]',
+        'State[T.DMT]',
         'Dose[T.High]',
-        'Task[T.DMT]:minute_c',
+        'State[T.DMT]:minute_c',
         'Dose[T.High]:minute_c',
-        'Task[T.DMT]:Dose[T.High]'
+        'State[T.DMT]:Dose[T.High]'
     ]
     param_labels = {
-        'Task[T.DMT]': 'Task (DMT vs RS)',
+        'State[T.DMT]': 'State (DMT vs RS)',
         'Dose[T.High]': 'Dose (High vs Low)',
-        'Task[T.DMT]:minute_c': 'Task × Time',
+        'State[T.DMT]:minute_c': 'State × Time',
         'Dose[T.High]:minute_c': 'Dose × Time',
-        'Task[T.DMT]:Dose[T.High]': 'Task × Dose'
+        'State[T.DMT]:Dose[T.High]': 'State × Dose'
     }
     # Use EDA modality color (blue tones from tab20c) with distinct shades for visual distinction
     # Blue group from tab20c: indices 4-7 (darkest to lightest)
     family_colors = {
-        'Task': tab20c_colors[4],      # First blue gradient (darkest/most intense)
+        'State': tab20c_colors[4],      # First blue gradient (darkest/most intense)
         'Dose': tab20c_colors[5],      # Second blue gradient (medium)
         'Interaction': tab20c_colors[6],  # Third blue gradient (lighter)
     }
@@ -696,10 +696,10 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
 
 
 def compute_empirical_means_and_ci(df: pd.DataFrame, confidence: float = 0.95) -> pd.DataFrame:
-    grouped = df.groupby(['minute', 'Task', 'Dose'], observed=False)['AUC']
+    grouped = df.groupby(['minute', 'State', 'Dose'], observed=False)['AUC']
     stats_df = grouped.agg(['count', 'mean', 'std', 'sem']).reset_index()
-    stats_df.columns = ['minute', 'Task', 'Dose', 'n', 'mean', 'std', 'se']
-    stats_df['condition'] = stats_df['Task'].astype(str) + '_' + stats_df['Dose'].astype(str)
+    stats_df.columns = ['minute', 'State', 'Dose', 'n', 'mean', 'std', 'se']
+    stats_df['condition'] = stats_df['State'].astype(str) + '_' + stats_df['Dose'].astype(str)
     alpha = 1 - confidence
     from scipy import stats as scistats  # local import in case scipy missing at top
     t_critical = scistats.t.ppf(1 - alpha/2, stats_df['n'] - 1)
@@ -747,21 +747,21 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
     plt.close()
 
 
-def create_task_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
-    task_means = stats_df.groupby(['minute', 'Task']).agg({'mean': 'mean', 'n': 'sum'}).reset_index()
+def create_state_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
+    state_means = stats_df.groupby(['minute', 'State']).agg({'mean': 'mean', 'n': 'sum'}).reset_index()
     # Rough SE aggregation
-    task_se = stats_df.groupby(['minute', 'Task'])['se'].apply(lambda x: np.sqrt(np.sum(x**2) / max(len(x), 1))).reset_index(name='se')
-    task_means = task_means.merge(task_se, on=['minute', 'Task'], how='left')
+    state_se = stats_df.groupby(['minute', 'State'])['se'].apply(lambda x: np.sqrt(np.sum(x**2) / max(len(x), 1))).reset_index(name='se')
+    state_means = state_means.merge(state_se, on=['minute', 'State'], how='left')
     t_crit = 1.96
-    task_means['ci_lower'] = task_means['mean'] - t_crit * task_means['se']
-    task_means['ci_upper'] = task_means['mean'] + t_crit * task_means['se']
+    state_means['ci_lower'] = state_means['mean'] - t_crit * state_means['se']
+    state_means['ci_upper'] = state_means['mean'] + t_crit * state_means['se']
 
     fig, ax = plt.subplots(figsize=(10, 6))
     # Ensure legend order: DMT first, RS second
-    for task, color in [('DMT', COLOR_DMT_HIGH), ('RS', COLOR_RS_HIGH)]:
-        task_data = task_means[task_means['Task'] == task].sort_values('minute')
-        ax.plot(task_data['minute'], task_data['mean'], color=color, linewidth=3, label=f'{task}', marker='o', markersize=6)
-        ax.fill_between(task_data['minute'], task_data['ci_lower'], task_data['ci_upper'], color=color, alpha=0.2)
+    for state, color in [('DMT', COLOR_DMT_HIGH), ('RS', COLOR_RS_HIGH)]:
+        state_data = state_means[state_means['State'] == state].sort_values('minute')
+        ax.plot(state_data['minute'], state_data['mean'], color=color, linewidth=3, label=f'{state}', marker='o', markersize=6)
+        ax.fill_between(state_data['minute'], state_data['ci_lower'], state_data['ci_upper'], color=color, alpha=0.2)
 
     ax.set_xlabel('Time (minutes)')
     ax.set_ylabel('SMNA AUC')
@@ -824,8 +824,8 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str, df_raw: Op
             for si, subj in enumerate(subjects):
                 sdf = df_raw[df_raw['subject'] == subj]
                 for minute in range(1, N_MINUTES + 1):
-                    row_h = sdf[(sdf['Task'] == 'RS') & (sdf['Dose'] == 'High') & (sdf['minute'] == minute)]['AUC']
-                    row_l = sdf[(sdf['Task'] == 'RS') & (sdf['Dose'] == 'Low') & (sdf['minute'] == minute)]['AUC']
+                    row_h = sdf[(sdf['State'] == 'RS') & (sdf['Dose'] == 'High') & (sdf['minute'] == minute)]['AUC']
+                    row_l = sdf[(sdf['State'] == 'RS') & (sdf['Dose'] == 'Low') & (sdf['minute'] == minute)]['AUC']
                     if len(row_h) == 1:
                         H[si, minute - 1] = float(row_h.iloc[0])
                     if len(row_l) == 1:
@@ -842,8 +842,8 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str, df_raw: Op
             for si, subj in enumerate(subjects):
                 sdf = df_raw[df_raw['subject'] == subj]
                 for minute in range(1, N_MINUTES + 1):
-                    row_h = sdf[(sdf['Task'] == 'DMT') & (sdf['Dose'] == 'High') & (sdf['minute'] == minute)]['AUC']
-                    row_l = sdf[(sdf['Task'] == 'DMT') & (sdf['Dose'] == 'Low') & (sdf['minute'] == minute)]['AUC']
+                    row_h = sdf[(sdf['State'] == 'DMT') & (sdf['Dose'] == 'High') & (sdf['minute'] == minute)]['AUC']
+                    row_l = sdf[(sdf['State'] == 'DMT') & (sdf['Dose'] == 'Low') & (sdf['minute'] == minute)]['AUC']
                     if len(row_h) == 1:
                         H[si, minute - 1] = float(row_h.iloc[0])
                     if len(row_l) == 1:
@@ -1248,7 +1248,7 @@ def create_model_summary_txt(diagnostics: Dict, coef_df: pd.DataFrame, output_pa
         "=" * 60,
         "",
         "Fixed Effects Formula:",
-        "AUC ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c",
+        "AUC ~ State*Dose + minute_c + State:minute_c + Dose:minute_c",
         "",
         "Random Effects: ~ 1 | subject",
         "",
@@ -1281,13 +1281,13 @@ def generate_captions_file(output_dir: str, n_subjects: int) -> None:
         "Group-level mean ± 95% CI of SMNA AUC across the first 9 minutes for each condition (RS Low/High, DMT Low/High). "
         "Legends indicate dose levels; shading shows uncertainty.",
         "",
-        "Figure: Main Task Effect Over Time\n\n"
+        "Figure: Main State Effect Over Time\n\n"
         "Mean ± 95% CI for RS and DMT (averaged across dose) across minutes 0–8. "
-        "Illustrates overall task separation and temporal trend.",
+        "Illustrates overall state separation and temporal trend.",
         "",
-        "Figure: Task × Dose Interaction (Panels)\n\n"
+        "Figure: State × Dose Interaction (Panels)\n\n"
         "Left: RS Low vs High; Right: DMT Low vs High. Lines show mean ± 95% CI across minutes 0–8. "
-        "Highlights how dose effects differ between tasks.",
+        "Highlights how dose effects differ between states.",
     ]
     path = os.path.join(output_dir, 'captions_smna.txt')
     with open(path, 'w', encoding='utf-8') as f:

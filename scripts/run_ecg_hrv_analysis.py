@@ -6,7 +6,7 @@ This script processes ECG-derived HRV from R-peak intervals:
   1) Extract RR intervals from ECG_R_Peaks column
   2) Compute HRV features per minute (RMSSD primary, SDNN/pNN50/LF/HF secondary)
   3) Build long-format per-minute RMSSD dataset
-  4) Fit LME with Task × Dose and time effects; apply BH-FDR per family
+  4) Fit LME with State × Dose and time effects; apply BH-FDR per family
   5) Create coefficient, marginal means, interaction, diagnostics plots
   6) Write model summary as TXT and figure captions
   7) Generate discrete timecourse plot for the first 9 minutes with FDR
@@ -364,10 +364,10 @@ def prepare_long_data_hrv() -> Tuple[pd.DataFrame, str]:
             if not any(np.isnan(v) for v in rmssd_values):
                 minute_label = minute + 1
                 rows.extend([
-                    {'subject': subject, 'minute': minute_label, 'Task': 'DMT', 'Dose': 'High', 'RMSSD': rmssd_values[0]},
-                    {'subject': subject, 'minute': minute_label, 'Task': 'DMT', 'Dose': 'Low', 'RMSSD': rmssd_values[1]},
-                    {'subject': subject, 'minute': minute_label, 'Task': 'RS', 'Dose': 'High', 'RMSSD': rmssd_values[2]},
-                    {'subject': subject, 'minute': minute_label, 'Task': 'RS', 'Dose': 'Low', 'RMSSD': rmssd_values[3]},
+                    {'subject': subject, 'minute': minute_label, 'State': 'DMT', 'Dose': 'High', 'RMSSD': rmssd_values[0]},
+                    {'subject': subject, 'minute': minute_label, 'State': 'DMT', 'Dose': 'Low', 'RMSSD': rmssd_values[1]},
+                    {'subject': subject, 'minute': minute_label, 'State': 'RS', 'Dose': 'High', 'RMSSD': rmssd_values[2]},
+                    {'subject': subject, 'minute': minute_label, 'State': 'RS', 'Dose': 'Low', 'RMSSD': rmssd_values[3]},
                 ])
         
         # Export full features per condition
@@ -381,7 +381,7 @@ def prepare_long_data_hrv() -> Tuple[pd.DataFrame, str]:
         raise ValueError('No valid HRV data found for any subject!')
 
     df = pd.DataFrame(rows)
-    df['Task'] = pd.Categorical(df['Task'], categories=['RS', 'DMT'], ordered=True)
+    df['State'] = pd.Categorical(df['State'], categories=['RS', 'DMT'], ordered=True)
     df['Dose'] = pd.Categorical(df['Dose'], categories=['Low', 'High'], ordered=True)
     df['subject'] = pd.Categorical(df['subject'])
     df['minute_c'] = df['minute'] - df['minute'].mean()
@@ -392,7 +392,7 @@ def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
     if mixedlm is None:
         return None, {'error': 'statsmodels not available'}
     try:
-        formula = 'RMSSD ~ Task * Dose + minute_c + Task:minute_c + Dose:minute_c'
+        formula = 'RMSSD ~ State * Dose + minute_c + State:minute_c + Dose:minute_c'
         model = mixedlm(formula, df, groups=df['subject'])  # type: ignore[arg-type]
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter('always')
@@ -470,14 +470,14 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
         'all_stderr': stderr.to_dict(),
         'conf_int': conf_int.to_dict(),
     }
-    families: Dict[str, List[str]] = {'Task': [], 'Dose': [], 'Interaction': []}
-    for p in ['Task[T.DMT]', 'Task[T.DMT]:minute_c']:
+    families: Dict[str, List[str]] = {'State': [], 'Dose': [], 'Interaction': []}
+    for p in ['State[T.DMT]', 'State[T.DMT]:minute_c']:
         if p in pvalues.index:
-            families['Task'].append(p)
+            families['State'].append(p)
     for p in ['Dose[T.High]', 'Dose[T.High]:minute_c']:
         if p in pvalues.index:
             families['Dose'].append(p)
-    for p in ['Task[T.DMT]:Dose[T.High]']:
+    for p in ['State[T.DMT]:Dose[T.High]']:
         if p in pvalues.index:
             families['Interaction'].append(p)
     fdr_results: Dict[str, Dict] = {}
@@ -505,11 +505,11 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
             'p_raw': float(pvalues['Dose[T.High]']),
             'description': 'High - Low within RS',
         }
-    if all(k in params.index for k in ['Dose[T.High]', 'Task[T.DMT]:Dose[T.High]']):
+    if all(k in params.index for k in ['Dose[T.High]', 'State[T.DMT]:Dose[T.High]']):
         contrasts['High_Low_within_DMT_vs_RS'] = {
-            'beta': float(params['Task[T.DMT]:Dose[T.High]']),
-            'se': float(stderr['Task[T.DMT]:Dose[T.High]']),
-            'p_raw': float(pvalues['Task[T.DMT]:Dose[T.High]']),
+            'beta': float(params['State[T.DMT]:Dose[T.High]']),
+            'se': float(stderr['State[T.DMT]:Dose[T.High]']),
+            'p_raw': float(pvalues['State[T.DMT]:Dose[T.High]']),
             'description': '(High - Low within DMT) - (High - Low within RS)',
         }
     results['fdr_families'] = fdr_results
@@ -527,13 +527,13 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, d
         f"Dataset: {len(df)} observations from {len(df['subject'].unique())} subjects",
         '',
         'DESIGN:',
-        '  Within-subjects 2×2: Task (RS vs DMT) × Dose (Low vs High)',
+        '  Within-subjects 2×2: State (RS vs DMT) × Dose (Low vs High)',
         '  Time windows: 9 one-minute windows (0-8 minutes)',
         '  Dependent variable: RMSSD (Root Mean Square of Successive Differences) per minute (ms)',
         f'  Baseline correction: {BASELINE_CORRECTION}',
         '',
         'MODEL SPECIFICATION:',
-        '  Fixed effects: RMSSD ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c',
+        '  Fixed effects: RMSSD ~ State*Dose + minute_c + State:minute_c + Dose:minute_c',
         '  Random effects: ~ 1 | subject',
         '  Where minute_c = minute - mean(minute) [centered time]',
         '',
@@ -575,8 +575,8 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, d
             sig = '***' if res['p_raw'] < 0.001 else '**' if res['p_raw'] < 0.01 else '*' if res['p_raw'] < 0.05 else ''
             lines.extend([f"  {res['description']}:", f"    β = {res['beta']:8.4f}, SE = {res['se']:6.4f}, p = {res['p_raw']:6.4f} {sig}", ''])
     lines.extend(['', 'DATA SUMMARY:', '-' * 30])
-    cell = df.groupby(['Task', 'Dose'], observed=False)['RMSSD'].agg(['count', 'mean', 'std']).round(4)
-    lines.extend(['Cell means (RMSSD by Task × Dose):', str(cell), ''])
+    cell = df.groupby(['State', 'Dose'], observed=False)['RMSSD'].agg(['count', 'mean', 'std']).round(4)
+    lines.extend(['Cell means (RMSSD by State × Dose):', str(cell), ''])
     trend = df.groupby('minute', observed=False)['RMSSD'].agg(['count', 'mean', 'std']).round(4)
     lines.extend(['Time trend (RMSSD by minute):', str(trend), ''])
     lines.extend(['', '=' * 80])
@@ -595,8 +595,8 @@ def load_lme_results_from_report(report_path: str) -> Dict:
     current_family: Optional[str] = None
     for i, line in enumerate(lines):
         line = line.strip()
-        if line.startswith('FAMILY TASK:'):
-            current_family = 'Task'
+        if line.startswith('FAMILY STATE:'):
+            current_family = 'State'
         elif line.startswith('FAMILY DOSE:'):
             current_family = 'Dose'
         elif line.startswith('FAMILY INTERACTION:'):
@@ -641,21 +641,21 @@ def load_lme_results_from_report(report_path: str) -> Dict:
 
 def prepare_coefficient_data(coefficients: Dict) -> pd.DataFrame:
     order = [
-        'Task[T.DMT]',
+        'State[T.DMT]',
         'Dose[T.High]',
-        'Task[T.DMT]:minute_c',
+        'State[T.DMT]:minute_c',
         'Dose[T.High]:minute_c',
-        'Task[T.DMT]:Dose[T.High]'
+        'State[T.DMT]:Dose[T.High]'
     ]
     labels = {
-        'Task[T.DMT]': 'Task (DMT vs RS)',
+        'State[T.DMT]': 'State (DMT vs RS)',
         'Dose[T.High]': 'Dose (High vs Low)',
-        'Task[T.DMT]:minute_c': 'Task × Time',
+        'State[T.DMT]:minute_c': 'State × Time',
         'Dose[T.High]:minute_c': 'Dose × Time',
-        'Task[T.DMT]:Dose[T.High]': 'Task × Dose'
+        'State[T.DMT]:Dose[T.High]': 'State × Dose'
     }
     fam_colors = {
-        'Task': COLOR_DMT_HIGH,
+        'State': COLOR_DMT_HIGH,
         'Dose': COLOR_RS_HIGH,
         'Interaction': COLOR_DMT_LOW,
     }
@@ -708,10 +708,10 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
 
 
 def compute_empirical_means_and_ci(df: pd.DataFrame, confidence: float = 0.95) -> pd.DataFrame:
-    grouped = df.groupby(['minute', 'Task', 'Dose'], observed=False)['RMSSD']
+    grouped = df.groupby(['minute', 'State', 'Dose'], observed=False)['RMSSD']
     stats_df = grouped.agg(['count', 'mean', 'std', 'sem']).reset_index()
-    stats_df.columns = ['minute', 'Task', 'Dose', 'n', 'mean', 'std', 'se']
-    stats_df['condition'] = stats_df['Task'].astype(str) + '_' + stats_df['Dose'].astype(str)
+    stats_df.columns = ['minute', 'State', 'Dose', 'n', 'mean', 'std', 'se']
+    stats_df['condition'] = stats_df['State'].astype(str) + '_' + stats_df['Dose'].astype(str)
     alpha = 1 - confidence
     t_critical = scistats.t.ppf(1 - alpha/2, stats_df['n'] - 1) if scistats is not None else 1.96
     stats_df['ci_lower'] = stats_df['mean'] - t_critical * stats_df['se']
@@ -755,18 +755,18 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
     plt.close()
 
 
-def create_task_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
-    task_means = stats_df.groupby(['minute', 'Task'], observed=False).agg({'mean': 'mean', 'n': 'sum'}).reset_index()
-    task_se = stats_df.groupby(['minute', 'Task'], observed=False)['se'].apply(lambda x: np.sqrt(np.sum(x**2) / max(len(x), 1))).reset_index(name='se')
-    task_means = task_means.merge(task_se, on=['minute', 'Task'], how='left')
+def create_state_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
+    state_means = stats_df.groupby(['minute', 'State'], observed=False).agg({'mean': 'mean', 'n': 'sum'}).reset_index()
+    state_se = stats_df.groupby(['minute', 'State'], observed=False)['se'].apply(lambda x: np.sqrt(np.sum(x**2) / max(len(x), 1))).reset_index(name='se')
+    state_means = state_means.merge(state_se, on=['minute', 'State'], how='left')
     t_crit = 1.96
-    task_means['ci_lower'] = task_means['mean'] - t_crit * task_means['se']
-    task_means['ci_upper'] = task_means['mean'] + t_crit * task_means['se']
+    state_means['ci_lower'] = state_means['mean'] - t_crit * state_means['se']
+    state_means['ci_upper'] = state_means['mean'] + t_crit * state_means['se']
     fig, ax = plt.subplots(figsize=(10, 6))
-    for task, color in [('DMT', COLOR_DMT_HIGH), ('RS', COLOR_RS_HIGH)]:
-        task_data = task_means[task_means['Task'] == task].sort_values('minute')
-        ax.plot(task_data['minute'], task_data['mean'], color=color, linewidth=3, label=f'{task}', marker='o', markersize=6)
-        ax.fill_between(task_data['minute'], task_data['ci_lower'], task_data['ci_upper'], color=color, alpha=0.2)
+    for state, color in [('DMT', COLOR_DMT_HIGH), ('RS', COLOR_RS_HIGH)]:
+        state_data = state_means[state_means['State'] == state].sort_values('minute')
+        ax.plot(state_data['minute'], state_data['mean'], color=color, linewidth=3, label=f'{state}', marker='o', markersize=6)
+        ax.fill_between(state_data['minute'], state_data['ci_lower'], state_data['ci_upper'], color=color, alpha=0.2)
     ax.set_xlabel('Time (minutes)')
     ax.set_ylabel('RMSSD (ms)')
     ticks = list(range(1, N_MINUTES + 1))
@@ -831,7 +831,7 @@ def create_model_summary_txt(diagnostics: Dict, coef_df: pd.DataFrame, output_pa
         '=' * 60,
         '',
         'Fixed Effects Formula:',
-        'RMSSD ~ Task*Dose + minute_c + Task:minute_c + Dose:minute_c',
+        'RMSSD ~ State*Dose + minute_c + State:minute_c + Dose:minute_c',
         '',
         'Random Effects: ~ 1 | subject',
         '',
@@ -859,7 +859,7 @@ def create_timecourse_hrv_rmssd(df: pd.DataFrame, output_dir: str) -> Optional[s
     # Compute per-subject, per-minute, per-condition means for FDR test
     subj_minute_data = df.pivot_table(
         index=['subject', 'minute'],
-        columns=['Task', 'Dose'],
+        columns=['State', 'Dose'],
         values='RMSSD',
         observed=False
     ).reset_index()
@@ -891,8 +891,8 @@ def create_timecourse_hrv_rmssd(df: pd.DataFrame, output_dir: str) -> Optional[s
         minute_data = df[df['minute'] == minute]
         
         # RS High vs Low
-        rs_high = minute_data[(minute_data['Task'] == 'RS') & (minute_data['Dose'] == 'High')]['RMSSD'].values
-        rs_low = minute_data[(minute_data['Task'] == 'RS') & (minute_data['Dose'] == 'Low')]['RMSSD'].values
+        rs_high = minute_data[(minute_data['State'] == 'RS') & (minute_data['Dose'] == 'High')]['RMSSD'].values
+        rs_low = minute_data[(minute_data['State'] == 'RS') & (minute_data['Dose'] == 'Low')]['RMSSD'].values
         if len(rs_high) >= 2 and len(rs_low) >= 2:
             try:
                 _, p = scistats.ttest_rel(rs_high, rs_low)
@@ -903,8 +903,8 @@ def create_timecourse_hrv_rmssd(df: pd.DataFrame, output_dir: str) -> Optional[s
             rs_pvals.append((minute, np.nan))
         
         # DMT High vs Low
-        dmt_high = minute_data[(minute_data['Task'] == 'DMT') & (minute_data['Dose'] == 'High')]['RMSSD'].values
-        dmt_low = minute_data[(minute_data['Task'] == 'DMT') & (minute_data['Dose'] == 'Low')]['RMSSD'].values
+        dmt_high = minute_data[(minute_data['State'] == 'DMT') & (minute_data['Dose'] == 'High')]['RMSSD'].values
+        dmt_low = minute_data[(minute_data['State'] == 'DMT') & (minute_data['Dose'] == 'Low')]['RMSSD'].values
         if len(dmt_high) >= 2 and len(dmt_low) >= 2:
             try:
                 _, p = scistats.ttest_rel(dmt_high, dmt_low)
@@ -1028,8 +1028,8 @@ def create_stacked_subjects_plot(df: pd.DataFrame, output_dir: str) -> Optional[
         ax_dmt = axes[i, 1]
         
         # RS
-        rs_high = subj_data[(subj_data['Task'] == 'RS') & (subj_data['Dose'] == 'High')].sort_values('minute')
-        rs_low = subj_data[(subj_data['Task'] == 'RS') & (subj_data['Dose'] == 'Low')].sort_values('minute')
+        rs_high = subj_data[(subj_data['State'] == 'RS') & (subj_data['Dose'] == 'High')].sort_values('minute')
+        rs_low = subj_data[(subj_data['State'] == 'RS') & (subj_data['Dose'] == 'Low')].sort_values('minute')
         
         ax_rs.plot(rs_high['minute'], rs_high['RMSSD'], color=c_rs_high, linewidth=1.8, marker='o', markersize=4)
         ax_rs.plot(rs_low['minute'], rs_low['RMSSD'], color=c_rs_low, linewidth=1.8, marker='o', markersize=4)
@@ -1051,8 +1051,8 @@ def create_stacked_subjects_plot(df: pd.DataFrame, output_dir: str) -> Optional[
         legend_rs.get_frame().set_alpha(0.9)
         
         # DMT
-        dmt_high = subj_data[(subj_data['Task'] == 'DMT') & (subj_data['Dose'] == 'High')].sort_values('minute')
-        dmt_low = subj_data[(subj_data['Task'] == 'DMT') & (subj_data['Dose'] == 'Low')].sort_values('minute')
+        dmt_high = subj_data[(subj_data['State'] == 'DMT') & (subj_data['Dose'] == 'High')].sort_values('minute')
+        dmt_low = subj_data[(subj_data['State'] == 'DMT') & (subj_data['Dose'] == 'Low')].sort_values('minute')
         
         ax_dmt.plot(dmt_high['minute'], dmt_high['RMSSD'], color=c_dmt_high, linewidth=1.8, marker='o', markersize=4)
         ax_dmt.plot(dmt_low['minute'], dmt_low['RMSSD'], color=c_dmt_low, linewidth=1.8, marker='o', markersize=4)
@@ -1108,13 +1108,13 @@ def generate_captions_file(output_dir: str) -> None:
         'Group-level mean ± 95% CI of RMSSD (ms) across the first 9 minutes for each condition (RS Low/High, DMT Low/High). '
         'Legends indicate dose levels; shading shows uncertainty.',
         '',
-        'Figure: Main Task Effect Over Time\n\n'
+        'Figure: Main State Effect Over Time\n\n'
         'Mean ± 95% CI for RS and DMT (averaged across dose) across minutes 0–8. '
-        'Illustrates overall task separation and temporal trend.',
+        'Illustrates overall state separation and temporal trend.',
         '',
-        'Figure: Task × Dose Interaction (Panels)\n\n'
+        'Figure: State × Dose Interaction (Panels)\n\n'
         'Left: RS Low vs High; Right: DMT Low vs High. Lines show mean ± 95% CI across minutes 0–8. '
-        'Highlights how dose effects differ between tasks.',
+        'Highlights how dose effects differ between states.',
         '',
         'Figure: Discrete HRV RMSSD Timecourse (9 min)\n\n'
         'Two panels (RS, DMT) showing mean ± 95% CI at each minute (discrete points with markers). '
@@ -1161,8 +1161,8 @@ def main() -> bool:
         # Marginal means + derived plots
         stats_df = compute_empirical_means_and_ci(df)
         create_marginal_means_plot(stats_df, os.path.join(plots_dir, 'marginal_means_all_conditions.png'))
-        create_task_effect_plot(stats_df, os.path.join(plots_dir, 'task_main_effect.png'))
-        create_interaction_plot(stats_df, os.path.join(plots_dir, 'task_dose_interaction.png'))
+        create_state_effect_plot(stats_df, os.path.join(plots_dir, 'state_main_effect.png'))
+        create_interaction_plot(stats_df, os.path.join(plots_dir, 'state_dose_interaction.png'))
         
         # Model summary txt
         create_model_summary_txt(diagnostics, coef_df, os.path.join(out_dir, 'model_summary.txt'))
