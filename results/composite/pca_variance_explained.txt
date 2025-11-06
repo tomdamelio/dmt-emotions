@@ -1,0 +1,3 @@
+PC1_explained_variance_ratio = 0.6025
+PC2_explained_variance_ratio = 0.2501
+PC3_explained_variance_ratio = 0.1474

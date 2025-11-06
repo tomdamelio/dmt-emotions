@@ -1,0 +1,1911 @@
+# -*- coding: utf-8 -*-
+"""
+Composite Autonomic Arousal Index (PCA-PC1) + LME Analysis (first 9 minutes).
+
+This script:
+  1) Loads minute-by-minute HR, SCL_AUC, and RVT data for subjects with all three signals
+  2) Z-scores each signal within-subject to align scales
+  3) Computes PCA on the three z-scored signals and extracts PC1 as ArousalIndex
+  4) Fits LME: ArousalIndex ~ State * Dose + minute_c + State:minute_c + Dose:minute_c + (1|subject)
+  5) Saves outputs: CSVs, reports, plots (coefficients, marginal means, loadings, scree)
+
+Outputs: results/composite/
+
+Run:
+  python scripts/run_composite_arousal_index.py
+"""
+
+import os
+import sys
+import warnings
+from typing import List, Dict, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+
+from sklearn.decomposition import PCA
+
+# Statistical packages
+try:
+    import statsmodels.api as sm
+    from statsmodels.formula.api import mixedlm
+except Exception:
+    mixedlm = None
+
+try:
+    from scipy import stats as scistats
+except Exception:
+    scistats = None
+
+
+#############################
+# Configuration
+#############################
+
+# Fixed list of subjects with all three signals valid
+SUBJECTS_INTERSECTION = ['S04', 'S06', 'S07', 'S16', 'S18', 'S19', 'S20']
+
+# Analysis window: minutes 1–9
+N_MINUTES = 9
+
+# Output directory
+OUT_DIR = './results/composite/'
+PLOTS_DIR = os.path.join(OUT_DIR, 'plots')
+
+# Input paths
+SCL_PATH = './results/eda/scl/scl_auc_long_data.csv'
+HR_PATH = './results/ecg/hr/hr_minute_long_data.csv'
+RVT_PATH = './results/resp/rvt/resp_rvt_minute_long_data.csv'
+
+
+#############################
+# Data loading and preparation
+#############################
+
+def load_and_prepare() -> pd.DataFrame:
+    """Load HR, SCL_AUC, and RVT data; merge on complete cases; filter subjects and minutes."""
+    print("Loading physiological data...")
+    
+    # Load SCL
+    df_scl = pd.read_csv(SCL_PATH)
+    if 'AUC' in df_scl.columns:
+        df_scl = df_scl.rename(columns={'AUC': 'SCL_AUC'})
+    
+    # Load HR
+    df_hr = pd.read_csv(HR_PATH)
+    # Column should be 'HR' based on the sample
+    
+    # Load RVT
+    df_rvt = pd.read_csv(RVT_PATH)
+    if 'RSP_RVT' in df_rvt.columns:
+        df_rvt = df_rvt.rename(columns={'RSP_RVT': 'RVT'})
+    
+    print(f"  Loaded SCL: {len(df_scl)} rows")
+    print(f"  Loaded HR: {len(df_hr)} rows")
+    print(f"  Loaded RVT: {len(df_rvt)} rows")
+    
+    # Filter subjects and minutes
+    def base_filter(df: pd.DataFrame) -> pd.DataFrame:
+        df = df[df['subject'].isin(SUBJECTS_INTERSECTION)].copy()
+        df = df[(df['minute'] >= 1) & (df['minute'] <= N_MINUTES)].copy()
+        df['State'] = pd.Categorical(df['State'], categories=['RS', 'DMT'], ordered=True)
+        df['Dose'] = pd.Categorical(df['Dose'], categories=['Low', 'High'], ordered=True)
+        return df
+    
+    df_scl = base_filter(df_scl)[['subject', 'minute', 'State', 'Dose', 'SCL_AUC']]
+    df_hr = base_filter(df_hr)[['subject', 'minute', 'State', 'Dose', 'HR']]
+    df_rvt = base_filter(df_rvt)[['subject', 'minute', 'State', 'Dose', 'RVT']]
+    
+    print(f"  After filtering: SCL={len(df_scl)}, HR={len(df_hr)}, RVT={len(df_rvt)}")
+    
+    # Merge on complete cases
+    df = df_scl.merge(df_hr, on=['subject', 'minute', 'State', 'Dose'], how='inner')
+    df = df.merge(df_rvt, on=['subject', 'minute', 'State', 'Dose'], how='inner')
+    
+    print(f"  After merge: {len(df)} complete observations")
+    
+    # Drop any remaining NAs
+    df = df.dropna(subset=['SCL_AUC', 'HR', 'RVT']).copy()
+    
+    print(f"  After dropping NAs: {len(df)} observations from {df['subject'].nunique()} subjects")
+    
+    # Recalculate minute_c on merged data
+    df['minute_c'] = df['minute'] - df['minute'].mean()
+    
+    # Save merged data
+    os.makedirs(OUT_DIR, exist_ok=True)
+    df.to_csv(os.path.join(OUT_DIR, 'merged_minute_data_complete_cases.csv'), index=False)
+    print(f"  ✓ Saved: {os.path.join(OUT_DIR, 'merged_minute_data_complete_cases.csv')}")
+    
+    return df
+
+
+def zscore_within_subject(df: pd.DataFrame) -> pd.DataFrame:
+    """Z-score each signal within subject to align scales."""
+    print("Z-scoring signals within subject...")
+    
+    for col in ['SCL_AUC', 'HR', 'RVT']:
+        df[f'{col}_z'] = df.groupby('subject')[col].transform(
+            lambda x: (x - x.mean()) / x.std()
+        )
+    
+    # Save z-scored data
+    df.to_csv(os.path.join(OUT_DIR, 'merged_z_by_subject.csv'), index=False)
+    print(f"  ✓ Saved: {os.path.join(OUT_DIR, 'merged_z_by_subject.csv')}")
+    
+    return df
+
+
+#############################
+# PCA and Arousal Index
+#############################
+
+def compute_pca_and_index(df: pd.DataFrame) -> Tuple[pd.DataFrame, float, np.ndarray]:
+    """Compute PCA on z-scored signals and extract PC1 as ArousalIndex."""
+    print("Computing PCA...")
+    
+    X = df[['HR_z', 'SCL_AUC_z', 'RVT_z']].to_numpy()
+    
+    # Fit PCA
+    pca = PCA(n_components=3, random_state=22)
+    pca.fit(X)
+    
+    # Extract PC1
+    pc1_scores = pca.transform(X)[:, 0]
+    loadings_pc1 = pca.components_[0]  # order: ['HR_z', 'SCL_AUC_z', 'RVT_z']
+    var_exp_pc1 = float(pca.explained_variance_ratio_[0])
+    
+    print(f"  PC1 variance explained: {var_exp_pc1:.4f}")
+    print(f"  Raw loadings: HR_z={loadings_pc1[0]:.3f}, SCL_AUC_z={loadings_pc1[1]:.3f}, RVT_z={loadings_pc1[2]:.3f}")
+    
+    # Sign convention: ensure PC1 ↑ = greater activation
+    # If SCL_AUC_z loading is negative, flip sign
+    if loadings_pc1[1] < 0:
+        print("  Flipping PC1 sign to align with activation direction")
+        pc1_scores = -pc1_scores
+        loadings_pc1 = -loadings_pc1
+    
+    print(f"  Final loadings: HR_z={loadings_pc1[0]:.3f}, SCL_AUC_z={loadings_pc1[1]:.3f}, RVT_z={loadings_pc1[2]:.3f}")
+    
+    # Add ArousalIndex to dataframe
+    df['ArousalIndex'] = pc1_scores
+    
+    # Save PCA artifacts
+    os.makedirs(PLOTS_DIR, exist_ok=True)
+    
+    # Loadings
+    pd.DataFrame({
+        'signal': ['HR_z', 'SCL_AUC_z', 'RVT_z'],
+        'loading_pc1': loadings_pc1
+    }).to_csv(os.path.join(OUT_DIR, 'pca_loadings_pc1.csv'), index=False)
+    
+    # Variance explained
+    with open(os.path.join(OUT_DIR, 'pca_variance_explained.txt'), 'w', encoding='utf-8') as f:
+        f.write(f'PC1_explained_variance_ratio = {var_exp_pc1:.4f}\n')
+        f.write(f'PC2_explained_variance_ratio = {pca.explained_variance_ratio_[1]:.4f}\n')
+        f.write(f'PC3_explained_variance_ratio = {pca.explained_variance_ratio_[2]:.4f}\n')
+    
+    # Scree plot
+    # Dimensions: half width and half height of all_subs_composite (16x6) = 8x3, then 10% narrower = 7.2x3
+    var_ratio = pca.explained_variance_ratio_
+    plt.figure(figsize=(7.2, 3))
+    # Use violet color from tab20c
+    plt.plot([1, 2, 3], var_ratio, 'o-', linewidth=2, markersize=8, color=tab20c_colors[12])
+    plt.xlabel('Principal Component', fontsize=20)
+    plt.ylabel('Explained Variance\nRatio', fontsize=18)
+    plt.xticks([1, 2, 3], fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(PLOTS_DIR, 'pca_scree.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"  ✓ Saved: {os.path.join(PLOTS_DIR, 'pca_scree.png')}")
+    
+    # Loadings bar plot
+    # Dimensions: half width and half height of all_subs_composite (16x6) = 8x3, then 10% narrower = 7.2x3
+    fig, ax = plt.subplots(figsize=(7.2, 3))
+    
+    signal_names = ['ECG', 'EDA', 'Resp']
+    x_pos = np.arange(len(signal_names))
+    
+    # Use violet colors from tab20c (indices 12-14)
+    bar_colors = [tab20c_colors[12], tab20c_colors[13], tab20c_colors[14]]
+    
+    # Bar plot without edge color
+    ax.bar(x_pos, loadings_pc1, color=bar_colors, width=0.6)
+    
+    # Styling
+    ax.axhline(y=0, color='black', linestyle='-', linewidth=1.0)
+    ax.set_ylabel('PC1 Loading', fontsize=20)
+    ax.set_xlabel('Physiological signal', fontsize=20)
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(signal_names, fontsize=18)
+    ax.tick_params(axis='y', labelsize=16)
+    ax.grid(True, axis='y', alpha=0.3, linestyle='--')
+    ax.set_axisbelow(True)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(PLOTS_DIR, 'pca_pc1_loadings.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"  ✓ Saved: {os.path.join(PLOTS_DIR, 'pca_pc1_loadings.png')}")
+    
+    # Create 3D PCA visualization
+    create_pca_3d_plot(df, pca, loadings_pc1)
+    
+    # Save arousal index long data
+    df.to_csv(os.path.join(OUT_DIR, 'arousal_index_long.csv'), index=False)
+    print(f"  ✓ Saved: {os.path.join(OUT_DIR, 'arousal_index_long.csv')}")
+    
+    return df, var_exp_pc1, loadings_pc1
+
+
+def create_pca_3d_plot(df: pd.DataFrame, pca, loadings_pc1: np.ndarray) -> None:
+    """Create interactive 3D visualization of PCA space with PC1 loading vector using Plotly."""
+    print("Creating interactive 3D PCA visualization...")
+    
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        print("  ⚠ Plotly not available. Install with: pip install plotly")
+        print("  Skipping 3D visualization.")
+        return
+    
+    # Subsample data for readability (max 1000 points)
+    if len(df) > 1000:
+        df_sample = df.sample(n=1000, random_state=42)
+    else:
+        df_sample = df.copy()
+    
+    # Extract z-scored data
+    X_sample = df_sample[['HR_z', 'SCL_AUC_z', 'RVT_z']].to_numpy()
+    
+    # Convert tab20c colors to RGB strings for Plotly
+    def rgb_to_plotly(color_tuple):
+        """Convert matplotlib color tuple to plotly RGB string."""
+        r, g, b = [int(c * 255) for c in color_tuple[:3]]
+        return f'rgb({r},{g},{b})'
+    
+    color_light = rgb_to_plotly(tab20c_colors[14])  # Light violet for points
+    color_dark = rgb_to_plotly(tab20c_colors[12])   # Dark violet for PC1 vector
+    
+    # Create scatter plot of data points
+    scatter = go.Scatter3d(
+        x=X_sample[:, 0],
+        y=X_sample[:, 1],
+        z=X_sample[:, 2],
+        mode='markers',
+        marker=dict(
+            size=3,
+            color=color_light,
+            opacity=0.4,
+            line=dict(width=0)
+        ),
+        name='Observations',
+        hovertemplate='HR: %{x:.2f}<br>SCL: %{y:.2f}<br>RVT: %{z:.2f}<extra></extra>'
+    )
+    
+    # Scale factor for PC1 vector (make it visible)
+    scale = 3.0
+    
+    # Create PC1 loading vector as a cone (arrow)
+    pc1_arrow = go.Cone(
+        x=[loadings_pc1[0] * scale],
+        y=[loadings_pc1[1] * scale],
+        z=[loadings_pc1[2] * scale],
+        u=[loadings_pc1[0] * 0.3],
+        v=[loadings_pc1[1] * 0.3],
+        w=[loadings_pc1[2] * 0.3],
+        colorscale=[[0, color_dark], [1, color_dark]],
+        showscale=False,
+        sizemode='absolute',
+        sizeref=0.5,
+        name='PC1 (Arousal Axis)',
+        hovertemplate='PC1 Loading Vector<extra></extra>'
+    )
+    
+    # Create line from origin to arrow base
+    pc1_line = go.Scatter3d(
+        x=[0, loadings_pc1[0] * scale],
+        y=[0, loadings_pc1[1] * scale],
+        z=[0, loadings_pc1[2] * scale],
+        mode='lines',
+        line=dict(
+            color=color_dark,
+            width=8
+        ),
+        name='PC1 Vector',
+        showlegend=False,
+        hoverinfo='skip'
+    )
+    
+    # Add text annotation at arrow tip
+    annotation_text = go.Scatter3d(
+        x=[loadings_pc1[0] * scale * 1.15],
+        y=[loadings_pc1[1] * scale * 1.15],
+        z=[loadings_pc1[2] * scale * 1.15],
+        mode='text',
+        text=['PC1<br>(Arousal Axis)'],
+        textfont=dict(
+            size=14,
+            color=color_dark,
+            family='Arial Black'
+        ),
+        showlegend=False,
+        hoverinfo='skip'
+    )
+    
+    # Create figure
+    fig = go.Figure(data=[scatter, pc1_line, pc1_arrow, annotation_text])
+    
+    # Update layout
+    fig.update_layout(
+        scene=dict(
+            xaxis=dict(
+                title=dict(text='HR (z-scored)', font=dict(size=16)),
+                gridcolor='lightgray',
+                showbackground=True,
+                backgroundcolor='white'
+            ),
+            yaxis=dict(
+                title=dict(text='SCL (z-scored)', font=dict(size=16)),
+                gridcolor='lightgray',
+                showbackground=True,
+                backgroundcolor='white'
+            ),
+            zaxis=dict(
+                title=dict(text='RVT (z-scored)', font=dict(size=16)),
+                gridcolor='lightgray',
+                showbackground=True,
+                backgroundcolor='white'
+            ),
+            camera=dict(
+                eye=dict(x=1.5, y=1.5, z=1.2)  # Isometric-like view
+            ),
+            aspectmode='cube'
+        ),
+        paper_bgcolor='white',
+        plot_bgcolor='white',
+        showlegend=True,
+        legend=dict(
+            x=0.02,
+            y=0.98,
+            bgcolor='rgba(255,255,255,0.8)',
+            bordercolor='lightgray',
+            borderwidth=1
+        ),
+        margin=dict(l=0, r=0, b=0, t=30),
+        title=dict(
+            text='PCA Space: Composite Autonomic Arousal Index',
+            font=dict(size=18),
+            x=0.5,
+            xanchor='center'
+        )
+    )
+    
+    # Save as interactive HTML
+    out_path_html = os.path.join(PLOTS_DIR, 'pca_3d_loadings_interactive.html')
+    fig.write_html(out_path_html)
+    print(f"  ✓ Saved interactive HTML: {out_path_html}")
+    print(f"    → Open in browser to rotate and explore manually")
+
+
+#############################
+# Cross-correlations between signals
+#############################
+
+def compute_and_plot_cross_correlations(df: pd.DataFrame) -> str:
+    """
+    Compute within-subject correlations between HR, SCL, and RVT for RS and DMT states.
+    
+    Returns path to the generated heatmap figure.
+    """
+    print("Computing cross-correlations between signals...")
+    
+    # Signal columns
+    signals = ['HR_z', 'SCL_AUC_z', 'RVT_z']
+    signal_labels = ['HR', 'SCL', 'RVT']
+    
+    # Pairs for correlation
+    pairs = [
+        ('HR_z', 'SCL_AUC_z', 'HR–SCL'),
+        ('HR_z', 'RVT_z', 'HR–RVT'),
+        ('SCL_AUC_z', 'RVT_z', 'SCL–RVT')
+    ]
+    
+    # Storage for results
+    pearson_results = []
+    spearman_results = []
+    
+    # Compute correlations for each state and subject
+    for state in ['RS', 'DMT']:
+        state_df = df[df['State'] == state].copy()
+        
+        for subject in SUBJECTS_INTERSECTION:
+            subj_df = state_df[state_df['subject'] == subject].copy()
+            
+            # Need at least 3 data points for correlation
+            if len(subj_df) < 3:
+                continue
+            
+            # Sort by minute to ensure proper time series
+            subj_df = subj_df.sort_values('minute')
+            
+            # Extract signal arrays
+            X = subj_df[signals].values
+            
+            # Check for NaNs
+            if np.any(np.isnan(X)):
+                continue
+            
+            # Compute Pearson correlations
+            for sig1, sig2, pair_name in pairs:
+                x = subj_df[sig1].values
+                y = subj_df[sig2].values
+                
+                # Pearson
+                r_pearson, _ = scistats.pearsonr(x, y)
+                pearson_results.append({
+                    'state': state,
+                    'subject': subject,
+                    'pair': pair_name,
+                    'r': r_pearson
+                })
+                
+                # Spearman
+                r_spearman, _ = scistats.spearmanr(x, y)
+                spearman_results.append({
+                    'state': state,
+                    'subject': subject,
+                    'pair': pair_name,
+                    'r': r_spearman
+                })
+    
+    # Convert to DataFrames
+    df_pearson = pd.DataFrame(pearson_results)
+    df_spearman = pd.DataFrame(spearman_results)
+    
+    # Save CSVs
+    pearson_path = os.path.join(OUT_DIR, 'corr_within_subject_pearson.csv')
+    spearman_path = os.path.join(OUT_DIR, 'corr_within_subject_spearman.csv')
+    
+    df_pearson.to_csv(pearson_path, index=False)
+    df_spearman.to_csv(spearman_path, index=False)
+    
+    print(f"  ✓ Saved: {pearson_path}")
+    print(f"  ✓ Saved: {spearman_path}")
+    
+    # Compute average correlation matrices for each state
+    corr_matrices = {}
+    
+    for state in ['RS', 'DMT']:
+        state_df = df[df['State'] == state].copy()
+        
+        # Collect correlation matrices from all subjects
+        subject_corr_matrices = []
+        
+        for subject in SUBJECTS_INTERSECTION:
+            subj_df = state_df[state_df['subject'] == subject].copy()
+            
+            if len(subj_df) < 3:
+                continue
+            
+            subj_df = subj_df.sort_values('minute')
+            X = subj_df[signals].values
+            
+            if np.any(np.isnan(X)):
+                continue
+            
+            # Compute correlation matrix
+            corr_mat = np.corrcoef(X.T)
+            subject_corr_matrices.append(corr_mat)
+        
+        # Average across subjects
+        if subject_corr_matrices:
+            avg_corr = np.mean(subject_corr_matrices, axis=0)
+            corr_matrices[state] = avg_corr
+        else:
+            corr_matrices[state] = np.eye(3)
+    
+    # Create heatmap figure
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    
+    # Color limits for symmetric colormap
+    vmin, vmax = 0, 1
+    
+    # RS heatmap
+    im1 = ax1.imshow(corr_matrices['RS'], cmap='RdPu', vmin=vmin, vmax=vmax, aspect='auto')
+    ax1.set_xticks(range(3))
+    ax1.set_yticks(range(3))
+    ax1.set_xticklabels(signal_labels, fontsize=18)
+    ax1.set_yticklabels(signal_labels, fontsize=18)
+    ax1.set_title('Resting State (RS)', fontsize=22, fontweight='bold')
+    
+    # Add correlation values as text
+    for i in range(3):
+        for j in range(3):
+            text = ax1.text(j, i, f'{corr_matrices["RS"][i, j]:.2f}',
+                           ha="center", va="center", color="black", fontsize=16)
+    
+    # DMT heatmap
+    im2 = ax2.imshow(corr_matrices['DMT'], cmap='RdPu', vmin=vmin, vmax=vmax, aspect='auto')
+    ax2.set_xticks(range(3))
+    ax2.set_yticks(range(3))
+    ax2.set_xticklabels(signal_labels, fontsize=18)
+    ax2.set_yticklabels(signal_labels, fontsize=18)
+    ax2.set_title('DMT', fontsize=22, fontweight='bold')
+    
+    # Add correlation values as text
+    for i in range(3):
+        for j in range(3):
+            text = ax2.text(j, i, f'{corr_matrices["DMT"][i, j]:.2f}',
+                           ha="center", va="center", color="black", fontsize=16)
+    
+    # Add colorbar
+    cbar = fig.colorbar(im2, ax=[ax1, ax2], orientation='vertical', fraction=0.046, pad=0.04)
+    cbar.set_label('Pearson r', fontsize=18)
+    cbar.ax.tick_params(labelsize=14)
+    
+    plt.tight_layout()
+    
+    # Save figure
+    out_path = os.path.join(PLOTS_DIR, 'corr_heatmap_RS_vs_DMT.png')
+    plt.savefig(out_path, dpi=400, bbox_inches='tight')
+    plt.close()
+    
+    print(f"  ✓ Saved: {out_path}")
+    
+    # Print summary statistics
+    print("\n  Summary statistics (Pearson r):")
+    for state in ['RS', 'DMT']:
+        print(f"\n  {state}:")
+        state_data = df_pearson[df_pearson['state'] == state]
+        for pair_name in ['HR–SCL', 'HR–RVT', 'SCL–RVT']:
+            pair_data = state_data[state_data['pair'] == pair_name]['r']
+            if len(pair_data) > 0:
+                mean_r = pair_data.mean()
+                std_r = pair_data.std()
+                print(f"    {pair_name}: r̄ = {mean_r:.3f} ± {std_r:.3f} (N={len(pair_data)})")
+    
+    return out_path
+
+
+#############################
+# Dynamic autonomic coherence
+#############################
+
+def compute_and_plot_dynamic_coherence(df: pd.DataFrame, window: int = 2) -> str:
+    """
+    Compute sliding-window correlations between signals over time.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Data with HR_z, SCL_AUC_z, RVT_z, State, Dose, subject, minute
+    window : int
+        Window size in minutes for sliding correlation (default=2)
+    
+    Returns
+    -------
+    str
+        Path to the generated figure
+    """
+    print(f"Computing dynamic autonomic coherence (window={window} min)...")
+    
+    # Signal pairs
+    pairs = [
+        ('HR_z', 'SCL_AUC_z', 'HR–SCL'),
+        ('HR_z', 'RVT_z', 'HR–RVT'),
+        ('SCL_AUC_z', 'RVT_z', 'SCL–RVT')
+    ]
+    
+    # Storage for results
+    results = []
+    
+    # Compute sliding correlations for each subject, state, dose, pair
+    for state in ['RS', 'DMT']:
+        state_df = df[df['State'] == state].copy()
+        
+        for subject in SUBJECTS_INTERSECTION:
+            subj_df = state_df[state_df['subject'] == subject].copy()
+            
+            for dose in ['Low', 'High']:
+                dose_df = subj_df[subj_df['Dose'] == dose].copy()
+                
+                if len(dose_df) < 2:
+                    continue
+                
+                # Sort by minute
+                dose_df = dose_df.sort_values('minute')
+                
+                # For each minute, compute correlation in sliding window
+                for minute in range(1, N_MINUTES + 1):
+                    # Define window: retrospective [minute-window+1, minute]
+                    window_start = max(1, minute - window + 1)
+                    window_end = minute
+                    
+                    window_df = dose_df[
+                        (dose_df['minute'] >= window_start) & 
+                        (dose_df['minute'] <= window_end)
+                    ]
+                    
+                    # Need at least 2 points for correlation
+                    if len(window_df) < 2:
+                        for sig1, sig2, pair_name in pairs:
+                            results.append({
+                                'state': state,
+                                'subject': subject,
+                                'dose': dose,
+                                'pair': pair_name,
+                                'minute': minute,
+                                'r': np.nan
+                            })
+                        continue
+                    
+                    # Compute correlations for each pair
+                    for sig1, sig2, pair_name in pairs:
+                        x = window_df[sig1].values
+                        y = window_df[sig2].values
+                        
+                        # Check for NaNs
+                        valid = (~np.isnan(x)) & (~np.isnan(y))
+                        if np.sum(valid) < 2:
+                            r = np.nan
+                        else:
+                            try:
+                                r, _ = scistats.pearsonr(x[valid], y[valid])
+                            except Exception:
+                                r = np.nan
+                        
+                        results.append({
+                            'state': state,
+                            'subject': subject,
+                            'dose': dose,
+                            'pair': pair_name,
+                            'minute': minute,
+                            'r': r
+                        })
+    
+    # Convert to DataFrame
+    df_results = pd.DataFrame(results)
+    
+    # Aggregate by state, dose, pair, minute
+    agg_results = []
+    for state in ['RS', 'DMT']:
+        for dose in ['Low', 'High']:
+            for _, _, pair_name in pairs:
+                for minute in range(1, N_MINUTES + 1):
+                    subset = df_results[
+                        (df_results['state'] == state) &
+                        (df_results['dose'] == dose) &
+                        (df_results['pair'] == pair_name) &
+                        (df_results['minute'] == minute)
+                    ]
+                    
+                    r_values = subset['r'].dropna()
+                    
+                    if len(r_values) > 0:
+                        mean_r = r_values.mean()
+                        sem_r = r_values.sem() if len(r_values) > 1 else np.nan
+                        n = len(r_values)
+                    else:
+                        mean_r = np.nan
+                        sem_r = np.nan
+                        n = 0
+                    
+                    agg_results.append({
+                        'state': state,
+                        'dose': dose,
+                        'pair': pair_name,
+                        'minute': minute,
+                        'n': n,
+                        'mean_r': mean_r,
+                        'sem_r': sem_r
+                    })
+    
+    df_agg = pd.DataFrame(agg_results)
+    
+    # Save CSV
+    csv_path = os.path.join(OUT_DIR, f'dynamic_coherence_window{window}.csv')
+    df_agg.to_csv(csv_path, index=False)
+    print(f"  ✓ Saved: {csv_path}")
+    
+    # Create figure: 2 columns (RS, DMT) × 3 rows (one per pair)
+    fig, axes = plt.subplots(3, 2, figsize=(14, 12), sharex=True, sharey=True)
+    
+    pair_names = ['HR–SCL', 'HR–RVT', 'SCL–RVT']
+    
+    for col_idx, state in enumerate(['RS', 'DMT']):
+        for row_idx, pair_name in enumerate(pair_names):
+            ax = axes[row_idx, col_idx]
+            
+            # Plot Low and High
+            for dose in ['Low', 'High']:
+                subset = df_agg[
+                    (df_agg['state'] == state) &
+                    (df_agg['dose'] == dose) &
+                    (df_agg['pair'] == pair_name)
+                ].sort_values('minute')
+                
+                if len(subset) == 0:
+                    continue
+                
+                minutes = subset['minute'].values
+                mean_r = subset['mean_r'].values
+                sem_r = subset['sem_r'].values
+                
+                # Color based on dose
+                if dose == 'High':
+                    color = tab20c_colors[12]  # Dark violet
+                    linestyle = '-'
+                else:
+                    color = tab20c_colors[14]  # Light violet
+                    linestyle = '--'
+                
+                # Plot line
+                ax.plot(minutes, mean_r, color=color, linestyle=linestyle, 
+                       linewidth=2.5, marker='o', markersize=4, label=dose)
+                
+                # Plot SEM band
+                ax.fill_between(minutes, mean_r - sem_r, mean_r + sem_r, 
+                               color=color, alpha=0.2)
+            
+            # Styling
+            ax.axhline(y=0, color='gray', linestyle=':', linewidth=1, alpha=0.5)
+            ax.grid(True, alpha=0.25, axis='y')
+            ax.set_xlim(0.5, N_MINUTES + 0.5)
+            ax.set_ylim(-1, 1)
+            
+            # Labels
+            if row_idx == 2:
+                ax.set_xlabel('Time (minutes)', fontsize=18)
+            if col_idx == 0:
+                ax.set_ylabel(f'{pair_name}\nCorrelation (r)', fontsize=16)
+            
+            # Title only on top row
+            if row_idx == 0:
+                ax.set_title(state, fontsize=20, fontweight='bold')
+            
+            # Legend only on top-right
+            if row_idx == 0 and col_idx == 1:
+                ax.legend(loc='upper right', fontsize=14, frameon=True, 
+                         fancybox=False, framealpha=0.9)
+            
+            ax.tick_params(axis='both', labelsize=14)
+    
+    plt.tight_layout()
+    
+    # Save figure
+    fig_path = os.path.join(PLOTS_DIR, f'dynamic_autonomic_coherence_window{window}.png')
+    plt.savefig(fig_path, dpi=400, bbox_inches='tight')
+    plt.close()
+    
+    print(f"  ✓ Saved: {fig_path}")
+    
+    # Print summary: max correlation per state and pair
+    print("\n  Peak correlations:")
+    for state in ['RS', 'DMT']:
+        print(f"\n  {state}:")
+        for pair_name in pair_names:
+            subset = df_agg[
+                (df_agg['state'] == state) &
+                (df_agg['pair'] == pair_name)
+            ]
+            
+            if len(subset) > 0:
+                # Find max mean_r across all doses and minutes
+                max_row = subset.loc[subset['mean_r'].idxmax()]
+                print(f"    {pair_name}: max r̄ = {max_row['mean_r']:.3f} "
+                      f"at minute {int(max_row['minute'])} ({max_row['dose']})")
+    
+    return fig_path
+
+
+#############################
+# LME Model
+#############################
+
+def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
+    """Fit LME model on ArousalIndex."""
+    print("Fitting LME model...")
+    
+    if mixedlm is None:
+        return None, {'error': 'statsmodels not available'}
+    
+    # Ensure categorical ordering
+    df['State'] = pd.Categorical(df['State'], categories=['RS', 'DMT'], ordered=True)
+    df['Dose'] = pd.Categorical(df['Dose'], categories=['Low', 'High'], ordered=True)
+    
+    try:
+        formula = 'ArousalIndex ~ State * Dose + minute_c + State:minute_c + Dose:minute_c'
+        model = mixedlm(formula, df, groups=df['subject'])
+        
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter('always')
+            fitted = model.fit()
+            convergence_warnings = [str(warning.message) for warning in w]
+    
+    except Exception as e:
+        return None, {'error': str(e)}
+    
+    diagnostics = {
+        'aic': getattr(fitted, 'aic', np.nan),
+        'bic': getattr(fitted, 'bic', np.nan),
+        'loglik': getattr(fitted, 'llf', np.nan),
+        'n_obs': getattr(fitted, 'nobs', len(df)),
+        'n_groups': len(df['subject'].unique()),
+        'convergence_warnings': convergence_warnings,
+        'random_effects_var': getattr(fitted, 'cov_re', None),
+        'residual_var': getattr(fitted, 'scale', np.nan),
+    }
+    
+    print(f"  Model fit: AIC={diagnostics['aic']:.2f}, BIC={diagnostics['bic']:.2f}")
+    if convergence_warnings:
+        print(f"  ⚠ Convergence warnings: {len(convergence_warnings)}")
+    
+    return fitted, diagnostics
+
+
+def benjamini_hochberg_correction(p_values: List[float]) -> List[float]:
+    """Apply Benjamini-Hochberg FDR correction."""
+    p_array = np.array(p_values, dtype=float)
+    n = len(p_array)
+    order = np.argsort(p_array)
+    sorted_p = p_array[order]
+    adjusted = np.zeros(n)
+    
+    for i in range(n - 1, -1, -1):
+        if i == n - 1:
+            adjusted[order[i]] = sorted_p[i]
+        else:
+            adjusted[order[i]] = min(sorted_p[i] * n / (i + 1), adjusted[order[i + 1]])
+    
+    return np.minimum(adjusted, 1.0).tolist()
+
+
+def hypothesis_testing_with_fdr(fitted_model) -> Dict:
+    """Extract coefficients and apply FDR correction by family."""
+    if fitted_model is None:
+        return {}
+    
+    print("Performing hypothesis testing with FDR correction...")
+    
+    params = fitted_model.params
+    pvalues = fitted_model.pvalues
+    conf_int = fitted_model.conf_int()
+    stderr = fitted_model.bse
+    
+    results: Dict[str, Dict] = {
+        'all_params': params.to_dict(),
+        'all_pvalues': pvalues.to_dict(),
+        'all_stderr': stderr.to_dict(),
+        'conf_int': conf_int.to_dict(),
+    }
+    
+    # Define families for FDR correction
+    families: Dict[str, List[str]] = {
+        'State': [],
+        'Dose': [],
+        'Interaction': []
+    }
+    
+    for p in ['State[T.DMT]', 'State[T.DMT]:minute_c']:
+        if p in pvalues.index:
+            families['State'].append(p)
+    
+    for p in ['Dose[T.High]', 'Dose[T.High]:minute_c']:
+        if p in pvalues.index:
+            families['Dose'].append(p)
+    
+    for p in ['State[T.DMT]:Dose[T.High]']:
+        if p in pvalues.index:
+            families['Interaction'].append(p)
+    
+    # Apply FDR within each family
+    fdr_results: Dict[str, Dict] = {}
+    for fam, plist in families.items():
+        if not plist:
+            continue
+        
+        raw = [pvalues[p] for p in plist]
+        adj = benjamini_hochberg_correction(raw)
+        
+        fam_dict: Dict[str, Dict] = {}
+        for i, p in enumerate(plist):
+            fam_dict[p] = {
+                'beta': float(params[p]),
+                'se': float(stderr[p]),
+                'p_raw': float(pvalues[p]),
+                'p_fdr': float(adj[i]),
+                'ci_lower': float(conf_int.loc[p, 0]),
+                'ci_upper': float(conf_int.loc[p, 1]),
+            }
+        fdr_results[fam] = fam_dict
+    
+    # Conditional contrasts
+    contrasts: Dict[str, Dict] = {}
+    if 'Dose[T.High]' in params.index:
+        contrasts['High_Low_within_RS'] = {
+            'beta': float(params['Dose[T.High]']),
+            'se': float(stderr['Dose[T.High]']),
+            'p_raw': float(pvalues['Dose[T.High]']),
+            'description': 'High - Low within RS',
+        }
+    
+    if all(k in params.index for k in ['Dose[T.High]', 'State[T.DMT]:Dose[T.High]']):
+        contrasts['High_Low_within_DMT_vs_RS'] = {
+            'beta': float(params['State[T.DMT]:Dose[T.High]']),
+            'se': float(stderr['State[T.DMT]:Dose[T.High]']),
+            'p_raw': float(pvalues['State[T.DMT]:Dose[T.High]']),
+            'description': '(High - Low within DMT) - (High - Low within RS)',
+        }
+    
+    results['fdr_families'] = fdr_results
+    results['conditional_contrasts'] = contrasts
+    
+    print(f"  ✓ FDR correction applied to {len(fdr_results)} families")
+    
+    return results
+
+
+#############################
+# Reporting
+#############################
+
+def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, 
+                   df: pd.DataFrame, var_exp: float, loadings: np.ndarray) -> None:
+    """Generate comprehensive text report."""
+    print("Generating analysis report...")
+    
+    lines: List[str] = [
+        '=' * 80,
+        'COMPOSITE AUTONOMIC AROUSAL INDEX (PCA-PC1) + LME ANALYSIS',
+        '=' * 80,
+        '',
+        f"Analysis date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"Dataset: {len(df)} observations from {len(df['subject'].unique())} subjects",
+        f"Subjects: {', '.join(sorted(df['subject'].unique()))}",
+        '',
+        'DESIGN:',
+        '  Within-subjects 2×2: State (RS vs DMT) × Dose (Low vs High)',
+        '  Time windows: 9 one-minute windows (1-9 minutes)',
+        '  Dependent variable: ArousalIndex (PC1 from PCA on HR_z, SCL_AUC_z, RVT_z)',
+        '',
+        'PCA RESULTS:',
+        f"  PC1 explained variance: {var_exp:.4f} ({var_exp*100:.2f}%)",
+        f"  PC1 loadings:",
+        f"    HR_z:      {loadings[0]:7.3f}",
+        f"    SCL_AUC_z: {loadings[1]:7.3f}",
+        f"    RVT_z:     {loadings[2]:7.3f}",
+        '',
+        '  Interpretation: Higher ArousalIndex = greater autonomic activation',
+        '  Sign convention: PC1 oriented so SCL_AUC_z loading is positive',
+        '',
+    ]
+    
+    # Add cross-correlation summary if available
+    pearson_path = os.path.join(OUT_DIR, 'corr_within_subject_pearson.csv')
+    if os.path.exists(pearson_path):
+        df_corr = pd.read_csv(pearson_path)
+        lines.extend([
+            'CROSS-CORRELATIONS BETWEEN SIGNALS:',
+            '  Within-subject Pearson correlations (minute-by-minute):',
+            ''
+        ])
+        
+        for state in ['RS', 'DMT']:
+            lines.append(f'  {state}:')
+            state_data = df_corr[df_corr['state'] == state]
+            for pair_name in ['HR–SCL', 'HR–RVT', 'SCL–RVT']:
+                pair_data = state_data[state_data['pair'] == pair_name]['r']
+                if len(pair_data) > 0:
+                    mean_r = pair_data.mean()
+                    std_r = pair_data.std()
+                    lines.append(f"    {pair_name}: r̄ = {mean_r:.3f} ± {std_r:.3f} (N={len(pair_data)})")
+            lines.append('')
+        
+        lines.extend([
+            '  Interpretation: Positive correlations across all signal pairs indicate',
+            '  coherent autonomic responses. Higher correlations under DMT suggest',
+            '  increased physiological coupling during the psychedelic state.',
+            ''
+        ])
+    
+    # Add dynamic coherence summary if available
+    dynamic_path = os.path.join(OUT_DIR, 'dynamic_coherence_window2.csv')
+    if os.path.exists(dynamic_path):
+        df_dynamic = pd.read_csv(dynamic_path)
+        lines.extend([
+            'DYNAMIC AUTONOMIC COHERENCE:',
+            '  Sliding-window correlations (2-minute retrospective window):',
+            ''
+        ])
+        
+        for state in ['RS', 'DMT']:
+            lines.append(f'  {state} - Peak correlations:')
+            state_data = df_dynamic[df_dynamic['state'] == state]
+            for pair_name in ['HR–SCL', 'HR–RVT', 'SCL–RVT']:
+                pair_data = state_data[state_data['pair'] == pair_name]
+                if len(pair_data) > 0:
+                    max_row = pair_data.loc[pair_data['mean_r'].idxmax()]
+                    lines.append(f"    {pair_name}: max r̄ = {max_row['mean_r']:.3f} "
+                               f"at minute {int(max_row['minute'])} ({max_row['dose']})")
+            lines.append('')
+        
+        lines.extend([
+            '  Interpretation: Correlations increase in the first minutes post-t0',
+            '  and are generally higher in High dose, suggesting coordinated',
+            '  upregulation of autonomic activity.',
+            ''
+        ])
+    
+    lines.extend([
+        'MODEL SPECIFICATION:',
+        '  Fixed effects: ArousalIndex ~ State*Dose + minute_c + State:minute_c + Dose:minute_c',
+        '  Random effects: ~ 1 | subject',
+        '  Where minute_c = minute - mean(minute) [centered time]',
+        '',
+    ])
+    
+    if fitted_model is not None:
+        lines.extend([
+            'MODEL FIT STATISTICS:',
+            f"  AIC: {diagnostics.get('aic', np.nan):.2f}",
+            f"  BIC: {diagnostics.get('bic', np.nan):.2f}",
+            f"  Log-likelihood: {diagnostics.get('loglik', np.nan):.2f}",
+            f"  N observations: {diagnostics.get('n_obs', 'N/A')}",
+            f"  N subjects: {diagnostics.get('n_groups', 'N/A')}",
+            f"  Random effects variance: {diagnostics.get('random_effects_var', 'N/A')}",
+            f"  Residual variance: {diagnostics.get('residual_var', np.nan):.6f}",
+            '',
+        ])
+        
+        warns = diagnostics.get('convergence_warnings', [])
+        if warns:
+            lines.extend(['CONVERGENCE WARNINGS:', *[f'  - {w}' for w in warns], ''])
+        else:
+            lines.append('Model converged without warnings\n')
+    
+    if 'fdr_families' in hypothesis_results:
+        lines.extend([
+            'HYPOTHESIS TESTING RESULTS (with BH-FDR correction):',
+            '=' * 60,
+            ''
+        ])
+        
+        for fam, famres in hypothesis_results['fdr_families'].items():
+            lines.extend([f'FAMILY {fam.upper()}:', '-' * 30])
+            for param, res in famres.items():
+                sig = '***' if res['p_fdr'] < 0.001 else '**' if res['p_fdr'] < 0.01 else '*' if res['p_fdr'] < 0.05 else ''
+                lines.extend([
+                    f'  {param}:',
+                    f"    β = {res['beta']:8.4f}, SE = {res['se']:6.4f}",
+                    f"    95% CI: [{res['ci_lower']:8.4f}, {res['ci_upper']:8.4f}]",
+                    f"    p_raw = {res['p_raw']:6.4f}, p_FDR = {res['p_fdr']:6.4f} {sig}",
+                    '',
+                ])
+            lines.append('')
+    
+    if 'conditional_contrasts' in hypothesis_results:
+        lines.extend(['CONDITIONAL CONTRASTS:', '-' * 30])
+        for _, res in hypothesis_results['conditional_contrasts'].items():
+            sig = '***' if res['p_raw'] < 0.001 else '**' if res['p_raw'] < 0.01 else '*' if res['p_raw'] < 0.05 else ''
+            lines.extend([
+                f"  {res['description']}:",
+                f"    β = {res['beta']:8.4f}, SE = {res['se']:6.4f}, p = {res['p_raw']:6.4f} {sig}",
+                ''
+            ])
+    
+    lines.extend(['', '=' * 80])
+    
+    out_path = os.path.join(OUT_DIR, 'lme_analysis_report.txt')
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines))
+    
+    print(f"  ✓ Saved: {out_path}")
+
+
+def create_model_summary_txt(diagnostics: Dict, hypothesis_results: Dict, 
+                             var_exp: float, loadings: np.ndarray) -> None:
+    """Create compact model summary."""
+    lines: List[str] = [
+        'COMPOSITE AROUSAL INDEX - MODEL SUMMARY',
+        '=' * 60,
+        '',
+        'PCA Results:',
+        f"  PC1 explained variance: {var_exp:.4f} ({var_exp*100:.2f}%)",
+        f"  Loadings: HR_z={loadings[0]:.3f}, SCL_AUC_z={loadings[1]:.3f}, RVT_z={loadings[2]:.3f}",
+        '',
+        'LME Formula:',
+        '  ArousalIndex ~ State*Dose + minute_c + State:minute_c + Dose:minute_c',
+        '  Random: ~ 1 | subject',
+        '',
+        'Model Fit:',
+        f"  AIC: {diagnostics.get('aic', np.nan):.2f}",
+        f"  BIC: {diagnostics.get('bic', np.nan):.2f}",
+        f"  N obs: {diagnostics.get('n_obs', 'N/A')}",
+        f"  N subjects: {diagnostics.get('n_groups', 'N/A')}",
+        '',
+        'Significant Effects (p_FDR < 0.05):',
+    ]
+    
+    sig_found = False
+    if 'fdr_families' in hypothesis_results:
+        for fam, famres in hypothesis_results['fdr_families'].items():
+            for param, res in famres.items():
+                if res['p_fdr'] < 0.05:
+                    sig = '***' if res['p_fdr'] < 0.001 else '**' if res['p_fdr'] < 0.01 else '*'
+                    lines.append(f"  • {param}: β = {res['beta']:.3f} {sig}")
+                    sig_found = True
+    
+    if not sig_found:
+        lines.append('  • None')
+    
+    out_path = os.path.join(OUT_DIR, 'model_summary.txt')
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines))
+    
+    print(f"  ✓ Saved: {out_path}")
+
+
+#############################
+# Plot aesthetics (aligned with unimodal scripts)
+#############################
+
+# Centralized font sizes and legend settings
+AXES_TITLE_SIZE = 29
+AXES_LABEL_SIZE = 36
+TICK_LABEL_SIZE = 28
+TICK_LABEL_SIZE_SMALL = 24
+
+LEGEND_FONTSIZE = 18
+LEGEND_FONTSIZE_SMALL = 14
+LEGEND_MARKERSCALE = 1.6
+LEGEND_BORDERPAD = 0.6
+LEGEND_HANDLELENGTH = 3.0
+LEGEND_LABELSPACING = 0.7
+LEGEND_BORDERAXESPAD = 0.9
+
+plt.style.use('seaborn-v0_8-whitegrid')
+plt.rcParams.update({
+    'figure.dpi': 110,
+    'savefig.dpi': 400,
+    'axes.titlesize': AXES_TITLE_SIZE,
+    'axes.labelsize': AXES_LABEL_SIZE,
+    'axes.titlepad': 8.0,
+    'axes.spines.top': False,
+    'axes.spines.right': False,
+    'legend.frameon': False,
+    'legend.fontsize': LEGEND_FONTSIZE,
+    'legend.borderpad': LEGEND_BORDERPAD,
+    'legend.handlelength': LEGEND_HANDLELENGTH,
+    'xtick.labelsize': TICK_LABEL_SIZE_SMALL,
+    'ytick.labelsize': TICK_LABEL_SIZE_SMALL,
+})
+
+# Composite index uses violet/purple color scheme from tab20c
+tab20c_colors = plt.cm.tab20c.colors
+# Violet group: indices 12-15 (darkest to lightest)
+COLOR_RS_HIGH = tab20c_colors[12]   # Dark violet for High
+COLOR_RS_LOW = tab20c_colors[14]    # Light violet for Low
+COLOR_DMT_HIGH = tab20c_colors[12]  # Same dark violet for High
+COLOR_DMT_LOW = tab20c_colors[14]   # Same light violet for Low
+
+
+#############################
+# Visualization
+#############################
+
+def load_lme_results_from_report(report_path: str) -> Dict:
+    """Parse LME report to extract coefficient information."""
+    if not os.path.exists(report_path):
+        raise FileNotFoundError(report_path)
+    
+    with open(report_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    
+    coefficients: Dict[str, Dict] = {}
+    current_family: Optional[str] = None
+    
+    for i, line in enumerate(lines):
+        line = line.strip()
+        
+        if line.startswith('FAMILY STATE:'):
+            current_family = 'State'
+        elif line.startswith('FAMILY DOSE:'):
+            current_family = 'Dose'
+        elif line.startswith('FAMILY INTERACTION:'):
+            current_family = 'Interaction'
+        elif line.startswith('CONDITIONAL CONTRASTS:'):
+            current_family = 'Contrasts'
+        
+        if current_family and line.endswith(':') and not line.startswith('FAMILY') and not line.startswith('CONDITIONAL'):
+            name = line.rstrip(':').strip()
+            if i + 3 < len(lines):
+                beta_line = lines[i + 1].strip()
+                ci_line = lines[i + 2].strip()
+                p_line = lines[i + 3].strip()
+                
+                try:
+                    if beta_line.startswith('β ='):
+                        parts = beta_line.split(',')
+                        beta = float(parts[0].split('=')[1].strip())
+                        se = float(parts[1].split('=')[1].strip())
+                    
+                    if ci_line.startswith('95% CI:'):
+                        txt = ci_line.replace('95% CI:', '').replace('[', '').replace(']', '').strip()
+                        ci_lower = float(txt.split(',')[0])
+                        ci_upper = float(txt.split(',')[1])
+                    
+                    if 'p_raw =' in p_line and 'p_FDR =' in p_line:
+                        p_parts = p_line.split(',')
+                        p_raw = float([p for p in p_parts if 'p_raw' in p][0].split('=')[1].strip().split()[0])
+                        p_fdr_text = [p for p in p_parts if 'p_FDR' in p][0].split('=')[1].strip()
+                        p_fdr = float(p_fdr_text.split()[0])
+                        significance = '***' if '***' in p_fdr_text else '**' if '**' in p_fdr_text else '*' if '*' in p_fdr_text else ''
+                    
+                    coefficients[name] = {
+                        'family': current_family,
+                        'beta': beta,
+                        'se': se,
+                        'ci_lower': ci_lower,
+                        'ci_upper': ci_upper,
+                        'p_raw': p_raw,
+                        'p_fdr': p_fdr,
+                        'significance': significance,
+                    }
+                except Exception:
+                    continue
+    
+    return coefficients
+
+
+def prepare_coefficient_data(coefficients: Dict) -> pd.DataFrame:
+    """Prepare coefficient data for plotting."""
+    order = [
+        'State[T.DMT]',
+        'Dose[T.High]',
+        'State[T.DMT]:minute_c',
+        'Dose[T.High]:minute_c',
+        'State[T.DMT]:Dose[T.High]'
+    ]
+    
+    labels = {
+        'State[T.DMT]': 'State (DMT vs RS)',
+        'Dose[T.High]': 'Dose (High vs Low)',
+        'State[T.DMT]:minute_c': 'State × Time',
+        'Dose[T.High]:minute_c': 'Dose × Time',
+        'State[T.DMT]:Dose[T.High]': 'State × Dose'
+    }
+    
+    # Use violet color scheme for composite index (aligned with tab20c)
+    # Violet group: indices 12-15
+    fam_colors = {
+        'State': tab20c_colors[12],      # Dark violet
+        'Dose': tab20c_colors[13],       # Medium violet
+        'Interaction': tab20c_colors[14], # Light violet
+    }
+    
+    rows: List[Dict] = []
+    for i, p in enumerate(order):
+        if p in coefficients:
+            c = coefficients[p]
+            rows.append({
+                'parameter': p,
+                'label': labels.get(p, p),
+                'beta': c['beta'],
+                'se': c['se'],
+                'ci_lower': c['ci_lower'],
+                'ci_upper': c['ci_upper'],
+                'p_raw': c['p_raw'],
+                'p_fdr': c['p_fdr'],
+                'significance': c['significance'],
+                'family': c['family'],
+                'order': i,
+                'significant': c['p_fdr'] < 0.05,
+                'color': fam_colors.get(c['family'], '#666666'),
+            })
+    
+    df = pd.DataFrame(rows)
+    if df.empty:
+        raise ValueError('No coefficient data to plot')
+    
+    return df
+
+
+def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
+    """Create coefficient plot with CIs."""
+    print("Creating coefficient plot...")
+    
+    # Dimensions: same height as all_subs_composite (6), half width (16/2 = 8)
+    fig, ax = plt.subplots(figsize=(8, 6))
+    coef_df = coef_df.sort_values('order')
+    y_positions = np.arange(len(coef_df))
+    
+    for _, row in coef_df.iterrows():
+        y_pos = y_positions[row['order']]
+        linewidth = 6.5
+        alpha = 1.0
+        marker_size = 200
+        
+        # CI line
+        ax.plot([row['ci_lower'], row['ci_upper']], [y_pos, y_pos], 
+                color=row['color'], linewidth=linewidth, alpha=alpha)
+        
+        # Point estimate
+        ax.scatter(row['beta'], y_pos, color=row['color'], s=marker_size, 
+                  alpha=alpha, edgecolors=row['color'], linewidths=3.5, zorder=3)
+    
+    ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=2.0)
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(coef_df['label'], fontsize=26)
+    ax.set_xlabel('Coefficient Estimate (β)\nwith 95% CI', fontsize=22)
+    ax.tick_params(axis='x', labelsize=16)
+    ax.grid(True, axis='x', alpha=0.3, linestyle='-', linewidth=0.5)
+    ax.set_axisbelow(True)
+    
+    plt.subplots_adjust(left=0.28)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=400, bbox_inches='tight')
+    plt.close()
+    
+    print(f"  ✓ Saved: {output_path}")
+
+
+def compute_empirical_means_and_ci(df: pd.DataFrame, confidence: float = 0.95) -> pd.DataFrame:
+    """Compute empirical means and confidence intervals."""
+    grouped = df.groupby(['minute', 'State', 'Dose'], observed=False)['ArousalIndex']
+    stats_df = grouped.agg(['count', 'mean', 'std', 'sem']).reset_index()
+    stats_df.columns = ['minute', 'State', 'Dose', 'n', 'mean', 'std', 'se']
+    stats_df['condition'] = stats_df['State'].astype(str) + '_' + stats_df['Dose'].astype(str)
+    
+    alpha = 1 - confidence
+    t_critical = scistats.t.ppf(1 - alpha/2, stats_df['n'] - 1) if scistats is not None else 1.96
+    stats_df['ci_lower'] = stats_df['mean'] - t_critical * stats_df['se']
+    stats_df['ci_upper'] = stats_df['mean'] + t_critical * stats_df['se']
+    stats_df['ci_lower'] = stats_df['ci_lower'].fillna(stats_df['mean'])
+    stats_df['ci_upper'] = stats_df['ci_upper'].fillna(stats_df['mean'])
+    
+    return stats_df
+
+
+def _resample_to_grid(t: np.ndarray, y: np.ndarray, t_grid: np.ndarray) -> np.ndarray:
+    """Resample time series to common grid via linear interpolation."""
+    t = np.asarray(t, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if len(t) < 2:
+        return np.full_like(t_grid, np.nan, dtype=float)
+    valid = ~np.isnan(y)
+    if not np.any(valid):
+        return np.full_like(t_grid, np.nan, dtype=float)
+    t_valid = t[valid]
+    y_valid = y[valid]
+    yg = np.full_like(t_grid, np.nan, dtype=float)
+    mask = (t_grid >= t_valid[0]) & (t_grid <= t_valid[-1])
+    if np.any(mask):
+        yg[mask] = np.interp(t_grid[mask], t_valid, y_valid)
+    return yg
+
+
+def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05) -> Dict:
+    """Compute paired t-test across time, apply BH-FDR, and summarize results."""
+    result: Dict[str, object] = {'alpha': alpha, 'pvals': [], 'pvals_adj': [], 'sig_mask': [], 'segments': []}
+    if scistats is None:
+        print("Warning: scipy.stats not available for FDR computation")
+        return result
+    
+    n_time = A.shape[1]
+    pvals = np.full(n_time, np.nan, dtype=float)
+    
+    # Compute t-tests at each time point
+    for t in range(n_time):
+        a = A[:, t]
+        b = B[:, t]
+        mask = (~np.isnan(a)) & (~np.isnan(b))
+        if np.sum(mask) >= 2:
+            try:
+                _, p = scistats.ttest_rel(a[mask], b[mask])
+                pvals[t] = float(p)
+            except Exception:
+                pvals[t] = np.nan
+    
+    valid_idx = np.where(~np.isnan(pvals))[0]
+    if len(valid_idx) == 0:
+        print("Warning: No valid p-values computed for FDR")
+        return result
+    
+    # Apply BH-FDR correction
+    adj = np.full_like(pvals, np.nan, dtype=float)
+    adj_vals = benjamini_hochberg_correction(pvals[valid_idx].tolist())
+    adj[valid_idx] = np.array(adj_vals, dtype=float)
+    
+    # Find significant time points
+    sig = adj < alpha
+    n_sig = np.sum(sig)
+    print(f"FDR analysis: {n_sig}/{len(sig)} time points significant (alpha={alpha})")
+    
+    # Find contiguous segments of significance
+    segments: List[Tuple[float, float]] = []
+    i = 0
+    while i < len(sig):
+        if sig[i]:
+            start = i
+            while i + 1 < len(sig) and sig[i + 1]:
+                i += 1
+            end = i
+            segments.append((float(x_grid[start]), float(x_grid[end])))
+        i += 1
+    
+    print(f"Found {len(segments)} significant segments")
+    if segments:
+        for j, (x0, x1) in enumerate(segments):
+            print(f"  Segment {j+1}: {x0:.1f}s - {x1:.1f}s ({x0/60:.2f} - {x1/60:.2f} min)")
+    
+    result['pvals'] = pvals.tolist()
+    result['pvals_adj'] = adj.tolist()
+    result['sig_mask'] = sig.tolist()
+    result['segments'] = segments
+    return result
+
+
+def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
+    """Create combined RS+DMT summary plot (9 minutes) for composite arousal index.
+    
+    Saves results/composite/plots/all_subs_composite.png
+    """
+    print("Creating combined summary plot...")
+    
+    # Common grid: 0..540s (9 minutes), 1s step for minute-level data
+    # Since we have minute-level data, create grid at minute centers
+    minute_grid = np.arange(1, N_MINUTES + 1)  # minutes 1-9
+    
+    state_data: Dict[str, Dict[str, np.ndarray]] = {}
+    
+    for kind in ['RS', 'DMT']:
+        # Extract data for this state
+        state_df = df[df['State'] == kind].copy()
+        
+        # Get unique subjects
+        subjects = sorted(state_df['subject'].unique())
+        
+        # Build matrices: rows = subjects, cols = minutes
+        high_mat = []
+        low_mat = []
+        
+        for subject in subjects:
+            subj_df = state_df[state_df['subject'] == subject].sort_values('minute')
+            
+            high_vals = subj_df[subj_df['Dose'] == 'High']['ArousalIndex'].values
+            low_vals = subj_df[subj_df['Dose'] == 'Low']['ArousalIndex'].values
+            
+            if len(high_vals) == N_MINUTES and len(low_vals) == N_MINUTES:
+                high_mat.append(high_vals)
+                low_mat.append(low_vals)
+        
+        if not high_mat or not low_mat:
+            print(f"Warning: No valid data for {kind} state")
+            continue
+        
+        H = np.array(high_mat)
+        L = np.array(low_mat)
+        
+        # Compute means and SEMs
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            mean_h = np.nanmean(H, axis=0)
+            mean_l = np.nanmean(L, axis=0)
+            
+            if H.shape[0] > 1:
+                sem_h = np.nanstd(H, axis=0, ddof=1) / np.sqrt(H.shape[0])
+            else:
+                sem_h = np.full_like(mean_h, np.nan)
+            
+            if L.shape[0] > 1:
+                sem_l = np.nanstd(L, axis=0, ddof=1) / np.sqrt(L.shape[0])
+            else:
+                sem_l = np.full_like(mean_l, np.nan)
+        
+        state_data[kind] = {
+            'mean_h': mean_h,
+            'mean_l': mean_l,
+            'sem_h': sem_h,
+            'sem_l': sem_l,
+            'H_mat': H,
+            'L_mat': L,
+        }
+    
+    if len(state_data) != 2:
+        print("Warning: Could not create combined plot - missing state data")
+        return None
+    
+    # Create plot
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6), sharex=True, sharey=True)
+    
+    # RS (left)
+    rs = state_data['RS']
+    print(f"Computing FDR for RS with {rs['H_mat'].shape[0]} subjects, {rs['H_mat'].shape[1]} time points")
+    rs_fdr = _compute_fdr_results(rs['H_mat'], rs['L_mat'], minute_grid)
+    rs_segments = rs_fdr.get('segments', [])
+    print(f"Adding {len(rs_segments)} shaded regions to RS panel")
+    
+    # Shade significant minute ranges
+    for m0, m1 in rs_segments:
+        ax1.axvspan(m0 - 0.5, m1 + 0.5, color='0.85', alpha=0.35, zorder=0)
+    
+    line_h1 = ax1.plot(minute_grid, rs['mean_h'], color=COLOR_RS_HIGH, lw=2.0, 
+                       marker='o', markersize=5, label='High')[0]
+    ax1.fill_between(minute_grid, rs['mean_h'] - rs['sem_h'], rs['mean_h'] + rs['sem_h'], 
+                     color=COLOR_RS_HIGH, alpha=0.25)
+    line_l1 = ax1.plot(minute_grid, rs['mean_l'], color=COLOR_RS_LOW, lw=2.0, 
+                       marker='o', markersize=5, label='Low')[0]
+    ax1.fill_between(minute_grid, rs['mean_l'] - rs['sem_l'], rs['mean_l'] + rs['sem_l'], 
+                     color=COLOR_RS_LOW, alpha=0.25)
+    
+    legend1 = ax1.legend([line_h1, line_l1], ['High', 'Low'], loc='upper right', 
+                        frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, 
+                        markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, 
+                        labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
+    legend1.get_frame().set_facecolor('white')
+    legend1.get_frame().set_alpha(0.9)
+    
+    ax1.set_xlabel('Time (minutes)', fontsize=24)
+    # Use violet color from tab20c for Composite Arousal Index
+    ax1.text(-0.20, 0.5, 'Composite Arousal', transform=ax1.transAxes, 
+             fontsize=24, fontweight='bold', color=tab20c_colors[12],
+             rotation=90, va='center', ha='center')
+    ax1.text(-0.12, 0.5, 'Index (PC1)', transform=ax1.transAxes, 
+             fontsize=24, fontweight='normal', color='black', 
+             rotation=90, va='center', ha='center')
+    ax1.set_title('Resting State (RS)', fontweight='bold')
+    ax1.grid(True, which='major', axis='y', alpha=0.25)
+    ax1.grid(False, which='major', axis='x')
+    
+    # DMT (right)
+    dmt = state_data['DMT']
+    print(f"Computing FDR for DMT with {dmt['H_mat'].shape[0]} subjects, {dmt['H_mat'].shape[1]} time points")
+    dmt_fdr = _compute_fdr_results(dmt['H_mat'], dmt['L_mat'], minute_grid)
+    dmt_segments = dmt_fdr.get('segments', [])
+    print(f"Adding {len(dmt_segments)} shaded regions to DMT panel")
+    
+    for m0, m1 in dmt_segments:
+        ax2.axvspan(m0 - 0.5, m1 + 0.5, color='0.85', alpha=0.35, zorder=0)
+    
+    line_h2 = ax2.plot(minute_grid, dmt['mean_h'], color=COLOR_DMT_HIGH, lw=2.0, 
+                       marker='o', markersize=5, label='High')[0]
+    ax2.fill_between(minute_grid, dmt['mean_h'] - dmt['sem_h'], dmt['mean_h'] + dmt['sem_h'], 
+                     color=COLOR_DMT_HIGH, alpha=0.25)
+    line_l2 = ax2.plot(minute_grid, dmt['mean_l'], color=COLOR_DMT_LOW, lw=2.0, 
+                       marker='o', markersize=5, label='Low')[0]
+    ax2.fill_between(minute_grid, dmt['mean_l'] - dmt['sem_l'], dmt['mean_l'] + dmt['sem_l'], 
+                     color=COLOR_DMT_LOW, alpha=0.25)
+    
+    legend2 = ax2.legend([line_h2, line_l2], ['High', 'Low'], loc='upper right', 
+                        frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, 
+                        markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, 
+                        labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
+    legend2.get_frame().set_facecolor('white')
+    legend2.get_frame().set_alpha(0.9)
+    
+    ax2.set_xlabel('Time (minutes)', fontsize=24)
+    ax2.set_title('DMT', fontweight='bold')
+    ax2.grid(True, which='major', axis='y', alpha=0.25)
+    ax2.grid(False, which='major', axis='x')
+    
+    # X ticks: minutes 1-9
+    for ax in (ax1, ax2):
+        ax.set_xticks(minute_grid)
+        ax.set_xlim(0.5, N_MINUTES + 0.5)
+        ax.tick_params(axis='both', labelsize=20)
+    
+    plt.tight_layout()
+    out_path = os.path.join(PLOTS_DIR, 'all_subs_composite.png')
+    plt.savefig(out_path, dpi=400, bbox_inches='tight')
+    plt.close()
+    
+    # Write FDR report
+    try:
+        report_lines: List[str] = [
+            'FDR COMPARISON: High vs Low (Composite Arousal Index, RS and DMT)',
+            f"Alpha = {rs_fdr.get('alpha', 0.05)}",
+            f"Time resolution: minute-level (minutes 1-{N_MINUTES})",
+            '',
+        ]
+        
+        def _panel_section(name: str, res: Dict):
+            report_lines.append(f'PANEL {name}:')
+            segs = res.get('segments', [])
+            report_lines.append(f"  Significant minute ranges (count={len(segs)}):")
+            if len(segs) == 0:
+                report_lines.append('    - None')
+            for (m0, m1) in segs:
+                report_lines.append(f"    - Minute {int(m0)} to {int(m1)}")
+            # Summary of p-values
+            p_adj = [v for v in res.get('pvals_adj', []) if isinstance(v, (int, float)) and not np.isnan(v)]
+            if p_adj:
+                report_lines.append(f"  Min p_FDR: {np.nanmin(p_adj):.6f}; Median p_FDR: {np.nanmedian(p_adj):.6f}")
+            report_lines.append('')
+        
+        _panel_section('RS', rs_fdr)
+        _panel_section('DMT', dmt_fdr)
+        
+        with open(os.path.join(OUT_DIR, 'fdr_segments_all_subs_composite.txt'), 'w', encoding='utf-8') as f:
+            f.write('\n'.join(report_lines))
+    except Exception as e:
+        print(f"Warning: Could not write FDR report: {e}")
+    
+    print(f"  ✓ Saved: {out_path}")
+    return out_path
+
+
+def create_stacked_subjects_plot(df: pd.DataFrame) -> Optional[str]:
+    """Create stacked per-subject figure (RS left, DMT right) for composite arousal index.
+    
+    Saves results/composite/plots/stacked_subs_composite.png
+    """
+    print("Creating stacked subjects plot...")
+    
+    # Stacked per-subject figure specific sizes
+    STACKED_AXES_LABEL_SIZE = 22
+    STACKED_TICK_LABEL_SIZE = 14
+    STACKED_SUBJECT_FONTSIZE = 30
+    
+    # Get unique subjects
+    subjects = sorted(df['subject'].unique())
+    
+    if not subjects:
+        print("Warning: No subjects found for stacked plot")
+        return None
+    
+    n = len(subjects)
+    
+    # Larger figure to keep typography proportional
+    fig, axes = plt.subplots(
+        n,
+        2,
+        figsize=(18, max(6.0, 3.2 * n)),
+        sharex=True,
+        sharey=True,
+        gridspec_kw={'hspace': 0.8, 'wspace': 0.35}
+    )
+    if n == 1:
+        axes = np.array([axes])
+    
+    minute_ticks = np.arange(1, N_MINUTES + 1)
+    
+    from matplotlib.lines import Line2D
+    
+    for i, subject in enumerate(subjects):
+        ax_rs = axes[i, 0]
+        ax_dmt = axes[i, 1]
+        
+        subj_df = df[df['subject'] == subject].copy()
+        
+        # RS data
+        rs_df = subj_df[subj_df['State'] == 'RS'].sort_values('minute')
+        rs_high = rs_df[rs_df['Dose'] == 'High']
+        rs_low = rs_df[rs_df['Dose'] == 'Low']
+        
+        if len(rs_high) > 0:
+            ax_rs.plot(rs_high['minute'], rs_high['ArousalIndex'], 
+                      color=COLOR_RS_HIGH, lw=1.4, marker='o', markersize=3)
+        if len(rs_low) > 0:
+            ax_rs.plot(rs_low['minute'], rs_low['ArousalIndex'], 
+                      color=COLOR_RS_LOW, lw=1.4, marker='o', markersize=3)
+        
+        ax_rs.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_rs.set_ylabel(r'$\mathbf{Composite\ Arousal}$' + '\nIndex (PC1)', fontsize=12)
+        ax_rs.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
+        ax_rs.set_title('Resting State (RS)', fontweight='bold')
+        ax_rs.set_xlim(0.5, N_MINUTES + 0.5)
+        ax_rs.grid(True, which='major', axis='y', alpha=0.25)
+        ax_rs.grid(False, which='major', axis='x')
+        
+        legend_rs = ax_rs.legend(handles=[
+            Line2D([0], [0], color=COLOR_RS_HIGH, lw=1.4, label='RS High'),
+            Line2D([0], [0], color=COLOR_RS_LOW, lw=1.4, label='RS Low'),
+        ], loc='upper right', frameon=True, fancybox=False, 
+           fontsize=LEGEND_FONTSIZE_SMALL, markerscale=LEGEND_MARKERSCALE, 
+           borderpad=LEGEND_BORDERPAD)
+        legend_rs.get_frame().set_facecolor('white')
+        legend_rs.get_frame().set_alpha(0.9)
+        
+        # DMT data
+        dmt_df = subj_df[subj_df['State'] == 'DMT'].sort_values('minute')
+        dmt_high = dmt_df[dmt_df['Dose'] == 'High']
+        dmt_low = dmt_df[dmt_df['Dose'] == 'Low']
+        
+        if len(dmt_high) > 0:
+            ax_dmt.plot(dmt_high['minute'], dmt_high['ArousalIndex'], 
+                       color=COLOR_DMT_HIGH, lw=1.4, marker='o', markersize=3)
+        if len(dmt_low) > 0:
+            ax_dmt.plot(dmt_low['minute'], dmt_low['ArousalIndex'], 
+                       color=COLOR_DMT_LOW, lw=1.4, marker='o', markersize=3)
+        
+        ax_dmt.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_dmt.set_ylabel(r'$\mathbf{Composite\ Arousal}$' + '\nIndex (PC1)', fontsize=12)
+        ax_dmt.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
+        ax_dmt.set_title('DMT', fontweight='bold')
+        ax_dmt.set_xlim(0.5, N_MINUTES + 0.5)
+        ax_dmt.grid(True, which='major', axis='y', alpha=0.25)
+        ax_dmt.grid(False, which='major', axis='x')
+        
+        legend_dmt = ax_dmt.legend(handles=[
+            Line2D([0], [0], color=COLOR_DMT_HIGH, lw=1.4, label='DMT High'),
+            Line2D([0], [0], color=COLOR_DMT_LOW, lw=1.4, label='DMT Low'),
+        ], loc='upper right', frameon=True, fancybox=False, 
+           fontsize=LEGEND_FONTSIZE_SMALL, markerscale=LEGEND_MARKERSCALE, 
+           borderpad=LEGEND_BORDERPAD)
+        legend_dmt.get_frame().set_facecolor('white')
+        legend_dmt.get_frame().set_alpha(0.9)
+        
+        # Ticks
+        ax_rs.set_xticks(minute_ticks)
+        ax_dmt.set_xticks(minute_ticks)
+    
+    fig.tight_layout(pad=2.0)
+    
+    # Add subject codes centered between columns, aligned to final layout
+    for i, subject in enumerate(subjects):
+        pos_left = axes[i, 0].get_position()
+        pos_right = axes[i, 1].get_position()
+        y_center = (pos_left.y0 + pos_left.y1) / 2.0
+        x_center = (pos_left.x1 + pos_right.x0) / 2.0
+        fig.text(
+            x_center,
+            y_center + 0.02,
+            subject,
+            ha='center',
+            va='bottom',
+            fontweight='bold',
+            fontsize=STACKED_SUBJECT_FONTSIZE,
+            transform=fig.transFigure,
+        )
+    
+    out_path = os.path.join(PLOTS_DIR, 'stacked_subs_composite.png')
+    plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"  ✓ Saved: {out_path}")
+    return out_path
+
+
+def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None:
+    """Create marginal means plot over time."""
+    print("Creating marginal means plot...")
+    
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    conditions = stats_df['condition'].unique()
+    for condition in sorted(conditions):
+        cond_data = stats_df[stats_df['condition'] == condition].sort_values('minute')
+        if len(cond_data) == 0:
+            continue
+        
+        if condition == 'RS_Low':
+            color = COLOR_RS_LOW
+        elif condition == 'RS_High':
+            color = COLOR_RS_HIGH
+        elif condition == 'DMT_Low':
+            color = COLOR_DMT_LOW
+        elif condition == 'DMT_High':
+            color = COLOR_DMT_HIGH
+        else:
+            color = '#666666'
+        
+        ax.plot(cond_data['minute'], cond_data['mean'], color=color, linewidth=2.5, 
+                label=condition.replace('_', ' '), marker='o', markersize=5)
+        ax.fill_between(cond_data['minute'], cond_data['ci_lower'], cond_data['ci_upper'], 
+                       color=color, alpha=0.2)
+    
+    ax.set_xlabel('Time (minutes)')
+    ax.set_ylabel('Arousal Index (PC1)')
+    ticks = list(range(1, N_MINUTES + 1))
+    ax.set_xticks(ticks)
+    ax.set_xlim(0.8, N_MINUTES + 0.2)
+    ax.grid(True, which='major', axis='y', alpha=0.25)
+    ax.grid(False, which='major', axis='x')
+    
+    legend = ax.legend(loc='upper right', frameon=True, fancybox=True, 
+                      fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, 
+                      borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, 
+                      borderaxespad=LEGEND_BORDERAXESPAD)
+    legend.get_frame().set_facecolor('white')
+    legend.get_frame().set_alpha(0.9)
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=400, bbox_inches='tight')
+    plt.close()
+    
+    print(f"  ✓ Saved: {output_path}")
+
+
+#############################
+# Main execution
+#############################
+
+def main() -> bool:
+    """Main execution function."""
+    print("\n" + "=" * 80)
+    print("COMPOSITE AUTONOMIC AROUSAL INDEX ANALYSIS")
+    print("=" * 80 + "\n")
+    
+    try:
+        # 1. Load and prepare data
+        df = load_and_prepare()
+        
+        # 2. Z-score within subject
+        df = zscore_within_subject(df)
+        
+        # 3. Compute PCA and arousal index
+        df, var_exp, loadings = compute_pca_and_index(df)
+        
+        # 4. Compute cross-correlations between signals
+        compute_and_plot_cross_correlations(df)
+        
+        # 5. Compute dynamic autonomic coherence
+        compute_and_plot_dynamic_coherence(df, window=2)
+        
+        # 6. Fit LME model
+        fitted, diagnostics = fit_lme_model(df)
+        
+        if fitted is None:
+            print("\n⚠ LME model fitting failed!")
+            return False
+        
+        # 7. Hypothesis testing with FDR
+        hypothesis_results = hypothesis_testing_with_fdr(fitted)
+        
+        # 8. Generate reports
+        generate_report(fitted, diagnostics, hypothesis_results, df, var_exp, loadings)
+        create_model_summary_txt(diagnostics, hypothesis_results, var_exp, loadings)
+        
+        # 9. Create plots
+        # Coefficient plot
+        report_path = os.path.join(OUT_DIR, 'lme_analysis_report.txt')
+        coefficients = load_lme_results_from_report(report_path)
+        coef_df = prepare_coefficient_data(coefficients)
+        create_coefficient_plot(coef_df, os.path.join(PLOTS_DIR, 'lme_coefficient_plot.png'))
+        
+        # Combined summary plot (RS + DMT panels with FDR)
+        create_combined_summary_plot(df)
+        
+        # Stacked per-subject plot
+        create_stacked_subjects_plot(df)
+        
+        print("\n" + "=" * 80)
+        print("ANALYSIS COMPLETE")
+        print("=" * 80)
+        print(f"\nResults saved to: {OUT_DIR}")
+        print(f"  - arousal_index_long.csv: Long-format data with ArousalIndex")
+        print(f"  - pca_loadings_pc1.csv: PC1 loadings for each signal")
+        print(f"  - pca_variance_explained.txt: Variance explained by each PC")
+        print(f"  - corr_within_subject_pearson.csv: Within-subject Pearson correlations")
+        print(f"  - corr_within_subject_spearman.csv: Within-subject Spearman correlations")
+        print(f"  - dynamic_coherence_window2.csv: Dynamic sliding-window correlations")
+        print(f"  - lme_analysis_report.txt: Full LME analysis report")
+        print(f"  - model_summary.txt: Compact model summary")
+        print(f"  - fdr_segments_all_subs_composite.txt: FDR analysis report")
+        print(f"  - plots/pca_scree.png: Scree plot")
+        print(f"  - plots/pca_pc1_loadings.png: PC1 loadings bar plot")
+        print(f"  - plots/corr_heatmap_RS_vs_DMT.png: Cross-correlation heatmaps")
+        print(f"  - plots/dynamic_autonomic_coherence_window2.png: Dynamic coherence over time")
+        print(f"  - plots/pca_3d_loadings_interactive.html: 3D PCA space (interactive, open in browser)")
+        print(f"  - plots/lme_coefficient_plot.png: LME coefficients with CIs")
+        print(f"  - plots/all_subs_composite.png: Combined RS+DMT summary with FDR")
+        print(f"  - plots/stacked_subs_composite.png: Stacked per-subject timecourses")
+        print()
+        
+        return True
+    
+    except Exception as e:
+        print(f"\n❌ Error during analysis: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+if __name__ == '__main__':
+    success = main()
+    sys.exit(0 if success else 1)

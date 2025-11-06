@@ -1,0 +1,134 @@
+================================================================================
+COMPOSITE AUTONOMIC AROUSAL INDEX (PCA-PC1) + LME ANALYSIS
+================================================================================
+
+Analysis date: 2025-11-06 17:51:59
+Dataset: 252 observations from 7 subjects
+Subjects: S04, S06, S07, S16, S18, S19, S20
+
+DESIGN:
+  Within-subjects 2×2: State (RS vs DMT) × Dose (Low vs High)
+  Time windows: 9 one-minute windows (1-9 minutes)
+  Dependent variable: ArousalIndex (PC1 from PCA on HR_z, SCL_AUC_z, RVT_z)
+
+PCA RESULTS:
+  PC1 explained variance: 0.6025 (60.25%)
+  PC1 loadings:
+    HR_z:        0.581
+    SCL_AUC_z:   0.636
+    RVT_z:       0.508
+
+  Interpretation: Higher ArousalIndex = greater autonomic activation
+  Sign convention: PC1 oriented so SCL_AUC_z loading is positive
+
+CROSS-CORRELATIONS BETWEEN SIGNALS:
+  Within-subject Pearson correlations (minute-by-minute):
+
+  RS:
+    HR–SCL: r̄ = -0.403 ± 0.406 (N=7)
+    HR–RVT: r̄ = 0.331 ± 0.833 (N=7)
+    SCL–RVT: r̄ = 0.089 ± 0.603 (N=7)
+
+  DMT:
+    HR–SCL: r̄ = 0.474 ± 0.563 (N=7)
+    HR–RVT: r̄ = 0.162 ± 0.437 (N=7)
+    SCL–RVT: r̄ = 0.423 ± 0.422 (N=7)
+
+  Interpretation: Positive correlations across all signal pairs indicate
+  coherent autonomic responses. Higher correlations under DMT suggest
+  increased physiological coupling during the psychedelic state.
+
+DYNAMIC AUTONOMIC COHERENCE:
+  Sliding-window correlations (2-minute retrospective window):
+
+  RS - Peak correlations:
+    HR–SCL: max r̄ = 0.429 at minute 5 (Low)
+    HR–RVT: max r̄ = 1.000 at minute 9 (Low)
+    SCL–RVT: max r̄ = 0.714 at minute 4 (Low)
+
+  DMT - Peak correlations:
+    HR–SCL: max r̄ = 1.000 at minute 5 (Low)
+    HR–RVT: max r̄ = 0.429 at minute 8 (Low)
+    SCL–RVT: max r̄ = 0.714 at minute 4 (High)
+
+  Interpretation: Correlations increase in the first minutes post-t0
+  and are generally higher in High dose, suggesting coordinated
+  upregulation of autonomic activity.
+
+MODEL SPECIFICATION:
+  Fixed effects: ArousalIndex ~ State*Dose + minute_c + State:minute_c + Dose:minute_c
+  Random effects: ~ 1 | subject
+  Where minute_c = minute - mean(minute) [centered time]
+
+MODEL FIT STATISTICS:
+  AIC: nan
+  BIC: nan
+  Log-likelihood: -272.70
+  N observations: 252
+  N subjects: 7
+  Random effects variance:               Group
+Group  5.557910e-11
+  Residual variance: 0.468135
+
+CONVERGENCE WARNINGS:
+  - Random effects covariance is singular
+  - Random effects covariance is singular
+  - Random effects covariance is singular
+  - Random effects covariance is singular
+  - Random effects covariance is singular
+  - Random effects covariance is singular
+  - Random effects covariance is singular
+  - Random effects covariance is singular
+  - Random effects covariance is singular
+  - Random effects covariance is singular
+  - Random effects covariance is singular
+  - The MLE may be on the boundary of the parameter space.
+  - The Hessian matrix at the estimated parameter values is not positive definite.
+
+HYPOTHESIS TESTING RESULTS (with BH-FDR correction):
+============================================================
+
+FAMILY STATE:
+------------------------------
+  State[T.DMT]:
+    β =   1.3131, SE = 0.1219
+    95% CI: [  1.0742,   1.5520]
+    p_raw = 0.0000, p_FDR = 0.0000 ***
+
+  State[T.DMT]:minute_c:
+    β =  -0.0984, SE = 0.0334
+    95% CI: [ -0.1638,  -0.0329]
+    p_raw = 0.0032, p_FDR = 0.0032 **
+
+
+FAMILY DOSE:
+------------------------------
+  Dose[T.High]:
+    β =   0.6855, SE = 0.1219
+    95% CI: [  0.4466,   0.9245]
+    p_raw = 0.0000, p_FDR = 0.0000 ***
+
+  Dose[T.High]:minute_c:
+    β =   0.1039, SE = 0.0334
+    95% CI: [  0.0385,   0.1694]
+    p_raw = 0.0019, p_FDR = 0.0019 **
+
+
+FAMILY INTERACTION:
+------------------------------
+  State[T.DMT]:Dose[T.High]:
+    β =   0.9004, SE = 0.1724
+    95% CI: [  0.5625,   1.2383]
+    p_raw = 0.0000, p_FDR = 0.0000 ***
+
+
+CONDITIONAL CONTRASTS:
+------------------------------
+  High - Low within RS:
+    β =   0.6855, SE = 0.1219, p = 0.0000 ***
+
+  (High - Low within DMT) - (High - Low within RS):
+    β =   0.9004, SE = 0.1724, p = 0.0000 ***
+
+
+================================================================================

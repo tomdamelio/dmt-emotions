@@ -17,6 +17,8 @@ dependencies:
   - pyjulia
   - jpype1
   - pip
+  - plotly
+  - kaleido
   - pip:
       - biosppy
 

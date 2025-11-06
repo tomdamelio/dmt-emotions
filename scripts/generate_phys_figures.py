@@ -176,6 +176,81 @@ def create_figure_one() -> str:
     return out_path
 
 
+def create_figure_two() -> str:
+    """Create Figure 2: Composite Autonomic Arousal Index (4 panels in 4x2 grid).
+    
+    Panel A (top-left, 1 row × 1 col): pca_scree.png
+    Panel B (below A, 1 row × 1 col): pca_pc1_loadings.png
+    Panel C (top-right, 2 rows × 1 col): lme_coefficient_plot.png
+    Panel D (bottom, 2 rows × 2 cols): all_subs_composite.png
+    """
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    COMPOSITE_ROOT = PROJECT_ROOT / 'results' / 'composite' / 'plots'
+
+    # New mapping: A=scree, B=loadings, C=lme_coef, D=all_subs
+    A_path = str(COMPOSITE_ROOT / 'pca_scree.png')
+    B_path = str(COMPOSITE_ROOT / 'pca_pc1_loadings.png')
+    C_path = str(COMPOSITE_ROOT / 'lme_coefficient_plot.png')
+    D_path = str(COMPOSITE_ROOT / 'all_subs_composite.png')
+
+    A_img = _load_image(A_path)
+    B_img = _load_image(B_path)
+    C_img = _load_image(C_path)
+    D_img = _load_image(D_path)
+
+    # Create figure with 4x2 grid
+    # Make first column narrower (60% of second column width) for A and B panels
+    fig = plt.figure(figsize=(34, 27))
+    gs = fig.add_gridspec(4, 2,
+                          width_ratios=[0.6, 1.0],  # First column is 60% of second
+                          wspace=0.02,    # Small positive spacing
+                          hspace=0.08,    # Vertical spacing
+                          left=0.01,
+                          right=0.99,
+                          top=0.99,
+                          bottom=0.01)
+    
+    # Panel A: row 1 (index 0), left column
+    ax_A = fig.add_subplot(gs[0, 0])
+    
+    # Panel B: row 2 (index 1), left column
+    ax_B = fig.add_subplot(gs[1, 0])
+    
+    # Panel C: top 2 rows, right column
+    ax_C = fig.add_subplot(gs[0:2, 1])
+    
+    # Panel D: bottom 2 rows, both columns
+    ax_D = fig.add_subplot(gs[2:4, :])
+    
+    axes = [ax_A, ax_B, ax_C, ax_D]
+    imgs = [A_img, B_img, C_img, D_img]
+    
+    # Place images
+    for ax, img in zip(axes, imgs):
+        ax.axis('off')
+        if img is not None:
+            ax.imshow(img)
+    
+    # Place labels using figure coordinates for perfect alignment
+    positions = [ax.get_position() for ax in axes]
+    labels = ['A', 'C', 'B', 'D']
+    
+    # Offsets for each panel
+    # A: top panel, needs extra offset
+    # B: left column bottom, needs extra offset
+    # C, D: right column, standard offset
+    offsets = [0.05, 0.05, 0.02, 0.02]
+    
+    for pos, label, offset in zip(positions, labels, offsets):
+        fig.text(pos.x0 - 0.01, pos.y1 + offset, label, 
+                fontsize=30, fontweight='bold', ha='left', va='top')
+
+    out_path = str(OUT_DIR / 'figure_2.png')
+    plt.savefig(out_path, dpi=400, bbox_inches='tight')
+    plt.close()
+    return out_path
+
+
 def create_figure_S1() -> str:
     """Create Figure S1: DMT ECG HR extended timecourse (single panel)."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -314,6 +389,8 @@ def create_figure_S3() -> str:
 def main() -> None:
     fig1 = create_figure_one()
     print(f"Figure 1 saved to: {fig1}")
+    fig2 = create_figure_two()
+    print(f"Figure 2 saved to: {fig2}")
     figS1 = create_figure_S1()
     print(f"Figure S1 saved to: {figS1}")
     figS2 = create_figure_S2()

@@ -1,0 +1,13 @@
+FDR COMPARISON: High vs Low (Composite Arousal Index, RS and DMT)
+Alpha = 0.05
+Time resolution: minute-level (minutes 1-9)
+
+PANEL RS:
+  Significant minute ranges (count=1):
+    - Minute 3 to 7
+  Min p_FDR: 0.003615; Median p_FDR: 0.035791
+
+PANEL DMT:
+  Significant minute ranges (count=1):
+    - Minute 4 to 9
+  Min p_FDR: 0.015096; Median p_FDR: 0.031465

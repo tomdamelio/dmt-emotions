@@ -34,14 +34,12 @@ Empecemos modificando `run_ecg_hr_analysis.py` para ver si esto genera los cambi
 
 [x] Arreglar los filenames de las figuras, dejando claro cuales son figuras principales (numeradas en orden) y cuales de materiales suplementarios (y eliminar los paneles deprecados)
 
+[x] Revisar que la caption de la tabla S1 este bien (esta chequeando eso desde chatgpt y claude). Si eso no marca errores, seguir con el resto de los comentarios del documento.
+
+
+[x] Revisar todos los comentarios que estan en el documento (seccion resultados)
+
 SEGUIR DESDE ACA ->
-
-[ ] Revisar que la caption de la tabla S1 este bien (esta chequeando eso desde chatgpt y claude). Si eso no marca errores, seguir con el resto de los comentarios del documento.
-
-[ ] Revisar todos los comentarios que estan en el documento
-
-Mostrar a diego esto (al menos figuras principales, etc).
-Pasarselo maximo el martes a la noche, para que Diego pueda revisarlo en el tren el miercoles y jueves
 
 Analisis multimodales
 ---------------------
@@ -49,17 +47,22 @@ Analisis multimodales
 Diego me dijo que podria iterar con chatgpt para usar los 6 o 7 sujetos, y hacer un LME con esos participantes.
 De esta forma, ademas de tener coeficientes por cada una de las condiciones, ademas tendria un coeficientes particulares por el tipo de señal y un coeficiente por el promedio de señales. Hace sentido esto? iterarlo con chatgpt.
 
-[ ] Hacer analisis multimodales con los 6 sujetos compartidos con las 3 señales fisiologicas:
-S04, S06, S07, S16, S18, S20 (n = 6).
-Hacer plots tipo radar plots, pero simplemente con estas 3 señales (un triangulo) que busque patrones comunes en los sujetos para estar 3 señales.
-El objetivo seria ver que patrones comunes se puede extraer de las 3 señales combinadas.
-Por ejemplo, tal vez se puede hacer una correlacion de las metricas agregadas por minuto de:
-- SCL
-- HR
-- RVT
-Para medir consistencia de la fisiologia.
-Tambien la idea seria ver cuanto explica una unica componente las 3 señales (esperamos que pueda explicar mucho).
+[x] Generar analisis y figuras compuestas de LME con PCA incorproado.
+
+[x] Escribri las seciones de RESULTADOS considerando estos analisis realizados.
+
+[x] Hacer analisis extra de correlaciones cruzadas / coherencia.
+    No me dio nada muy interesante esto, asi qeu lo exclui.
+
+[x] Escribri las seciones de METODOS considerando estos analisis realizados
+
+SEGUIR DESDE ACA ->
+Queda para terminar con esta parte fisiologica (antes de ir a los TET, y la relacion TET con señales)
+[ ] Revisar el delta SCL, que me parece que me esta trayendo algunos problemas. 
 
 ---
+
+Para despues
+------------
 
 [ ] Hacer una figura de la metodologia, usando al imagen de Evan para crear en chatgpt u boceto de la toma de datos. O si no hacerla usando otra app. Usar los colores que defini mas arriba para las 3 señales fisiologicas para marcar en esa figura las 3 señales registradas

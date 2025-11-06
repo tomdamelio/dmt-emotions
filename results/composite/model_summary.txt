@@ -1,0 +1,23 @@
+COMPOSITE AROUSAL INDEX - MODEL SUMMARY
+============================================================
+
+PCA Results:
+  PC1 explained variance: 0.6025 (60.25%)
+  Loadings: HR_z=0.581, SCL_AUC_z=0.636, RVT_z=0.508
+
+LME Formula:
+  ArousalIndex ~ State*Dose + minute_c + State:minute_c + Dose:minute_c
+  Random: ~ 1 | subject
+
+Model Fit:
+  AIC: nan
+  BIC: nan
+  N obs: 252
+  N subjects: 7
+
+Significant Effects (p_FDR < 0.05):
+  • State[T.DMT]: β = 1.313 ***
+  • State[T.DMT]:minute_c: β = -0.098 **
+  • Dose[T.High]: β = 0.686 ***
+  • Dose[T.High]:minute_c: β = 0.104 **
+  • State[T.DMT]:Dose[T.High]: β = 0.900 ***
