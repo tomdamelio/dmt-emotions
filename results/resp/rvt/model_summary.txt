@@ -9,9 +9,10 @@ Random Effects: ~ 1 | subject
 Model Fit Statistics:
 AIC: nan
 BIC: nan
-Log-likelihood: -1963.94
-N observations: 432
+Log-likelihood: -804.06
+N observations: 864
 N subjects: 12
 
 Significant Fixed Effects (p_FDR < 0.05):
-• State × Dose: β = 14.353 ***
+• Dose (High vs Low): β = 0.156 *
+• State × Dose: β = 0.324 ***

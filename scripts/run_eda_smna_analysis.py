@@ -103,8 +103,22 @@ COLOR_RS_LOW = tab20c_colors[6]    # Third blue gradient (lighter) for Low
 COLOR_DMT_HIGH = tab20c_colors[4]  # Same intense blue for High
 COLOR_DMT_LOW = tab20c_colors[6]   # Same lighter blue for Low
 
-# Analysis window: first 9 minutes
-N_MINUTES = 9  # minutes 0..8
+# Analysis window: first 9 minutes (18 windows of 30 seconds each)
+N_WINDOWS = 18  # 30-second windows: 0-30s, 30-60s, ..., 510-540s
+WINDOW_SIZE_SEC = 30  # 30-second windows
+MAX_TIME_SEC = N_WINDOWS * WINDOW_SIZE_SEC  # 540 seconds = 9 minutes
+
+# Z-scoring configuration: use RS as baseline per session
+USE_RS_ZSCORE = True  # If True: z-score using session baseline (RS+DMT); If False: use absolute AUC values
+ZSCORE_BY_SUBJECT = True  # If True: z-score using all sessions of subject; If False: z-score each session independently
+EXPORT_ABSOLUTE_SCALE = True  # Also export absolute scale for QC (only when USE_RS_ZSCORE=True)
+
+# Optional trims (in seconds) - set to None to disable
+RS_TRIM_START = None  # Trim start of RS (e.g., 5.0 for first 5 seconds)
+DMT_TRIM_START = None  # Trim start of DMT (e.g., 5.0 for first 5 seconds)
+
+# Minimum samples per window to accept a session
+MIN_SAMPLES_PER_WINDOW = 10
 
 
 def determine_sessions(subject: str) -> Tuple[str, str]:
@@ -161,10 +175,143 @@ def load_cvx_smna(csv_path: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
     return t, smna
 
 
-def compute_auc_minute_window(t: np.ndarray, y: np.ndarray, minute: int) -> Optional[float]:
-    """Compute AUC for a specific 1-minute window (minute=0..8)."""
-    start_time = minute * 60.0
-    end_time = (minute + 1) * 60.0
+def zscore_with_session_baseline(t_rs: np.ndarray, y_rs: np.ndarray, 
+                                 t_dmt: np.ndarray, y_dmt: np.ndarray) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Dict]:
+    """Z-score both RS and DMT using the entire session (RS + DMT) as baseline.
+    
+    Returns:
+        (y_rs_z, y_dmt_z, diagnostics_dict)
+    """
+    diagnostics = {'scalable': False, 'mu': np.nan, 'sigma': np.nan, 'reason': ''}
+    
+    # Apply optional trims
+    if RS_TRIM_START is not None:
+        mask_rs = t_rs >= RS_TRIM_START
+        t_rs = t_rs[mask_rs]
+        y_rs = y_rs[mask_rs]
+    
+    if DMT_TRIM_START is not None:
+        mask_dmt = t_dmt >= DMT_TRIM_START
+        t_dmt = t_dmt[mask_dmt]
+        y_dmt = y_dmt[mask_dmt]
+    
+    # Check minimum samples
+    if len(y_rs) < MIN_SAMPLES_PER_WINDOW or len(y_dmt) < MIN_SAMPLES_PER_WINDOW:
+        diagnostics['reason'] = f'Insufficient samples: RS={len(y_rs)}, DMT={len(y_dmt)}'
+        return None, None, diagnostics
+    
+    # Concatenate entire session (RS + DMT) to compute mu and sigma
+    y_session = np.concatenate([y_rs, y_dmt])
+    valid_session = ~np.isnan(y_session)
+    
+    if np.sum(valid_session) < MIN_SAMPLES_PER_WINDOW * 2:
+        diagnostics['reason'] = f'Session insufficient valid samples: {np.sum(valid_session)}'
+        return None, None, diagnostics
+    
+    # Compute mu and sigma from entire session
+    mu = np.nanmean(y_session)
+    sigma = np.nanstd(y_session, ddof=1)
+    
+    # Check sigma validity
+    if sigma == 0.0 or not np.isfinite(sigma):
+        diagnostics['reason'] = f'Invalid sigma: {sigma}'
+        return None, None, diagnostics
+    
+    # Apply z-scoring to both RS and DMT using session parameters
+    y_rs_z = (y_rs - mu) / sigma
+    y_dmt_z = (y_dmt - mu) / sigma
+    
+    diagnostics['scalable'] = True
+    diagnostics['mu'] = float(mu)
+    diagnostics['sigma'] = float(sigma)
+    diagnostics['n_session'] = int(np.sum(valid_session))
+    diagnostics['n_rs'] = int(np.sum(~np.isnan(y_rs)))
+    diagnostics['n_dmt'] = int(np.sum(~np.isnan(y_dmt)))
+    
+    return y_rs_z, y_dmt_z, diagnostics
+
+
+def zscore_with_subject_baseline(t_rs_high: np.ndarray, y_rs_high: np.ndarray,
+                                 t_dmt_high: np.ndarray, y_dmt_high: np.ndarray,
+                                 t_rs_low: np.ndarray, y_rs_low: np.ndarray,
+                                 t_dmt_low: np.ndarray, y_dmt_low: np.ndarray) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray], Dict]:
+    """Z-score all sessions of a subject using combined baseline (all RS + all DMT).
+    
+    Returns:
+        (y_rs_high_z, y_dmt_high_z, y_rs_low_z, y_dmt_low_z, diagnostics_dict)
+    """
+    diagnostics = {'scalable': False, 'mu': np.nan, 'sigma': np.nan, 'reason': ''}
+    
+    # Apply optional trims
+    if RS_TRIM_START is not None:
+        mask_rs_h = t_rs_high >= RS_TRIM_START
+        t_rs_high = t_rs_high[mask_rs_h]
+        y_rs_high = y_rs_high[mask_rs_h]
+        
+        mask_rs_l = t_rs_low >= RS_TRIM_START
+        t_rs_low = t_rs_low[mask_rs_l]
+        y_rs_low = y_rs_low[mask_rs_l]
+    
+    if DMT_TRIM_START is not None:
+        mask_dmt_h = t_dmt_high >= DMT_TRIM_START
+        t_dmt_high = t_dmt_high[mask_dmt_h]
+        y_dmt_high = y_dmt_high[mask_dmt_h]
+        
+        mask_dmt_l = t_dmt_low >= DMT_TRIM_START
+        t_dmt_low = t_dmt_low[mask_dmt_l]
+        y_dmt_low = y_dmt_low[mask_dmt_l]
+    
+    # Check minimum samples per session
+    if (len(y_rs_high) < MIN_SAMPLES_PER_WINDOW or len(y_dmt_high) < MIN_SAMPLES_PER_WINDOW or
+        len(y_rs_low) < MIN_SAMPLES_PER_WINDOW or len(y_dmt_low) < MIN_SAMPLES_PER_WINDOW):
+        diagnostics['reason'] = f'Insufficient samples: RS_high={len(y_rs_high)}, DMT_high={len(y_dmt_high)}, RS_low={len(y_rs_low)}, DMT_low={len(y_dmt_low)}'
+        return None, None, None, None, diagnostics
+    
+    # Concatenate ALL subject data (both sessions) to compute mu and sigma
+    y_all = np.concatenate([y_rs_high, y_dmt_high, y_rs_low, y_dmt_low])
+    valid_all = ~np.isnan(y_all)
+    
+    if np.sum(valid_all) < MIN_SAMPLES_PER_WINDOW * 4:
+        diagnostics['reason'] = f'Subject insufficient valid samples: {np.sum(valid_all)}'
+        return None, None, None, None, diagnostics
+    
+    # Compute mu and sigma from ALL subject data
+    mu = np.nanmean(y_all)
+    sigma = np.nanstd(y_all, ddof=1)
+    
+    # Check sigma validity
+    if sigma == 0.0 or not np.isfinite(sigma):
+        diagnostics['reason'] = f'Invalid sigma: {sigma}'
+        return None, None, None, None, diagnostics
+    
+    # Apply z-scoring to all sessions using subject-level parameters
+    y_rs_high_z = (y_rs_high - mu) / sigma
+    y_dmt_high_z = (y_dmt_high - mu) / sigma
+    y_rs_low_z = (y_rs_low - mu) / sigma
+    y_dmt_low_z = (y_dmt_low - mu) / sigma
+    
+    diagnostics['scalable'] = True
+    diagnostics['mu'] = float(mu)
+    diagnostics['sigma'] = float(sigma)
+    diagnostics['n_all'] = int(np.sum(valid_all))
+    diagnostics['n_rs_high'] = int(np.sum(~np.isnan(y_rs_high)))
+    diagnostics['n_dmt_high'] = int(np.sum(~np.isnan(y_dmt_high)))
+    diagnostics['n_rs_low'] = int(np.sum(~np.isnan(y_rs_low)))
+    diagnostics['n_dmt_low'] = int(np.sum(~np.isnan(y_dmt_low)))
+    
+    return y_rs_high_z, y_dmt_high_z, y_rs_low_z, y_dmt_low_z, diagnostics
+
+
+def compute_auc_window(t: np.ndarray, y: np.ndarray, window_idx: int) -> Optional[float]:
+    """Compute AUC for a specific 30-second window.
+    
+    Parameters:
+        t: Time array (seconds)
+        y: SMNA values
+        window_idx: Window index (0-based, each window is 30 seconds)
+    """
+    start_time = window_idx * WINDOW_SIZE_SEC
+    end_time = (window_idx + 1) * WINDOW_SIZE_SEC
 
     mask = (t >= start_time) & (t < end_time)
     if not np.any(mask):
@@ -172,19 +319,24 @@ def compute_auc_minute_window(t: np.ndarray, y: np.ndarray, minute: int) -> Opti
 
     t_win = t[mask]
     y_win = y[mask]
-    if len(t_win) < 2:
+    if len(t_win) < MIN_SAMPLES_PER_WINDOW:
         return None
     return float(np.trapezoid(y_win, t_win))
 
 
 def prepare_long_data() -> pd.DataFrame:
-    """Prepare data in long format for LME analysis (first 9 minutes).
+    """Prepare data in long format for LME analysis (first 9 minutes = 18 windows of 30s).
+    
+    If USE_RS_ZSCORE=True: z-scores using session or subject baseline (RS+DMT).
+    If ZSCORE_BY_SUBJECT=True: uses all sessions of subject for normalization.
+    If ZSCORE_BY_SUBJECT=False: uses each session independently for normalization.
+    If USE_RS_ZSCORE=False: uses absolute AUC values.
 
     Returns:
-        DataFrame with columns: subject, minute, State, Dose, AUC, minute_c
+        DataFrame with columns: subject, session, window, State, Dose, AUC, Scale, window_c
     """
     rows: List[Dict] = []
-    n_processed = 0
+    qc_log: List[str] = []
 
     for subject in SUJETOS_VALIDADOS_EDA:
         high_session, low_session = determine_sessions(subject)
@@ -199,55 +351,170 @@ def prepare_long_data() -> pd.DataFrame:
         rs_low = load_cvx_smna(rs_low_path)
 
         if None in (dmt_high, dmt_low, rs_high, rs_low):
+            qc_log.append(f"{subject}: Missing data files")
             continue
 
-        t_dmt_high, smna_dmt_high = dmt_high
-        t_dmt_low, smna_dmt_low = dmt_low
-        t_rs_high, smna_rs_high = rs_high
-        t_rs_low, smna_rs_low = rs_low
+        t_dmt_high, smna_dmt_high_abs = dmt_high
+        t_dmt_low, smna_dmt_low_abs = dmt_low
+        t_rs_high, smna_rs_high_abs = rs_high
+        t_rs_low, smna_rs_low_abs = rs_low
 
-        subject_rows: List[Dict] = []
-        for minute in range(N_MINUTES):  # 0..8
-            auc_dmt_high = compute_auc_minute_window(t_dmt_high, smna_dmt_high, minute)
-            auc_dmt_low = compute_auc_minute_window(t_dmt_low, smna_dmt_low, minute)
-            auc_rs_high = compute_auc_minute_window(t_rs_high, smna_rs_high, minute)
-            auc_rs_low = compute_auc_minute_window(t_rs_low, smna_rs_low, minute)
-
-            if None not in (auc_dmt_high, auc_dmt_low, auc_rs_high, auc_rs_low):
-                minute_label = minute + 1
-                subject_rows.extend([
-                    {'subject': subject, 'minute': minute_label, 'State': 'DMT', 'Dose': 'High', 'AUC': auc_dmt_high},
-                    {'subject': subject, 'minute': minute_label, 'State': 'DMT', 'Dose': 'Low', 'AUC': auc_dmt_low},
-                    {'subject': subject, 'minute': minute_label, 'State': 'RS', 'Dose': 'High', 'AUC': auc_rs_high},
-                    {'subject': subject, 'minute': minute_label, 'State': 'RS', 'Dose': 'Low', 'AUC': auc_rs_low},
-                ])
-
-        if subject_rows:
-            rows.extend(subject_rows)
-            n_processed += 1
+        if USE_RS_ZSCORE:
+            if ZSCORE_BY_SUBJECT:
+                # Z-score using ALL sessions of subject as baseline
+                smna_rs_high_z, smna_dmt_high_z, smna_rs_low_z, smna_dmt_low_z, diag = zscore_with_subject_baseline(
+                    t_rs_high, smna_rs_high_abs, t_dmt_high, smna_dmt_high_abs,
+                    t_rs_low, smna_rs_low_abs, t_dmt_low, smna_dmt_low_abs
+                )
+                
+                if not diag['scalable']:
+                    qc_log.append(f"{subject}: Not scalable (subject-level): {diag['reason']}")
+                    continue
+                
+                # Process each 30-second window with z-scored data for BOTH sessions
+                for window_idx in range(N_WINDOWS):
+                    window_label = window_idx + 1
+                    
+                    # Compute AUC for z-scored data
+                    auc_dmt_high_z = compute_auc_window(t_dmt_high, smna_dmt_high_z, window_idx)
+                    auc_dmt_low_z = compute_auc_window(t_dmt_low, smna_dmt_low_z, window_idx)
+                    auc_rs_high_z = compute_auc_window(t_rs_high, smna_rs_high_z, window_idx)
+                    auc_rs_low_z = compute_auc_window(t_rs_low, smna_rs_low_z, window_idx)
+                    
+                    if None not in (auc_dmt_high_z, auc_dmt_low_z, auc_rs_high_z, auc_rs_low_z):
+                        rows.extend([
+                            {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'DMT', 'Dose': 'High', 'AUC': auc_dmt_high_z, 'Scale': 'z'},
+                            {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'DMT', 'Dose': 'Low', 'AUC': auc_dmt_low_z, 'Scale': 'z'},
+                            {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'RS', 'Dose': 'High', 'AUC': auc_rs_high_z, 'Scale': 'z'},
+                            {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'RS', 'Dose': 'Low', 'AUC': auc_rs_low_z, 'Scale': 'z'},
+                        ])
+                        
+                        # Optional: absolute scale for QC
+                        if EXPORT_ABSOLUTE_SCALE:
+                            auc_dmt_high_abs = compute_auc_window(t_dmt_high, smna_dmt_high_abs, window_idx)
+                            auc_dmt_low_abs = compute_auc_window(t_dmt_low, smna_dmt_low_abs, window_idx)
+                            auc_rs_high_abs = compute_auc_window(t_rs_high, smna_rs_high_abs, window_idx)
+                            auc_rs_low_abs = compute_auc_window(t_rs_low, smna_rs_low_abs, window_idx)
+                            
+                            if None not in (auc_dmt_high_abs, auc_dmt_low_abs, auc_rs_high_abs, auc_rs_low_abs):
+                                rows.extend([
+                                    {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'DMT', 'Dose': 'High', 'AUC': auc_dmt_high_abs, 'Scale': 'abs'},
+                                    {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'DMT', 'Dose': 'Low', 'AUC': auc_dmt_low_abs, 'Scale': 'abs'},
+                                    {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'RS', 'Dose': 'High', 'AUC': auc_rs_high_abs, 'Scale': 'abs'},
+                                    {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'RS', 'Dose': 'Low', 'AUC': auc_rs_low_abs, 'Scale': 'abs'},
+                                ])
+            
+            else:
+                # Z-score each session independently (original behavior)
+                # Process HIGH session
+                smna_rs_high_z, smna_dmt_high_z, diag_high = zscore_with_session_baseline(
+                    t_rs_high, smna_rs_high_abs, t_dmt_high, smna_dmt_high_abs
+                )
+                
+                if diag_high['scalable']:
+                    for window_idx in range(N_WINDOWS):
+                        window_label = window_idx + 1
+                        
+                        auc_dmt_high_z = compute_auc_window(t_dmt_high, smna_dmt_high_z, window_idx)
+                        auc_rs_high_z = compute_auc_window(t_rs_high, smna_rs_high_z, window_idx)
+                        
+                        if auc_dmt_high_z is not None and auc_rs_high_z is not None:
+                            rows.extend([
+                                {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'DMT', 'Dose': 'High', 'AUC': auc_dmt_high_z, 'Scale': 'z'},
+                                {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'RS', 'Dose': 'High', 'AUC': auc_rs_high_z, 'Scale': 'z'},
+                            ])
+                            
+                            if EXPORT_ABSOLUTE_SCALE:
+                                auc_dmt_high_abs = compute_auc_window(t_dmt_high, smna_dmt_high_abs, window_idx)
+                                auc_rs_high_abs = compute_auc_window(t_rs_high, smna_rs_high_abs, window_idx)
+                                if auc_dmt_high_abs is not None and auc_rs_high_abs is not None:
+                                    rows.extend([
+                                        {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'DMT', 'Dose': 'High', 'AUC': auc_dmt_high_abs, 'Scale': 'abs'},
+                                        {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'RS', 'Dose': 'High', 'AUC': auc_rs_high_abs, 'Scale': 'abs'},
+                                    ])
+                else:
+                    qc_log.append(f"{subject} HIGH session not scalable: {diag_high['reason']}")
+                
+                # Process LOW session
+                smna_rs_low_z, smna_dmt_low_z, diag_low = zscore_with_session_baseline(
+                    t_rs_low, smna_rs_low_abs, t_dmt_low, smna_dmt_low_abs
+                )
+                
+                if diag_low['scalable']:
+                    for window_idx in range(N_WINDOWS):
+                        window_label = window_idx + 1
+                        
+                        auc_dmt_low_z = compute_auc_window(t_dmt_low, smna_dmt_low_z, window_idx)
+                        auc_rs_low_z = compute_auc_window(t_rs_low, smna_rs_low_z, window_idx)
+                        
+                        if auc_dmt_low_z is not None and auc_rs_low_z is not None:
+                            rows.extend([
+                                {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'DMT', 'Dose': 'Low', 'AUC': auc_dmt_low_z, 'Scale': 'z'},
+                                {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'RS', 'Dose': 'Low', 'AUC': auc_rs_low_z, 'Scale': 'z'},
+                            ])
+                            
+                            if EXPORT_ABSOLUTE_SCALE:
+                                auc_dmt_low_abs = compute_auc_window(t_dmt_low, smna_dmt_low_abs, window_idx)
+                                auc_rs_low_abs = compute_auc_window(t_rs_low, smna_rs_low_abs, window_idx)
+                                if auc_dmt_low_abs is not None and auc_rs_low_abs is not None:
+                                    rows.extend([
+                                        {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'DMT', 'Dose': 'Low', 'AUC': auc_dmt_low_abs, 'Scale': 'abs'},
+                                        {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'RS', 'Dose': 'Low', 'AUC': auc_rs_low_abs, 'Scale': 'abs'},
+                                    ])
+                else:
+                    qc_log.append(f"{subject} LOW session not scalable: {diag_low['reason']}")
+        
+        else:
+            # Use absolute values (no z-scoring)
+            for window_idx in range(N_WINDOWS):
+                window_label = window_idx + 1
+                
+                auc_dmt_high = compute_auc_window(t_dmt_high, smna_dmt_high_abs, window_idx)
+                auc_dmt_low = compute_auc_window(t_dmt_low, smna_dmt_low_abs, window_idx)
+                auc_rs_high = compute_auc_window(t_rs_high, smna_rs_high_abs, window_idx)
+                auc_rs_low = compute_auc_window(t_rs_low, smna_rs_low_abs, window_idx)
+                
+                if None not in (auc_dmt_high, auc_dmt_low, auc_rs_high, auc_rs_low):
+                    rows.extend([
+                        {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'DMT', 'Dose': 'High', 'AUC': auc_dmt_high, 'Scale': 'abs'},
+                        {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'DMT', 'Dose': 'Low', 'AUC': auc_dmt_low, 'Scale': 'abs'},
+                        {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'RS', 'Dose': 'High', 'AUC': auc_rs_high, 'Scale': 'abs'},
+                        {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'RS', 'Dose': 'Low', 'AUC': auc_rs_low, 'Scale': 'abs'},
+                    ])
 
     if not rows:
-        raise ValueError("No valid data found for any subject!")
+        raise ValueError("No valid SMNA data found for any subject!")
+    
+    # Save QC log
+    if USE_RS_ZSCORE and qc_log:
+        print(f"Warning: {len(qc_log)} sessions/subjects excluded from z-scoring:")
+        for msg in qc_log:
+            print(f"  {msg}")
 
     df = pd.DataFrame(rows)
 
     # Set categorical variables with proper ordering
     df['State'] = pd.Categorical(df['State'], categories=['RS', 'DMT'], ordered=True)
     df['Dose'] = pd.Categorical(df['Dose'], categories=['Low', 'High'], ordered=True)
+    df['Scale'] = pd.Categorical(df['Scale'], categories=['z', 'abs'], ordered=True)
     df['subject'] = pd.Categorical(df['subject'])
 
-    # Centered minute
-    mean_minute = df['minute'].mean()
-    df['minute_c'] = df['minute'] - mean_minute
+    # Centered window
+    df['window_c'] = df['window'] - df['window'].mean()
 
     return df
 
 
 def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
     """Fit the LME model with specified fixed and random effects."""
+    # Filter to appropriate scale (z-scored if USE_RS_ZSCORE=True, else absolute)
+    scale_to_use = 'z' if USE_RS_ZSCORE else 'abs'
+    df_model = df[df['Scale'] == scale_to_use].copy()
+    if len(df_model) == 0:
+        return None, {'error': f'No {scale_to_use}-scaled data available'}
     try:
-        formula = "AUC ~ State * Dose + minute_c + State:minute_c + Dose:minute_c"
-        model = mixedlm(formula, df, groups=df["subject"])  # type: ignore[arg-type]
+        formula = "AUC ~ State * Dose + window_c + State:window_c + Dose:window_c"
+        model = mixedlm(formula, df_model, groups=df_model["subject"])  # type: ignore[arg-type]
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             fitted = model.fit()
@@ -297,11 +564,11 @@ def plot_model_diagnostics(fitted_model, df: pd.DataFrame, output_dir: str) -> N
     axes[1, 0].set_xlabel('Subject Index')
     axes[1, 0].set_ylabel('Mean Residual')
 
-    # Residuals by minute
-    minute_residuals = df.groupby('minute', observed=False).apply(lambda x: residuals[x.index].mean(), include_groups=False)
-    axes[1, 1].plot(minute_residuals.index, minute_residuals.values, 'o-', alpha=0.7)
+    # Residuals by window
+    window_residuals = df.groupby('window', observed=False).apply(lambda x: residuals[x.index].mean(), include_groups=False)
+    axes[1, 1].plot(window_residuals.index, window_residuals.values, 'o-', alpha=0.7)
     axes[1, 1].axhline(y=0, color='red', linestyle='--', alpha=0.7)
-    axes[1, 1].set_xlabel('Minute')
+    axes[1, 1].set_xlabel('Window (30s)')
     axes[1, 1].set_ylabel('Mean Residual')
 
     plt.tight_layout()
@@ -415,12 +682,12 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
     families: Dict[str, List[str]] = {'State': [], 'Dose': [], 'Interaction': []}
 
     # Family (i): State effects
-    for param in ['State[T.DMT]', 'State[T.DMT]:minute_c']:
+    for param in ['State[T.DMT]', 'State[T.DMT]:window_c']:
         if param in pvalues.index:
             families['State'].append(param)
 
     # Family (ii): Dose effects
-    for param in ['Dose[T.High]', 'Dose[T.High]:minute_c']:
+    for param in ['Dose[T.High]', 'Dose[T.High]:window_c']:
         if param in pvalues.index:
             families['Dose'].append(param)
 
@@ -471,25 +738,32 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
 
 def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, df: pd.DataFrame, output_dir: str) -> str:
     """Generate comprehensive analysis report (TXT)."""
+    df_z = df[df['Scale'] == 'z']
+    zscore_mode = "subject-level (all sessions)" if ZSCORE_BY_SUBJECT else "session-level (independent)"
     report_lines: List[str] = []
 
     report_lines.extend([
         "=" * 80,
-        "LME ANALYSIS REPORT: SMNA AUC by Minute (first 9 minutes)",
+        "LME ANALYSIS REPORT: SMNA AUC by 30-second Windows (first 9 minutes)",
         "=" * 80,
         "",
         f"Analysis date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        f"Dataset: {len(df)} observations from {len(df['subject'].unique())} subjects",
+        f"Dataset: {len(df_z)} observations from {len(df_z['subject'].unique())} subjects",
         "",
         "DESIGN:",
         "  Within-subjects 2×2: State (RS vs DMT) × Dose (Low vs High)",
-        "  Time windows: 9 one-minute windows (0-8 minutes)",
-        "  Dependent variable: AUC of SMNA signal",
+        "  Time windows: 18 thirty-second windows (0-540 seconds = 9 minutes)",
+        "  Dependent variable: AUC of SMNA signal per 30-second window",
+        f"  Z-scoring: {USE_RS_ZSCORE}",
+        f"  Z-scoring mode: {zscore_mode}",
+        "  Z-scoring baseline: Computed using RS + DMT data",
+        f"  {'Subject parameters (mu, sigma) computed from all sessions (RS_high + DMT_high + RS_low + DMT_low)' if ZSCORE_BY_SUBJECT else 'Session parameters (mu, sigma) computed per session (RS + DMT)'}",
         "",
         "MODEL SPECIFICATION:",
-        "  Fixed effects: AUC ~ State*Dose + minute_c + State:minute_c + Dose:minute_c",
+        "  Fixed effects: AUC ~ State*Dose + window_c + State:window_c + Dose:window_c",
         "  Random effects: ~ 1 | subject",
-        "  Where minute_c = minute - mean(minute) [centered time]",
+        "  Where window_c = window - mean(window) [centered time]",
+        f"  Scale: {'z-scored' if USE_RS_ZSCORE else 'absolute'}",
         "",
     ])
 
@@ -541,11 +815,25 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, d
             ])
 
     # Data summary
-    report_lines.extend(["", "DATA SUMMARY:", "-" * 30])
-    summary_stats = df.groupby(['State', 'Dose'], observed=False)['AUC'].agg(['count', 'mean', 'std']).round(4)
+    report_lines.extend(["", "DATA SUMMARY (Z-SCORED):", "-" * 30])
+    summary_stats = df_z.groupby(['State', 'Dose'], observed=False)['AUC'].agg(['count', 'mean', 'std']).round(4)
     report_lines.extend(["Cell means (AUC by State × Dose):", str(summary_stats), ""]) 
-    time_stats = df.groupby('minute', observed=False)['AUC'].agg(['count', 'mean', 'std']).round(4)
-    report_lines.extend(["Time trend (AUC by minute):", str(time_stats), ""]) 
+    time_stats = df_z.groupby('window', observed=False)['AUC'].agg(['count', 'mean', 'std']).round(4)
+    report_lines.extend(["Time trend (AUC by 30-second window):", str(time_stats), ""]) 
+    
+    # QC check: RS by dose
+    report_lines.extend(['', 'QC CHECK: RS by Dose:', '-' * 30])
+    rs_only = df_z[df_z['State'] == 'RS']
+    rs_by_dose = rs_only.groupby('Dose', observed=False)['AUC'].agg(['count', 'mean', 'std']).round(4)
+    report_lines.extend([str(rs_by_dose), ''])
+    if ZSCORE_BY_SUBJECT:
+        report_lines.extend(['Note: Z-scoring uses ALL sessions of subject (RS_high + DMT_high + RS_low + DMT_low),',
+                             'so RS values reflect subject-level normalization. High and Low RS should be similar',
+                             'since they share the same normalization parameters.', ''])
+    else:
+        report_lines.extend(['Note: Z-scoring uses entire session (RS+DMT) independently per session,', 
+                             'so RS values reflect session-level normalization. High and Low RS may differ',
+                             'since each session has its own normalization parameters.', ''])
 
     report_lines.extend(["", "=" * 80])
 
@@ -622,15 +910,15 @@ def prepare_coefficient_data(coefficients: Dict) -> pd.DataFrame:
     param_order = [
         'State[T.DMT]',
         'Dose[T.High]',
-        'State[T.DMT]:minute_c',
-        'Dose[T.High]:minute_c',
+        'State[T.DMT]:window_c',
+        'Dose[T.High]:window_c',
         'State[T.DMT]:Dose[T.High]'
     ]
     param_labels = {
         'State[T.DMT]': 'State (DMT vs RS)',
         'Dose[T.High]': 'Dose (High vs Low)',
-        'State[T.DMT]:minute_c': 'State × Time',
-        'Dose[T.High]:minute_c': 'Dose × Time',
+        'State[T.DMT]:window_c': 'State × Time',
+        'Dose[T.High]:window_c': 'Dose × Time',
         'State[T.DMT]:Dose[T.High]': 'State × Dose'
     }
     # Use EDA modality color (blue tones from tab20c) with distinct shades for visual distinction
@@ -696,9 +984,12 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
 
 
 def compute_empirical_means_and_ci(df: pd.DataFrame, confidence: float = 0.95) -> pd.DataFrame:
-    grouped = df.groupby(['minute', 'State', 'Dose'], observed=False)['AUC']
+    # Use appropriate scale based on USE_RS_ZSCORE
+    scale_to_use = 'z' if USE_RS_ZSCORE else 'abs'
+    df_scale = df[df['Scale'] == scale_to_use]
+    grouped = df_scale.groupby(['window', 'State', 'Dose'], observed=False)['AUC']
     stats_df = grouped.agg(['count', 'mean', 'std', 'sem']).reset_index()
-    stats_df.columns = ['minute', 'State', 'Dose', 'n', 'mean', 'std', 'se']
+    stats_df.columns = ['window', 'State', 'Dose', 'n', 'mean', 'std', 'se']
     stats_df['condition'] = stats_df['State'].astype(str) + '_' + stats_df['Dose'].astype(str)
     alpha = 1 - confidence
     from scipy import stats as scistats  # local import in case scipy missing at top
@@ -714,7 +1005,7 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
     fig, ax = plt.subplots(figsize=(12, 8))
     conditions = stats_df['condition'].unique()
     for condition in sorted(conditions):
-        cond_data = stats_df[stats_df['condition'] == condition].sort_values('minute')
+        cond_data = stats_df[stats_df['condition'] == condition].sort_values('window')
         if len(cond_data) == 0:
             continue
         # Map colors based on condition
@@ -729,14 +1020,17 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
         else:
             color = '#666666'
 
-        ax.plot(cond_data['minute'], cond_data['mean'], color=color, linewidth=2.5, label=condition.replace('_', ' '), marker='o', markersize=5)
-        ax.fill_between(cond_data['minute'], cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
+        # Convert window index to time in minutes for x-axis
+        time_minutes = (cond_data['window'] - 0.5) * WINDOW_SIZE_SEC / 60.0  # Center of each window
+        ax.plot(time_minutes, cond_data['mean'], color=color, linewidth=2.5, label=condition.replace('_', ' '), marker='o', markersize=5)
+        ax.fill_between(time_minutes, cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
 
     ax.set_xlabel('Time (minutes)')
-    ax.set_ylabel('SMNA AUC')
-    ticks = list(range(1, N_MINUTES + 1))
+    ylabel = 'SMNA (Z-scored)' if USE_RS_ZSCORE else 'SMNA AUC'
+    ax.set_ylabel(ylabel)
+    ticks = list(range(0, 10))  # 0-9 minutes
     ax.set_xticks(ticks)
-    ax.set_xlim(0.8, N_MINUTES + 0.2)
+    ax.set_xlim(-0.2, 9.2)
     ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
     legend = ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     legend.get_frame().set_facecolor('white')
@@ -748,10 +1042,10 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
 
 
 def create_state_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
-    state_means = stats_df.groupby(['minute', 'State']).agg({'mean': 'mean', 'n': 'sum'}).reset_index()
+    state_means = stats_df.groupby(['window', 'State']).agg({'mean': 'mean', 'n': 'sum'}).reset_index()
     # Rough SE aggregation
-    state_se = stats_df.groupby(['minute', 'State'])['se'].apply(lambda x: np.sqrt(np.sum(x**2) / max(len(x), 1))).reset_index(name='se')
-    state_means = state_means.merge(state_se, on=['minute', 'State'], how='left')
+    state_se = stats_df.groupby(['window', 'State'])['se'].apply(lambda x: np.sqrt(np.sum(x**2) / max(len(x), 1))).reset_index(name='se')
+    state_means = state_means.merge(state_se, on=['window', 'State'], how='left')
     t_crit = 1.96
     state_means['ci_lower'] = state_means['mean'] - t_crit * state_means['se']
     state_means['ci_upper'] = state_means['mean'] + t_crit * state_means['se']
@@ -759,15 +1053,18 @@ def create_state_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
     fig, ax = plt.subplots(figsize=(10, 6))
     # Ensure legend order: DMT first, RS second
     for state, color in [('DMT', COLOR_DMT_HIGH), ('RS', COLOR_RS_HIGH)]:
-        state_data = state_means[state_means['State'] == state].sort_values('minute')
-        ax.plot(state_data['minute'], state_data['mean'], color=color, linewidth=3, label=f'{state}', marker='o', markersize=6)
-        ax.fill_between(state_data['minute'], state_data['ci_lower'], state_data['ci_upper'], color=color, alpha=0.2)
+        state_data = state_means[state_means['State'] == state].sort_values('window')
+        # Convert window index to time in minutes for x-axis
+        time_minutes = (state_data['window'] - 0.5) * WINDOW_SIZE_SEC / 60.0  # Center of each window
+        ax.plot(time_minutes, state_data['mean'], color=color, linewidth=3, label=f'{state}', marker='o', markersize=6)
+        ax.fill_between(time_minutes, state_data['ci_lower'], state_data['ci_upper'], color=color, alpha=0.2)
 
     ax.set_xlabel('Time (minutes)')
-    ax.set_ylabel('SMNA AUC')
-    ticks = list(range(1, N_MINUTES + 1))
+    ylabel = 'SMNA (Z-scored)' if USE_RS_ZSCORE else 'SMNA AUC'
+    ax.set_ylabel(ylabel)
+    ticks = list(range(0, 10))  # 0-9 minutes
     ax.set_xticks(ticks)
-    ax.set_xlim(0.8, N_MINUTES + 0.2)
+    ax.set_xlim(-0.2, 9.2)
     ax.grid(True, alpha=0.3)
     legend = ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     legend.get_frame().set_facecolor('white')
@@ -779,36 +1076,38 @@ def create_state_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
 
 def create_interaction_plot(stats_df: pd.DataFrame, output_path: str, df_raw: Optional[pd.DataFrame] = None) -> None:
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6), sharey=True)
-    # Compute FDR-based significant segments per panel using subject-wise data
-    try:
-        subjects = sorted(stats_df['minute'].index.unique())  # dummy to trigger except if malformed
-    except Exception:
-        pass
+    ylabel = 'SMNA (Z-scored)' if USE_RS_ZSCORE else 'SMNA AUC'
 
     # RS panel (High above Low in legend)
     for condition, color in [('RS_High', COLOR_RS_HIGH), ('RS_Low', COLOR_RS_LOW)]:
-        cond_data = stats_df[stats_df['condition'] == condition].sort_values('minute')
-        ax1.plot(cond_data['minute'], cond_data['mean'], color=color, linewidth=2.5, label=condition.replace('RS_', ''), marker='o', markersize=4)
-        ax1.fill_between(cond_data['minute'], cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
+        cond_data = stats_df[stats_df['condition'] == condition].sort_values('window')
+        # Convert window index to time in minutes for x-axis
+        time_minutes = (cond_data['window'] - 0.5) * WINDOW_SIZE_SEC / 60.0  # Center of each window
+        ax1.plot(time_minutes, cond_data['mean'], color=color, linewidth=2.5, label=condition.replace('RS_', ''), marker='o', markersize=4)
+        ax1.fill_between(time_minutes, cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
     ax1.set_xlabel('Time (minutes)')
-    ax1.set_ylabel('SMNA AUC')
-    ax1.grid(True, alpha=0.3)
-    ticks = list(range(1, N_MINUTES + 1))
+    ax1.set_ylabel(ylabel)
+    ax1.grid(True, which='major', axis='y', alpha=0.25)
+    ax1.grid(False, which='major', axis='x')
+    ticks = list(range(0, 10))  # 0-9 minutes
     ax1.set_xticks(ticks)
-    ax1.set_xlim(0.8, N_MINUTES + 0.2)
+    ax1.set_xlim(-0.2, 9.2)
     leg1 = ax1.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg1.get_frame().set_facecolor('white')
     leg1.get_frame().set_alpha(0.9)
 
     # DMT panel (High above Low in legend)
     for condition, color in [('DMT_High', COLOR_DMT_HIGH), ('DMT_Low', COLOR_DMT_LOW)]:
-        cond_data = stats_df[stats_df['condition'] == condition].sort_values('minute')
-        ax2.plot(cond_data['minute'], cond_data['mean'], color=color, linewidth=2.5, label=condition.replace('DMT_', ''), marker='o', markersize=4)
-        ax2.fill_between(cond_data['minute'], cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
+        cond_data = stats_df[stats_df['condition'] == condition].sort_values('window')
+        # Convert window index to time in minutes for x-axis
+        time_minutes = (cond_data['window'] - 0.5) * WINDOW_SIZE_SEC / 60.0  # Center of each window
+        ax2.plot(time_minutes, cond_data['mean'], color=color, linewidth=2.5, label=condition.replace('DMT_', ''), marker='o', markersize=4)
+        ax2.fill_between(time_minutes, cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
     ax2.set_xlabel('Time (minutes)')
-    ax2.grid(True, alpha=0.3)
+    ax2.grid(True, which='major', axis='y', alpha=0.25)
+    ax2.grid(False, which='major', axis='x')
     ax2.set_xticks(ticks)
-    ax2.set_xlim(0.8, N_MINUTES + 0.2)
+    ax2.set_xlim(-0.2, 9.2)
     leg2 = ax2.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg2.get_frame().set_facecolor('white')
     leg2.get_frame().set_alpha(0.9)
@@ -817,23 +1116,25 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str, df_raw: Op
     if df_raw is not None:
         try:
             subjects = list(df_raw['subject'].cat.categories) if 'category' in str(df_raw['subject'].dtype) else list(df_raw['subject'].unique())
-            n_time = N_MINUTES
+            n_time = N_WINDOWS
             # RS arrays
             H = np.full((len(subjects), n_time), np.nan, dtype=float)
             L = np.full((len(subjects), n_time), np.nan, dtype=float)
             for si, subj in enumerate(subjects):
                 sdf = df_raw[df_raw['subject'] == subj]
-                for minute in range(1, N_MINUTES + 1):
-                    row_h = sdf[(sdf['State'] == 'RS') & (sdf['Dose'] == 'High') & (sdf['minute'] == minute)]['AUC']
-                    row_l = sdf[(sdf['State'] == 'RS') & (sdf['Dose'] == 'Low') & (sdf['minute'] == minute)]['AUC']
+                for window_idx in range(1, N_WINDOWS + 1):
+                    row_h = sdf[(sdf['State'] == 'RS') & (sdf['Dose'] == 'High') & (sdf['window'] == window_idx)]['AUC']
+                    row_l = sdf[(sdf['State'] == 'RS') & (sdf['Dose'] == 'Low') & (sdf['window'] == window_idx)]['AUC']
                     if len(row_h) == 1:
-                        H[si, minute - 1] = float(row_h.iloc[0])
+                        H[si, window_idx - 1] = float(row_h.iloc[0])
                     if len(row_l) == 1:
-                        L[si, minute - 1] = float(row_l.iloc[0])
-            x_grid = np.arange(1, N_MINUTES + 1)
+                        L[si, window_idx - 1] = float(row_l.iloc[0])
+            x_grid = np.arange(1, N_WINDOWS + 1)
             segs = _compute_fdr_significant_segments(H, L, x_grid)
-            for x0, x1 in segs:
-                ax1.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
+            for w0, w1 in segs:
+                t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
+                t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
+                ax1.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
             rs_res = _compute_fdr_results(H, L, x_grid)
 
             # DMT arrays
@@ -841,16 +1142,18 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str, df_raw: Op
             L = np.full((len(subjects), n_time), np.nan, dtype=float)
             for si, subj in enumerate(subjects):
                 sdf = df_raw[df_raw['subject'] == subj]
-                for minute in range(1, N_MINUTES + 1):
-                    row_h = sdf[(sdf['State'] == 'DMT') & (sdf['Dose'] == 'High') & (sdf['minute'] == minute)]['AUC']
-                    row_l = sdf[(sdf['State'] == 'DMT') & (sdf['Dose'] == 'Low') & (sdf['minute'] == minute)]['AUC']
+                for window_idx in range(1, N_WINDOWS + 1):
+                    row_h = sdf[(sdf['State'] == 'DMT') & (sdf['Dose'] == 'High') & (sdf['window'] == window_idx)]['AUC']
+                    row_l = sdf[(sdf['State'] == 'DMT') & (sdf['Dose'] == 'Low') & (sdf['window'] == window_idx)]['AUC']
                     if len(row_h) == 1:
-                        H[si, minute - 1] = float(row_h.iloc[0])
+                        H[si, window_idx - 1] = float(row_h.iloc[0])
                     if len(row_l) == 1:
-                        L[si, minute - 1] = float(row_l.iloc[0])
+                        L[si, window_idx - 1] = float(row_l.iloc[0])
             segs = _compute_fdr_significant_segments(H, L, x_grid)
-            for x0, x1 in segs:
-                ax2.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
+            for w0, w1 in segs:
+                t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
+                t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
+                ax2.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
             dmt_res = _compute_fdr_results(H, L, x_grid)
 
             # Write FDR report
@@ -863,11 +1166,13 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str, df_raw: Op
             def _sec(name: str, res: Dict):
                 lines.append(f'PANEL {name}:')
                 segs2 = res.get('segments', [])
-                lines.append(f"  Significant segments (count={len(segs2)}):")
+                lines.append(f"  Significant window ranges (count={len(segs2)}):")
                 if len(segs2) == 0:
                     lines.append('    - None')
-                for (a, b) in segs2:
-                    lines.append(f"    - {a:.1f}–{b:.1f} min")
+                for (w0, w1) in segs2:
+                    t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0
+                    t1 = w1 * WINDOW_SIZE_SEC / 60.0
+                    lines.append(f"    - Window {int(w0)} to {int(w1)} ({t0:.1f}-{t1:.1f} min)")
                 p_adj = [v for v in res.get('pvals_adj', []) if isinstance(v, (int, float)) and not np.isnan(v)]
                 if p_adj:
                     lines.append(f"  Min p_FDR: {np.nanmin(p_adj):.6f}; Median p_FDR: {np.nanmedian(p_adj):.6f}")
@@ -902,11 +1207,15 @@ def _resample_to_grid(t: np.ndarray, y: np.ndarray, t_grid: np.ndarray) -> np.nd
 
 
 def create_combined_summary_plot(out_dir: str) -> Optional[str]:
-    """SMNA combined summary using per-minute AUC (first 9 minutes).
+    """SMNA combined summary using per-30-second-window AUC (first 9 minutes = 18 windows).
+    
+    Uses z-scored data if USE_RS_ZSCORE=True, else absolute AUC values.
+    If ZSCORE_BY_SUBJECT=True: uses subject-level normalization.
+    If ZSCORE_BY_SUBJECT=False: uses session-level normalization.
 
     Saves: results/eda/smna/plots/all_subs_smna.png
     """
-    # Build per-subject per-minute AUC matrices for RS and DMT (High/Low)
+    # Build per-subject per-window AUC matrices for RS and DMT (High/Low)
     H_RS, L_RS, H_DMT, L_DMT = [], [], [], []
     for subject in SUJETOS_VALIDADOS_EDA:
         try:
@@ -922,13 +1231,36 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
             r_low = load_cvx_smna(p_rsl)
             if None in (d_high, d_low, r_high, r_low):
                 continue
-            th, yh = d_high; tl, yl = d_low
-            trh, yrh = r_high; trl, yrl = r_low
-            # Compute per-minute AUC 1..9
-            auc_dmt_h = [compute_auc_minute_window(th, yh, m) for m in range(N_MINUTES)]
-            auc_dmt_l = [compute_auc_minute_window(tl, yl, m) for m in range(N_MINUTES)]
-            auc_rs_h = [compute_auc_minute_window(trh, yrh, m) for m in range(N_MINUTES)]
-            auc_rs_l = [compute_auc_minute_window(trl, yrl, m) for m in range(N_MINUTES)]
+            th, yh_abs = d_high; tl, yl_abs = d_low
+            trh, yrh_abs = r_high; trl, yrl_abs = r_low
+            
+            # Apply z-scoring if enabled
+            if USE_RS_ZSCORE:
+                if ZSCORE_BY_SUBJECT:
+                    # Z-score using ALL sessions of subject
+                    yrh_z, yh_z, yrl_z, yl_z, diag = zscore_with_subject_baseline(
+                        trh, yrh_abs, th, yh_abs,
+                        trl, yrl_abs, tl, yl_abs
+                    )
+                    if not diag['scalable']:
+                        continue
+                    yh, yl, yrh, yrl = yh_z, yl_z, yrh_z, yrl_z
+                else:
+                    # Z-score each session independently
+                    yrh_z, yh_z, diag_h = zscore_with_session_baseline(trh, yrh_abs, th, yh_abs)
+                    yrl_z, yl_z, diag_l = zscore_with_session_baseline(trl, yrl_abs, tl, yl_abs)
+                    if not (diag_h['scalable'] and diag_l['scalable']):
+                        continue
+                    yh, yl, yrh, yrl = yh_z, yl_z, yrh_z, yrl_z
+            else:
+                # Use absolute values
+                yh, yl, yrh, yrl = yh_abs, yl_abs, yrh_abs, yrl_abs
+            
+            # Compute per-30-second-window AUC 1..18
+            auc_dmt_h = [compute_auc_window(th, yh, m) for m in range(N_WINDOWS)]
+            auc_dmt_l = [compute_auc_window(tl, yl, m) for m in range(N_WINDOWS)]
+            auc_rs_h = [compute_auc_window(trh, yrh, m) for m in range(N_WINDOWS)]
+            auc_rs_l = [compute_auc_window(trl, yrl, m) for m in range(N_WINDOWS)]
             if None in auc_dmt_h or None in auc_dmt_l or None in auc_rs_h or None in auc_rs_l:
                 continue
             H_RS.append(np.array(auc_rs_h, dtype=float))
@@ -950,16 +1282,20 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     dmt_mean_h, dmt_sem_h = mean_sem(H_DMT)
     dmt_mean_l, dmt_sem_l = mean_sem(L_DMT)
 
-    x = np.arange(1, N_MINUTES + 1)
+    x = np.arange(1, N_WINDOWS + 1)
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6), sharex=True, sharey=True)
     # RS panel
     rs_segs = _compute_fdr_significant_segments(H_RS, L_RS, x)
-    for x0, x1 in rs_segs:
-        ax1.axvspan(x0 - 0.5, x1 + 0.5, color='0.85', alpha=0.35, zorder=0)
-    l1 = ax1.plot(x, rs_mean_h, color=COLOR_RS_HIGH, lw=2.0, label='High')[0]
-    ax1.fill_between(x, rs_mean_h - rs_sem_h, rs_mean_h + rs_sem_h, color=COLOR_RS_HIGH, alpha=0.25)
-    l2 = ax1.plot(x, rs_mean_l, color=COLOR_RS_LOW, lw=2.0, label='Low')[0]
-    ax1.fill_between(x, rs_mean_l - rs_sem_l, rs_mean_l + rs_sem_l, color=COLOR_RS_LOW, alpha=0.25)
+    for w0, w1 in rs_segs:
+        t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
+        t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
+        ax1.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
+    # Convert window indices to time in minutes for x-axis
+    time_minutes = (x - 0.5) * WINDOW_SIZE_SEC / 60.0  # Center of each window
+    l1 = ax1.plot(time_minutes, rs_mean_h, color=COLOR_RS_HIGH, lw=2.0, label='High')[0]
+    ax1.fill_between(time_minutes, rs_mean_h - rs_sem_h, rs_mean_h + rs_sem_h, color=COLOR_RS_HIGH, alpha=0.25)
+    l2 = ax1.plot(time_minutes, rs_mean_l, color=COLOR_RS_LOW, lw=2.0, label='Low')[0]
+    ax1.fill_between(time_minutes, rs_mean_l - rs_sem_l, rs_mean_l + rs_sem_l, color=COLOR_RS_LOW, alpha=0.25)
     leg1 = ax1.legend([l1, l2], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg1.get_frame().set_facecolor('white'); leg1.get_frame().set_alpha(0.9)
     ax1.set_xlabel('Time (minutes)')
@@ -967,19 +1303,21 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     ax1.text(-0.20, 0.5, 'Electrodermal Activity', transform=ax1.transAxes, 
              fontsize=28, fontweight='bold', color=tab20c_colors[4],
              rotation=90, va='center', ha='center')
-    ax1.text(-0.12, 0.5, 'SMNA AUC', transform=ax1.transAxes, 
+    ax1.text(-0.12, 0.5, 'SMNA (Z-scored)', transform=ax1.transAxes, 
              fontsize=28, fontweight='normal', color='black', 
              rotation=90, va='center', ha='center')
     ax1.set_title('Resting State (RS)', fontweight='bold')
     ax1.grid(True, which='major', axis='y', alpha=0.25); ax1.grid(False, which='major', axis='x')
     # DMT panel
     dmt_segs = _compute_fdr_significant_segments(H_DMT, L_DMT, x)
-    for x0, x1 in dmt_segs:
-        ax2.axvspan(x0 - 0.5, x1 + 0.5, color='0.85', alpha=0.35, zorder=0)
-    l3 = ax2.plot(x, dmt_mean_h, color=COLOR_DMT_HIGH, lw=2.0, label='High')[0]
-    ax2.fill_between(x, dmt_mean_h - dmt_sem_h, dmt_mean_h + dmt_sem_h, color=COLOR_DMT_HIGH, alpha=0.25)
-    l4 = ax2.plot(x, dmt_mean_l, color=COLOR_DMT_LOW, lw=2.0, label='Low')[0]
-    ax2.fill_between(x, dmt_mean_l - dmt_sem_l, dmt_mean_l + dmt_sem_l, color=COLOR_DMT_LOW, alpha=0.25)
+    for w0, w1 in dmt_segs:
+        t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
+        t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
+        ax2.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
+    l3 = ax2.plot(time_minutes, dmt_mean_h, color=COLOR_DMT_HIGH, lw=2.0, label='High')[0]
+    ax2.fill_between(time_minutes, dmt_mean_h - dmt_sem_h, dmt_mean_h + dmt_sem_h, color=COLOR_DMT_HIGH, alpha=0.25)
+    l4 = ax2.plot(time_minutes, dmt_mean_l, color=COLOR_DMT_LOW, lw=2.0, label='Low')[0]
+    ax2.fill_between(time_minutes, dmt_mean_l - dmt_sem_l, dmt_mean_l + dmt_sem_l, color=COLOR_DMT_LOW, alpha=0.25)
     leg2 = ax2.legend([l3, l4], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg2.get_frame().set_facecolor('white'); leg2.get_frame().set_alpha(0.9)
     ax2.set_xlabel('Time (minutes)')
@@ -987,8 +1325,9 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     ax2.grid(True, which='major', axis='y', alpha=0.25); ax2.grid(False, which='major', axis='x')
 
     for ax in (ax1, ax2):
-        ax.set_xticks(x)
-        ax.set_xlim(0.8, N_MINUTES + 0.2)
+        ticks = list(range(0, 10))  # 0-9 minutes
+        ax.set_xticks(ticks)
+        ax.set_xlim(-0.2, 9.2)
 
     plt.tight_layout()
     out_path = os.path.join(out_dir, 'plots', 'all_subs_smna.png')
@@ -1003,11 +1342,13 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
         ]
         def _sect(name: str, segs: List[Tuple[float, float]]):
             lines.append(f'PANEL {name}:')
-            lines.append(f'  Significant segments (count={len(segs)}):')
+            lines.append(f'  Significant window ranges (count={len(segs)}):')
             if len(segs) == 0:
                 lines.append('    - None')
-            for (a, b) in segs:
-                lines.append(f"    - minute {a:.0f}–{b:.0f}")
+            for (w0, w1) in segs:
+                t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0
+                t1 = w1 * WINDOW_SIZE_SEC / 60.0
+                lines.append(f"    - Window {int(w0)} to {int(w1)} ({t0:.1f}-{t1:.1f} min)")
             lines.append('')
         _sect('RS', rs_segs)
         _sect('DMT', dmt_segs)
@@ -1019,9 +1360,9 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
 
 
 def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
-    """SMNA DMT-only extended plot using per-minute AUC (~19 minutes)."""
+    """SMNA DMT-only extended plot using per-30-second-window AUC (~19 minutes)."""
     limit_sec = 1150.0
-    total_minutes = int(np.floor(limit_sec / 60.0))  # ~19
+    total_windows = int(np.floor(limit_sec / WINDOW_SIZE_SEC))  # ~38 windows
     H_list, L_list = [] , []
     for subject in SUJETOS_VALIDADOS_EDA:
         try:
@@ -1031,9 +1372,42 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
             d_low = load_cvx_smna(p_low)
             if None in (d_high, d_low):
                 continue
-            th, yh = d_high; tl, yl = d_low
-            auc_h = [compute_auc_minute_window(th, yh, m) for m in range(total_minutes)]
-            auc_l = [compute_auc_minute_window(tl, yl, m) for m in range(total_minutes)]
+            th, yh_abs = d_high; tl, yl_abs = d_low
+            
+            # Apply z-scoring if enabled (need RS data for baseline)
+            if USE_RS_ZSCORE:
+                # Load RS data for z-scoring baseline
+                p_rsh = build_rs_cvx_path(subject, high_session)
+                p_rsl = build_rs_cvx_path(subject, low_session)
+                r_high = load_cvx_smna(p_rsh)
+                r_low = load_cvx_smna(p_rsl)
+                if None in (r_high, r_low):
+                    continue
+                trh, yrh_abs = r_high
+                trl, yrl_abs = r_low
+                
+                if ZSCORE_BY_SUBJECT:
+                    # Z-score using ALL sessions of subject
+                    _, yh_z, _, yl_z, diag = zscore_with_subject_baseline(
+                        trh, yrh_abs, th, yh_abs,
+                        trl, yrl_abs, tl, yl_abs
+                    )
+                    if not diag['scalable']:
+                        continue
+                    yh, yl = yh_z, yl_z
+                else:
+                    # Z-score each session independently
+                    _, yh_z, diag_h = zscore_with_session_baseline(trh, yrh_abs, th, yh_abs)
+                    _, yl_z, diag_l = zscore_with_session_baseline(trl, yrl_abs, tl, yl_abs)
+                    if not (diag_h['scalable'] and diag_l['scalable']):
+                        continue
+                    yh, yl = yh_z, yl_z
+            else:
+                # Use absolute values
+                yh, yl = yh_abs, yl_abs
+            
+            auc_h = [compute_auc_window(th, yh, m) for m in range(total_windows)]
+            auc_l = [compute_auc_window(tl, yl, m) for m in range(total_windows)]
             if None in auc_h or None in auc_l:
                 continue
             H_list.append(np.array(auc_h, dtype=float))
@@ -1047,15 +1421,19 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     sem_h = np.nanstd(H, axis=0, ddof=1) / np.sqrt(H.shape[0])
     sem_l = np.nanstd(L, axis=0, ddof=1) / np.sqrt(L.shape[0])
 
-    x = np.arange(1, total_minutes + 1)
+    x = np.arange(1, total_windows + 1)
+    # Convert window indices to time in minutes for x-axis
+    time_minutes = (x - 0.5) * WINDOW_SIZE_SEC / 60.0  # Center of each window
     fig, ax = plt.subplots(1, 1, figsize=(12, 6))
     segs = _compute_fdr_significant_segments(H, L, x)
-    for x0, x1 in segs:
-        ax.axvspan(x0 - 0.5, x1 + 0.5, color='0.85', alpha=0.35, zorder=0)
-    l1 = ax.plot(x, mean_h, color=COLOR_DMT_HIGH, lw=2.0, label='High')[0]
-    ax.fill_between(x, mean_h - sem_h, mean_h + sem_h, color=COLOR_DMT_HIGH, alpha=0.25)
-    l2 = ax.plot(x, mean_l, color=COLOR_DMT_LOW, lw=2.0, label='Low')[0]
-    ax.fill_between(x, mean_l - sem_l, mean_l + sem_l, color=COLOR_DMT_LOW, alpha=0.25)
+    for w0, w1 in segs:
+        t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
+        t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
+        ax.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
+    l1 = ax.plot(time_minutes, mean_h, color=COLOR_DMT_HIGH, lw=2.0, label='High')[0]
+    ax.fill_between(time_minutes, mean_h - sem_h, mean_h + sem_h, color=COLOR_DMT_HIGH, alpha=0.25)
+    l2 = ax.plot(time_minutes, mean_l, color=COLOR_DMT_LOW, lw=2.0, label='Low')[0]
+    ax.fill_between(time_minutes, mean_l - sem_l, mean_l + sem_l, color=COLOR_DMT_LOW, alpha=0.25)
     leg = ax.legend([l1, l2], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg.get_frame().set_facecolor('white'); leg.get_frame().set_alpha(0.9)
     ax.set_xlabel('Time (minutes)')
@@ -1063,12 +1441,14 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     ax.text(-0.20, 0.5, 'Electrodermal Activity', transform=ax.transAxes, 
             fontsize=28, fontweight='bold', color=tab20c_colors[4],
             rotation=90, va='center', ha='center')
-    ax.text(-0.12, 0.5, 'SMNA AUC', transform=ax.transAxes, 
+    ylabel_text = 'SMNA (Z-scored)' if USE_RS_ZSCORE else 'SMNA AUC'
+    ax.text(-0.12, 0.5, ylabel_text, transform=ax.transAxes, 
             fontsize=28, fontweight='normal', color='black', 
             rotation=90, va='center', ha='center')
     ax.set_title('DMT', fontweight='bold')
     ax.grid(True, which='major', axis='y', alpha=0.25); ax.grid(False, which='major', axis='x')
-    ax.set_xticks(x); ax.set_xlim(0.8, total_minutes + 0.2)
+    ticks = list(range(0, 20))  # 0-19 minutes
+    ax.set_xticks(ticks); ax.set_xlim(-0.2, 19.2)
 
     plt.tight_layout()
     out_path = os.path.join(out_dir, 'plots', 'all_subs_dmt_smna.png')
@@ -1081,11 +1461,13 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
             'Alpha = 0.05',
             ''
         ]
-        lines.append(f"Significant segments (count={len(segs)}):")
+        lines.append(f"Significant window ranges (count={len(segs)}):")
         if len(segs) == 0:
             lines.append('  - None')
-        for (a, b) in segs:
-            lines.append(f"  - minute {a:.0f}–{b:.0f}")
+        for (w0, w1) in segs:
+            t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0
+            t1 = w1 * WINDOW_SIZE_SEC / 60.0
+            lines.append(f"  - Window {int(w0)} to {int(w1)} ({t0:.1f}-{t1:.1f} min)")
         with open(os.path.join(out_dir, 'fdr_segments_all_subs_dmt_smna.txt'), 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines))
     except Exception:
@@ -1093,7 +1475,7 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     return out_path
 
 def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
-    """Create a stacked per-subject figure (RS left, DMT right) using per-minute SMNA AUC (1..9).
+    """Create a stacked per-subject figure (RS left, DMT right) using per-30-second-window SMNA AUC (1..18).
 
     Saves results/eda/smna/plots/stacked_subs_smna.png
     """
@@ -1107,11 +1489,7 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
             dmt_l = load_cvx_smna(p_dmt_l)
             if None in (dmt_h, dmt_l):
                 continue
-            th, yh = dmt_h; tl, yl = dmt_l
-            auc_dmt_h = [compute_auc_minute_window(th, yh, m) for m in range(N_MINUTES)]
-            auc_dmt_l = [compute_auc_minute_window(tl, yl, m) for m in range(N_MINUTES)]
-            if None in auc_dmt_h or None in auc_dmt_l:
-                continue
+            th, yh_abs = dmt_h; tl, yl_abs = dmt_l
 
             # RS session1/session2, map to High/Low using recorded dose per session
             p_rs1 = build_rs_cvx_path(subject, 'session1')
@@ -1120,10 +1498,61 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
             rs2 = load_cvx_smna(p_rs2)
             if None in (rs1, rs2):
                 continue
-            t1, y1 = rs1; t2, y2 = rs2
-            auc_rs1 = [compute_auc_minute_window(t1, y1, m) for m in range(N_MINUTES)]
-            auc_rs2 = [compute_auc_minute_window(t2, y2, m) for m in range(N_MINUTES)]
-            if None in auc_rs1 or None in auc_rs2:
+            t1, y1_abs = rs1; t2, y2_abs = rs2
+            
+            # Apply z-scoring if enabled
+            if USE_RS_ZSCORE:
+                # Determine which RS session is high/low
+                try:
+                    dose_s1 = get_dosis_sujeto(subject, 1)
+                except Exception:
+                    dose_s1 = 'Alta'
+                cond1 = 'High' if str(dose_s1).lower().startswith('alta') or str(dose_s1).lower().startswith('a') else 'Low'
+                
+                if cond1 == 'High':
+                    # session1=high, session2=low
+                    trh_abs, yrh_abs = t1, y1_abs
+                    trl_abs, yrl_abs = t2, y2_abs
+                else:
+                    # session1=low, session2=high
+                    trh_abs, yrh_abs = t2, y2_abs
+                    trl_abs, yrl_abs = t1, y1_abs
+                
+                if ZSCORE_BY_SUBJECT:
+                    # Z-score using ALL sessions of subject
+                    yrh_z, yh_z, yrl_z, yl_z, diag = zscore_with_subject_baseline(
+                        trh_abs, yrh_abs, th, yh_abs,
+                        trl_abs, yrl_abs, tl, yl_abs
+                    )
+                    if not diag['scalable']:
+                        continue
+                    yh, yl = yh_z, yl_z
+                    if cond1 == 'High':
+                        y1, y2 = yrh_z, yrl_z
+                    else:
+                        y1, y2 = yrl_z, yrh_z
+                else:
+                    # Z-score each session independently
+                    yrh_z, yh_z, diag_h = zscore_with_session_baseline(trh_abs, yrh_abs, th, yh_abs)
+                    yrl_z, yl_z, diag_l = zscore_with_session_baseline(trl_abs, yrl_abs, tl, yl_abs)
+                    if not (diag_h['scalable'] and diag_l['scalable']):
+                        continue
+                    yh, yl = yh_z, yl_z
+                    if cond1 == 'High':
+                        y1, y2 = yrh_z, yrl_z
+                    else:
+                        y1, y2 = yrl_z, yrh_z
+            else:
+                # Use absolute values
+                yh, yl, y1, y2 = yh_abs, yl_abs, y1_abs, y2_abs
+            
+            # Compute AUC from z-scored or absolute data
+            auc_dmt_h = [compute_auc_window(th, yh, m) for m in range(N_WINDOWS)]
+            auc_dmt_l = [compute_auc_window(tl, yl, m) for m in range(N_WINDOWS)]
+            auc_rs1 = [compute_auc_window(t1, y1, m) for m in range(N_WINDOWS)]
+            auc_rs2 = [compute_auc_window(t2, y2, m) for m in range(N_WINDOWS)]
+            
+            if None in auc_dmt_h or None in auc_dmt_l or None in auc_rs1 or None in auc_rs2:
                 continue
 
             try:
@@ -1139,7 +1568,7 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
 
             rows.append({
                 'subject': subject,
-                'minutes': list(range(1, N_MINUTES + 1)),
+                'windows': list(range(1, N_WINDOWS + 1)),
                 'rs_high': np.asarray(auc_rs_h, dtype=float),
                 'rs_low': np.asarray(auc_rs_l, dtype=float),
                 'dmt_high': np.asarray(auc_dmt_h, dtype=float),
@@ -1163,7 +1592,7 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
     if n == 1:
         axes = np.array([axes])
 
-    minute_ticks = list(range(1, N_MINUTES + 1))
+    time_ticks = list(range(0, 10))  # 0-9 minutes
 
     from matplotlib.lines import Line2D
 
@@ -1171,14 +1600,18 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         ax_rs = axes[i, 0]
         ax_dmt = axes[i, 1]
 
+        # Convert window indices to time in minutes for x-axis
+        time_minutes = (np.array(row['windows']) - 0.5) * WINDOW_SIZE_SEC / 60.0
+
         # RS panel
-        ax_rs.plot(minute_ticks, row['rs_high'], color=COLOR_RS_HIGH, lw=1.8, marker='o', markersize=4)
-        ax_rs.plot(minute_ticks, row['rs_low'], color=COLOR_RS_LOW, lw=1.8, marker='o', markersize=4)
+        ax_rs.plot(time_minutes, row['rs_high'], color=COLOR_RS_HIGH, lw=1.8, marker='o', markersize=4)
+        ax_rs.plot(time_minutes, row['rs_low'], color=COLOR_RS_LOW, lw=1.8, marker='o', markersize=4)
         ax_rs.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
-        ax_rs.set_ylabel(r'$\mathbf{Electrodermal\ Activity}$' + '\nSMNA AUC', fontsize=12)
+        ylabel = 'SMNA (Z-scored)' if USE_RS_ZSCORE else 'SMNA AUC'
+        ax_rs.set_ylabel(r'$\mathbf{Electrodermal\ Activity}$' + f'\n{ylabel}', fontsize=12)
         ax_rs.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_rs.set_title('Resting State (RS)', fontweight='bold')
-        ax_rs.set_xlim(0.8, N_MINUTES + 0.2)
+        ax_rs.set_xlim(-0.2, 9.2)
         ax_rs.grid(True, which='major', axis='y', alpha=0.25)
         ax_rs.grid(False, which='major', axis='x')
         legend_rs = ax_rs.legend(handles=[
@@ -1189,13 +1622,14 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         legend_rs.get_frame().set_alpha(0.9)
 
         # DMT panel
-        ax_dmt.plot(minute_ticks, row['dmt_high'], color=COLOR_DMT_HIGH, lw=1.8, marker='o', markersize=4)
-        ax_dmt.plot(minute_ticks, row['dmt_low'], color=COLOR_DMT_LOW, lw=1.8, marker='o', markersize=4)
+        ax_dmt.plot(time_minutes, row['dmt_high'], color=COLOR_DMT_HIGH, lw=1.8, marker='o', markersize=4)
+        ax_dmt.plot(time_minutes, row['dmt_low'], color=COLOR_DMT_LOW, lw=1.8, marker='o', markersize=4)
         ax_dmt.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
-        ax_dmt.set_ylabel(r'$\mathbf{Electrodermal\ Activity}$' + '\nSMNA AUC', fontsize=12)
+        ylabel = 'SMNA (Z-scored)' if USE_RS_ZSCORE else 'SMNA AUC'
+        ax_dmt.set_ylabel(r'$\mathbf{Electrodermal\ Activity}$' + f'\n{ylabel}', fontsize=12)
         ax_dmt.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_dmt.set_title('DMT', fontweight='bold')
-        ax_dmt.set_xlim(0.8, N_MINUTES + 0.2)
+        ax_dmt.set_xlim(-0.2, 9.2)
         ax_dmt.grid(True, which='major', axis='y', alpha=0.25)
         ax_dmt.grid(False, which='major', axis='x')
         legend_dmt = ax_dmt.legend(handles=[
@@ -1205,8 +1639,8 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         legend_dmt.get_frame().set_facecolor('white')
         legend_dmt.get_frame().set_alpha(0.9)
 
-        ax_rs.set_xticks(minute_ticks)
-        ax_dmt.set_xticks(minute_ticks)
+        ax_rs.set_xticks(time_ticks)
+        ax_dmt.set_xticks(time_ticks)
 
     fig.tight_layout(pad=2.0)
 
@@ -1248,7 +1682,7 @@ def create_model_summary_txt(diagnostics: Dict, coef_df: pd.DataFrame, output_pa
         "=" * 60,
         "",
         "Fixed Effects Formula:",
-        "AUC ~ State*Dose + minute_c + State:minute_c + Dose:minute_c",
+        "AUC ~ State*Dose + window_c + State:window_c + Dose:window_c",
         "",
         "Random Effects: ~ 1 | subject",
         "",
@@ -1300,16 +1734,49 @@ def main() -> bool:
     os.makedirs(plots_dir, exist_ok=True)
 
     try:
-        # Data
+        # Data preparation
+        scale_mode = "z-scoring (session baseline)" if USE_RS_ZSCORE else "absolute AUC values"
+        print(f"Preparing long-format data with {scale_mode}...")
         df = prepare_long_data()
-        data_path = os.path.join(out_dir, 'smna_auc_long_data.csv')
-        df.to_csv(data_path, index=False)
+        
+        # Save all scales
+        df.to_csv(os.path.join(out_dir, 'smna_auc_long_data_all_scales.csv'), index=False)
+        print(f"  ✓ Saved all scales: {len(df)} rows")
+        
+        # Save primary scale data separately
+        scale_to_use = 'z' if USE_RS_ZSCORE else 'abs'
+        df_primary = df[df['Scale'] == scale_to_use]
+        scale_filename = 'smna_auc_long_data_z.csv' if USE_RS_ZSCORE else 'smna_auc_long_data_abs.csv'
+        df_primary.to_csv(os.path.join(out_dir, scale_filename), index=False)
+        scale_desc = "z-scored" if USE_RS_ZSCORE else "absolute"
+        print(f"  ✓ Saved {scale_desc} data: {len(df_primary)} rows from {len(df_primary['subject'].unique())} subjects")
+        
+        # QC check: RS by dose
+        rs_qc = df_primary[df_primary['State'] == 'RS'].groupby('Dose', observed=False)['AUC'].agg(['count', 'mean', 'std']).round(4)
+        with open(os.path.join(out_dir, 'qc_rs_by_dose.txt'), 'w') as f:
+            f.write('QC CHECK: RS AUC by Dose\n')
+            f.write('=' * 60 + '\n\n')
+            f.write(f'Scale: {scale_desc}\n\n')
+            f.write(str(rs_qc) + '\n\n')
+            if USE_RS_ZSCORE:
+                if ZSCORE_BY_SUBJECT:
+                    f.write('Note: Z-scoring uses ALL sessions of subject (RS_high + DMT_high + RS_low + DMT_low).\n')
+                    f.write('Both sessions share the same normalization parameters (mu and sigma).\n')
+                    f.write('RS High and RS Low should have similar means (both near 0) since they use\n')
+                    f.write('the same subject-level baseline.\n')
+                else:
+                    f.write('Note: Z-scoring uses entire session (RS + DMT concatenated) as baseline.\n')
+                    f.write('Each session is normalized independently using mu and sigma computed\n')
+                    f.write('from the full session data (RS + DMT together).\n')
+                    f.write('RS values reflect session-level normalization, not pure baseline.\n')
+            else:
+                f.write('Note: Using absolute SMNA AUC values without normalization.\n')
+        print(f"  ✓ QC check saved")
 
-        # LME
+        # LME model (uses appropriate scale)
+        print(f"Fitting LME model on {scale_desc} data...")
         fitted_model, diagnostics = fit_lme_model(df)
-
-        # Diagnostics plot (no titles)
-        plot_model_diagnostics(fitted_model, df, plots_dir)
+        plot_model_diagnostics(fitted_model, df_primary, plots_dir)
 
         # Hypotheses + report
         hypothesis_results = hypothesis_testing_with_fdr(fitted_model)

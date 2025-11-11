@@ -1,0 +1,14 @@
+QC CHECK: RS RSP_RVT by Dose
+============================================================
+
+Scale: z-scored
+
+      count    mean     std
+Dose                       
+Low     216 -0.2269  0.5138
+High    216 -0.0713  0.4283
+
+Note: Z-scoring uses ALL sessions of subject (RS_high + DMT_high + RS_low + DMT_low).
+Both sessions share the same normalization parameters (mu and sigma).
+RS High and RS Low should have similar means (both near 0) since they use
+the same subject-level baseline.

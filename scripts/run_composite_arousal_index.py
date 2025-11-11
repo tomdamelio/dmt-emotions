@@ -3,10 +3,10 @@
 Composite Autonomic Arousal Index (PCA-PC1) + LME Analysis (first 9 minutes).
 
 This script:
-  1) Loads minute-by-minute HR, SCL_AUC, and RVT data for subjects with all three signals
+  1) Loads 30-second window HR, SMNA_AUC, and RVT data for subjects with all three signals
   2) Z-scores each signal within-subject to align scales
   3) Computes PCA on the three z-scored signals and extracts PC1 as ArousalIndex
-  4) Fits LME: ArousalIndex ~ State * Dose + minute_c + State:minute_c + Dose:minute_c + (1|subject)
+  4) Fits LME: ArousalIndex ~ State * Dose + window_c + State:window_c + Dose:window_c + (1|subject)
   5) Saves outputs: CSVs, reports, plots (coefficients, marginal means, loadings, scree)
 
 Outputs: results/composite/
@@ -48,17 +48,18 @@ except Exception:
 # Fixed list of subjects with all three signals valid
 SUBJECTS_INTERSECTION = ['S04', 'S06', 'S07', 'S16', 'S18', 'S19', 'S20']
 
-# Analysis window: minutes 1–9
-N_MINUTES = 9
+# Analysis window: first 9 minutes (18 windows of 30 seconds each)
+N_WINDOWS = 18
+WINDOW_SIZE_SEC = 30
 
 # Output directory
 OUT_DIR = './results/composite/'
 PLOTS_DIR = os.path.join(OUT_DIR, 'plots')
 
-# Input paths
-SCL_PATH = './results/eda/scl/scl_auc_long_data.csv'
-HR_PATH = './results/ecg/hr/hr_minute_long_data.csv'
-RVT_PATH = './results/resp/rvt/resp_rvt_minute_long_data.csv'
+# Input paths (using z-scored data)
+SMNA_PATH = './results/eda/smna/smna_auc_long_data_z.csv'  # Changed from SMNA to SMNA
+HR_PATH = './results/ecg/hr/hr_minute_long_data_z.csv'
+RVT_PATH = './results/resp/rvt/resp_rvt_minute_long_data_z.csv'
 
 
 #############################
@@ -66,54 +67,56 @@ RVT_PATH = './results/resp/rvt/resp_rvt_minute_long_data.csv'
 #############################
 
 def load_and_prepare() -> pd.DataFrame:
-    """Load HR, SCL_AUC, and RVT data; merge on complete cases; filter subjects and minutes."""
+    """Load HR, SMNA_AUC, and RVT data; merge on complete cases; filter subjects and windows."""
     print("Loading physiological data...")
     
-    # Load SCL
-    df_scl = pd.read_csv(SCL_PATH)
-    if 'AUC' in df_scl.columns:
-        df_scl = df_scl.rename(columns={'AUC': 'SCL_AUC'})
+    # Load SMNA (z-scored AUC per 30-second window)
+    df_smna = pd.read_csv(SMNA_PATH)
+    if 'AUC' in df_smna.columns:
+        df_smna = df_smna.rename(columns={'AUC': 'SMNA_AUC'})
+    else:
+        raise ValueError(f"SMNA data must have 'AUC' column")
     
-    # Load HR
+    # Load HR (z-scored)
     df_hr = pd.read_csv(HR_PATH)
-    # Column should be 'HR' based on the sample
+    # Column should be 'HR' based on the z-scored data
     
-    # Load RVT
+    # Load RVT (z-scored)
     df_rvt = pd.read_csv(RVT_PATH)
     if 'RSP_RVT' in df_rvt.columns:
         df_rvt = df_rvt.rename(columns={'RSP_RVT': 'RVT'})
     
-    print(f"  Loaded SCL: {len(df_scl)} rows")
+    print(f"  Loaded SMNA: {len(df_smna)} rows")
     print(f"  Loaded HR: {len(df_hr)} rows")
     print(f"  Loaded RVT: {len(df_rvt)} rows")
     
-    # Filter subjects and minutes
+    # Filter subjects and windows
     def base_filter(df: pd.DataFrame) -> pd.DataFrame:
         df = df[df['subject'].isin(SUBJECTS_INTERSECTION)].copy()
-        df = df[(df['minute'] >= 1) & (df['minute'] <= N_MINUTES)].copy()
+        df = df[(df['window'] >= 1) & (df['window'] <= N_WINDOWS)].copy()
         df['State'] = pd.Categorical(df['State'], categories=['RS', 'DMT'], ordered=True)
         df['Dose'] = pd.Categorical(df['Dose'], categories=['Low', 'High'], ordered=True)
         return df
     
-    df_scl = base_filter(df_scl)[['subject', 'minute', 'State', 'Dose', 'SCL_AUC']]
-    df_hr = base_filter(df_hr)[['subject', 'minute', 'State', 'Dose', 'HR']]
-    df_rvt = base_filter(df_rvt)[['subject', 'minute', 'State', 'Dose', 'RVT']]
+    df_smna = base_filter(df_smna)[['subject', 'window', 'State', 'Dose', 'SMNA_AUC']]
+    df_hr = base_filter(df_hr)[['subject', 'window', 'State', 'Dose', 'HR']]
+    df_rvt = base_filter(df_rvt)[['subject', 'window', 'State', 'Dose', 'RVT']]
     
-    print(f"  After filtering: SCL={len(df_scl)}, HR={len(df_hr)}, RVT={len(df_rvt)}")
+    print(f"  After filtering: SMNA={len(df_smna)}, HR={len(df_hr)}, RVT={len(df_rvt)}")
     
     # Merge on complete cases
-    df = df_scl.merge(df_hr, on=['subject', 'minute', 'State', 'Dose'], how='inner')
-    df = df.merge(df_rvt, on=['subject', 'minute', 'State', 'Dose'], how='inner')
+    df = df_smna.merge(df_hr, on=['subject', 'window', 'State', 'Dose'], how='inner')
+    df = df.merge(df_rvt, on=['subject', 'window', 'State', 'Dose'], how='inner')
     
     print(f"  After merge: {len(df)} complete observations")
     
     # Drop any remaining NAs
-    df = df.dropna(subset=['SCL_AUC', 'HR', 'RVT']).copy()
+    df = df.dropna(subset=['SMNA_AUC', 'HR', 'RVT']).copy()
     
     print(f"  After dropping NAs: {len(df)} observations from {df['subject'].nunique()} subjects")
     
-    # Recalculate minute_c on merged data
-    df['minute_c'] = df['minute'] - df['minute'].mean()
+    # Recalculate window_c on merged data
+    df['window_c'] = df['window'] - df['window'].mean()
     
     # Save merged data
     os.makedirs(OUT_DIR, exist_ok=True)
@@ -127,7 +130,7 @@ def zscore_within_subject(df: pd.DataFrame) -> pd.DataFrame:
     """Z-score each signal within subject to align scales."""
     print("Z-scoring signals within subject...")
     
-    for col in ['SCL_AUC', 'HR', 'RVT']:
+    for col in ['SMNA_AUC', 'HR', 'RVT']:
         df[f'{col}_z'] = df.groupby('subject')[col].transform(
             lambda x: (x - x.mean()) / x.std()
         )
@@ -147,7 +150,7 @@ def compute_pca_and_index(df: pd.DataFrame) -> Tuple[pd.DataFrame, float, np.nda
     """Compute PCA on z-scored signals and extract PC1 as ArousalIndex."""
     print("Computing PCA...")
     
-    X = df[['HR_z', 'SCL_AUC_z', 'RVT_z']].to_numpy()
+    X = df[['HR_z', 'SMNA_AUC_z', 'RVT_z']].to_numpy()
     
     # Fit PCA
     pca = PCA(n_components=3, random_state=22)
@@ -155,20 +158,20 @@ def compute_pca_and_index(df: pd.DataFrame) -> Tuple[pd.DataFrame, float, np.nda
     
     # Extract PC1
     pc1_scores = pca.transform(X)[:, 0]
-    loadings_pc1 = pca.components_[0]  # order: ['HR_z', 'SCL_AUC_z', 'RVT_z']
+    loadings_pc1 = pca.components_[0]  # order: ['HR_z', 'SMNA_AUC_z', 'RVT_z']
     var_exp_pc1 = float(pca.explained_variance_ratio_[0])
     
     print(f"  PC1 variance explained: {var_exp_pc1:.4f}")
-    print(f"  Raw loadings: HR_z={loadings_pc1[0]:.3f}, SCL_AUC_z={loadings_pc1[1]:.3f}, RVT_z={loadings_pc1[2]:.3f}")
+    print(f"  Raw loadings: HR_z={loadings_pc1[0]:.3f}, SMNA_AUC_z={loadings_pc1[1]:.3f}, RVT_z={loadings_pc1[2]:.3f}")
     
     # Sign convention: ensure PC1 ↑ = greater activation
-    # If SCL_AUC_z loading is negative, flip sign
+    # If SMNA_AUC_z loading is negative, flip sign
     if loadings_pc1[1] < 0:
         print("  Flipping PC1 sign to align with activation direction")
         pc1_scores = -pc1_scores
         loadings_pc1 = -loadings_pc1
     
-    print(f"  Final loadings: HR_z={loadings_pc1[0]:.3f}, SCL_AUC_z={loadings_pc1[1]:.3f}, RVT_z={loadings_pc1[2]:.3f}")
+    print(f"  Final loadings: HR_z={loadings_pc1[0]:.3f}, SMNA_AUC_z={loadings_pc1[1]:.3f}, RVT_z={loadings_pc1[2]:.3f}")
     
     # Add ArousalIndex to dataframe
     df['ArousalIndex'] = pc1_scores
@@ -178,7 +181,7 @@ def compute_pca_and_index(df: pd.DataFrame) -> Tuple[pd.DataFrame, float, np.nda
     
     # Loadings
     pd.DataFrame({
-        'signal': ['HR_z', 'SCL_AUC_z', 'RVT_z'],
+        'signal': ['HR_z', 'SMNA_AUC_z', 'RVT_z'],
         'loading_pc1': loadings_pc1
     }).to_csv(os.path.join(OUT_DIR, 'pca_loadings_pc1.csv'), index=False)
     
@@ -260,7 +263,7 @@ def create_pca_3d_plot(df: pd.DataFrame, pca, loadings_pc1: np.ndarray) -> None:
         df_sample = df.copy()
     
     # Extract z-scored data
-    X_sample = df_sample[['HR_z', 'SCL_AUC_z', 'RVT_z']].to_numpy()
+    X_sample = df_sample[['HR_z', 'SMNA_AUC_z', 'RVT_z']].to_numpy()
     
     # Convert tab20c colors to RGB strings for Plotly
     def rgb_to_plotly(color_tuple):
@@ -284,7 +287,7 @@ def create_pca_3d_plot(df: pd.DataFrame, pca, loadings_pc1: np.ndarray) -> None:
             line=dict(width=0)
         ),
         name='Observations',
-        hovertemplate='HR: %{x:.2f}<br>SCL: %{y:.2f}<br>RVT: %{z:.2f}<extra></extra>'
+        hovertemplate='HR: %{x:.2f}<br>SMNA: %{y:.2f}<br>RVT: %{z:.2f}<extra></extra>'
     )
     
     # Scale factor for PC1 vector (make it visible)
@@ -350,7 +353,7 @@ def create_pca_3d_plot(df: pd.DataFrame, pca, loadings_pc1: np.ndarray) -> None:
                 backgroundcolor='white'
             ),
             yaxis=dict(
-                title=dict(text='SCL (z-scored)', font=dict(size=16)),
+                title=dict(text='SMNA (z-scored)', font=dict(size=16)),
                 gridcolor='lightgray',
                 showbackground=True,
                 backgroundcolor='white'
@@ -398,21 +401,21 @@ def create_pca_3d_plot(df: pd.DataFrame, pca, loadings_pc1: np.ndarray) -> None:
 
 def compute_and_plot_cross_correlations(df: pd.DataFrame) -> str:
     """
-    Compute within-subject correlations between HR, SCL, and RVT for RS and DMT states.
+    Compute within-subject correlations between HR, SMNA, and RVT for RS and DMT states.
     
     Returns path to the generated heatmap figure.
     """
     print("Computing cross-correlations between signals...")
     
     # Signal columns
-    signals = ['HR_z', 'SCL_AUC_z', 'RVT_z']
-    signal_labels = ['HR', 'SCL', 'RVT']
+    signals = ['HR_z', 'SMNA_AUC_z', 'RVT_z']
+    signal_labels = ['HR', 'SMNA', 'RVT']
     
     # Pairs for correlation
     pairs = [
-        ('HR_z', 'SCL_AUC_z', 'HR–SCL'),
+        ('HR_z', 'SMNA_AUC_z', 'HR–SMNA'),
         ('HR_z', 'RVT_z', 'HR–RVT'),
-        ('SCL_AUC_z', 'RVT_z', 'SCL–RVT')
+        ('SMNA_AUC_z', 'RVT_z', 'SMNA–RVT')
     ]
     
     # Storage for results
@@ -430,8 +433,8 @@ def compute_and_plot_cross_correlations(df: pd.DataFrame) -> str:
             if len(subj_df) < 3:
                 continue
             
-            # Sort by minute to ensure proper time series
-            subj_df = subj_df.sort_values('minute')
+            # Sort by window to ensure proper time series
+            subj_df = subj_df.sort_values('window')
             
             # Extract signal arrays
             X = subj_df[signals].values
@@ -492,7 +495,7 @@ def compute_and_plot_cross_correlations(df: pd.DataFrame) -> str:
             if len(subj_df) < 3:
                 continue
             
-            subj_df = subj_df.sort_values('minute')
+            subj_df = subj_df.sort_values('window')
             X = subj_df[signals].values
             
             if np.any(np.isnan(X)):
@@ -562,7 +565,7 @@ def compute_and_plot_cross_correlations(df: pd.DataFrame) -> str:
     for state in ['RS', 'DMT']:
         print(f"\n  {state}:")
         state_data = df_pearson[df_pearson['state'] == state]
-        for pair_name in ['HR–SCL', 'HR–RVT', 'SCL–RVT']:
+        for pair_name in ['HR–SMNA', 'HR–RVT', 'SMNA–RVT']:
             pair_data = state_data[state_data['pair'] == pair_name]['r']
             if len(pair_data) > 0:
                 mean_r = pair_data.mean()
@@ -583,7 +586,7 @@ def compute_and_plot_dynamic_coherence(df: pd.DataFrame, window: int = 2) -> str
     Parameters
     ----------
     df : pd.DataFrame
-        Data with HR_z, SCL_AUC_z, RVT_z, State, Dose, subject, minute
+        Data with HR_z, SMNA_AUC_z, RVT_z, State, Dose, subject, minute
     window : int
         Window size in minutes for sliding correlation (default=2)
     
@@ -596,9 +599,9 @@ def compute_and_plot_dynamic_coherence(df: pd.DataFrame, window: int = 2) -> str
     
     # Signal pairs
     pairs = [
-        ('HR_z', 'SCL_AUC_z', 'HR–SCL'),
+        ('HR_z', 'SMNA_AUC_z', 'HR–SMNA'),
         ('HR_z', 'RVT_z', 'HR–RVT'),
-        ('SCL_AUC_z', 'RVT_z', 'SCL–RVT')
+        ('SMNA_AUC_z', 'RVT_z', 'SMNA–RVT')
     ]
     
     # Storage for results
@@ -617,18 +620,18 @@ def compute_and_plot_dynamic_coherence(df: pd.DataFrame, window: int = 2) -> str
                 if len(dose_df) < 2:
                     continue
                 
-                # Sort by minute
-                dose_df = dose_df.sort_values('minute')
+                # Sort by window
+                dose_df = dose_df.sort_values('window')
                 
-                # For each minute, compute correlation in sliding window
-                for minute in range(1, N_MINUTES + 1):
-                    # Define window: retrospective [minute-window+1, minute]
-                    window_start = max(1, minute - window + 1)
-                    window_end = minute
+                # For each window, compute correlation in sliding window
+                for window_idx in range(1, N_WINDOWS + 1):
+                    # Define window: retrospective [window_idx-window+1, window_idx]
+                    window_start = max(1, window_idx - window + 1)
+                    window_end = window_idx
                     
                     window_df = dose_df[
-                        (dose_df['minute'] >= window_start) & 
-                        (dose_df['minute'] <= window_end)
+                        (dose_df['window'] >= window_start) & 
+                        (dose_df['window'] <= window_end)
                     ]
                     
                     # Need at least 2 points for correlation
@@ -639,7 +642,7 @@ def compute_and_plot_dynamic_coherence(df: pd.DataFrame, window: int = 2) -> str
                                 'subject': subject,
                                 'dose': dose,
                                 'pair': pair_name,
-                                'minute': minute,
+                                'window': window_idx,
                                 'r': np.nan
                             })
                         continue
@@ -664,7 +667,7 @@ def compute_and_plot_dynamic_coherence(df: pd.DataFrame, window: int = 2) -> str
                             'subject': subject,
                             'dose': dose,
                             'pair': pair_name,
-                            'minute': minute,
+                            'window': window_idx,
                             'r': r
                         })
     
@@ -676,12 +679,12 @@ def compute_and_plot_dynamic_coherence(df: pd.DataFrame, window: int = 2) -> str
     for state in ['RS', 'DMT']:
         for dose in ['Low', 'High']:
             for _, _, pair_name in pairs:
-                for minute in range(1, N_MINUTES + 1):
+                for window_idx in range(1, N_WINDOWS + 1):
                     subset = df_results[
                         (df_results['state'] == state) &
                         (df_results['dose'] == dose) &
                         (df_results['pair'] == pair_name) &
-                        (df_results['minute'] == minute)
+                        (df_results['window'] == window_idx)
                     ]
                     
                     r_values = subset['r'].dropna()
@@ -699,7 +702,7 @@ def compute_and_plot_dynamic_coherence(df: pd.DataFrame, window: int = 2) -> str
                         'state': state,
                         'dose': dose,
                         'pair': pair_name,
-                        'minute': minute,
+                        'window': window_idx,
                         'n': n,
                         'mean_r': mean_r,
                         'sem_r': sem_r
@@ -715,7 +718,7 @@ def compute_and_plot_dynamic_coherence(df: pd.DataFrame, window: int = 2) -> str
     # Create figure: 2 columns (RS, DMT) × 3 rows (one per pair)
     fig, axes = plt.subplots(3, 2, figsize=(14, 12), sharex=True, sharey=True)
     
-    pair_names = ['HR–SCL', 'HR–RVT', 'SCL–RVT']
+    pair_names = ['HR–SMNA', 'HR–RVT', 'SMNA–RVT']
     
     for col_idx, state in enumerate(['RS', 'DMT']):
         for row_idx, pair_name in enumerate(pair_names):
@@ -727,12 +730,14 @@ def compute_and_plot_dynamic_coherence(df: pd.DataFrame, window: int = 2) -> str
                     (df_agg['state'] == state) &
                     (df_agg['dose'] == dose) &
                     (df_agg['pair'] == pair_name)
-                ].sort_values('minute')
+                ].sort_values('window')
                 
                 if len(subset) == 0:
                     continue
                 
-                minutes = subset['minute'].values
+                windows = subset['window'].values
+                # Convert windows to time in minutes for x-axis
+                time_minutes = (windows - 0.5) * WINDOW_SIZE_SEC / 60.0
                 mean_r = subset['mean_r'].values
                 sem_r = subset['sem_r'].values
                 
@@ -745,17 +750,17 @@ def compute_and_plot_dynamic_coherence(df: pd.DataFrame, window: int = 2) -> str
                     linestyle = '--'
                 
                 # Plot line
-                ax.plot(minutes, mean_r, color=color, linestyle=linestyle, 
+                ax.plot(time_minutes, mean_r, color=color, linestyle=linestyle, 
                        linewidth=2.5, marker='o', markersize=4, label=dose)
                 
                 # Plot SEM band
-                ax.fill_between(minutes, mean_r - sem_r, mean_r + sem_r, 
+                ax.fill_between(time_minutes, mean_r - sem_r, mean_r + sem_r, 
                                color=color, alpha=0.2)
             
             # Styling
             ax.axhline(y=0, color='gray', linestyle=':', linewidth=1, alpha=0.5)
             ax.grid(True, alpha=0.25, axis='y')
-            ax.set_xlim(0.5, N_MINUTES + 0.5)
+            ax.set_xlim(-0.2, 9.2)
             ax.set_ylim(-1, 1)
             
             # Labels
@@ -797,8 +802,9 @@ def compute_and_plot_dynamic_coherence(df: pd.DataFrame, window: int = 2) -> str
             if len(subset) > 0:
                 # Find max mean_r across all doses and minutes
                 max_row = subset.loc[subset['mean_r'].idxmax()]
+                time_min = (max_row['window'] - 0.5) * WINDOW_SIZE_SEC / 60.0
                 print(f"    {pair_name}: max r̄ = {max_row['mean_r']:.3f} "
-                      f"at minute {int(max_row['minute'])} ({max_row['dose']})")
+                      f"at {time_min:.1f} min (window {int(max_row['window'])}, {max_row['dose']})")
     
     return fig_path
 
@@ -819,7 +825,7 @@ def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
     df['Dose'] = pd.Categorical(df['Dose'], categories=['Low', 'High'], ordered=True)
     
     try:
-        formula = 'ArousalIndex ~ State * Dose + minute_c + State:minute_c + Dose:minute_c'
+        formula = 'ArousalIndex ~ State * Dose + window_c + State:window_c + Dose:window_c'
         model = mixedlm(formula, df, groups=df['subject'])
         
         with warnings.catch_warnings(record=True) as w:
@@ -891,11 +897,11 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
         'Interaction': []
     }
     
-    for p in ['State[T.DMT]', 'State[T.DMT]:minute_c']:
+    for p in ['State[T.DMT]', 'State[T.DMT]:window_c']:
         if p in pvalues.index:
             families['State'].append(p)
     
-    for p in ['Dose[T.High]', 'Dose[T.High]:minute_c']:
+    for p in ['Dose[T.High]', 'Dose[T.High]:window_c']:
         if p in pvalues.index:
             families['Dose'].append(p)
     
@@ -970,18 +976,18 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict,
         '',
         'DESIGN:',
         '  Within-subjects 2×2: State (RS vs DMT) × Dose (Low vs High)',
-        '  Time windows: 9 one-minute windows (1-9 minutes)',
-        '  Dependent variable: ArousalIndex (PC1 from PCA on HR_z, SCL_AUC_z, RVT_z)',
+        '  Time windows: 18 thirty-second windows (0-540 seconds = 9 minutes)',
+        '  Dependent variable: ArousalIndex (PC1 from PCA on HR_z, SMNA_AUC_z, RVT_z)',
         '',
         'PCA RESULTS:',
         f"  PC1 explained variance: {var_exp:.4f} ({var_exp*100:.2f}%)",
         f"  PC1 loadings:",
         f"    HR_z:      {loadings[0]:7.3f}",
-        f"    SCL_AUC_z: {loadings[1]:7.3f}",
+        f"    SMNA_AUC_z: {loadings[1]:7.3f}",
         f"    RVT_z:     {loadings[2]:7.3f}",
         '',
         '  Interpretation: Higher ArousalIndex = greater autonomic activation',
-        '  Sign convention: PC1 oriented so SCL_AUC_z loading is positive',
+        '  Sign convention: PC1 oriented so SMNA_AUC_z loading is positive',
         '',
     ]
     
@@ -991,14 +997,14 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict,
         df_corr = pd.read_csv(pearson_path)
         lines.extend([
             'CROSS-CORRELATIONS BETWEEN SIGNALS:',
-            '  Within-subject Pearson correlations (minute-by-minute):',
+            '  Within-subject Pearson correlations (window-by-window):',
             ''
         ])
         
         for state in ['RS', 'DMT']:
             lines.append(f'  {state}:')
             state_data = df_corr[df_corr['state'] == state]
-            for pair_name in ['HR–SCL', 'HR–RVT', 'SCL–RVT']:
+            for pair_name in ['HR–SMNA', 'HR–RVT', 'SMNA–RVT']:
                 pair_data = state_data[state_data['pair'] == pair_name]['r']
                 if len(pair_data) > 0:
                     mean_r = pair_data.mean()
@@ -1026,12 +1032,13 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict,
         for state in ['RS', 'DMT']:
             lines.append(f'  {state} - Peak correlations:')
             state_data = df_dynamic[df_dynamic['state'] == state]
-            for pair_name in ['HR–SCL', 'HR–RVT', 'SCL–RVT']:
+            for pair_name in ['HR–SMNA', 'HR–RVT', 'SMNA–RVT']:
                 pair_data = state_data[state_data['pair'] == pair_name]
                 if len(pair_data) > 0:
                     max_row = pair_data.loc[pair_data['mean_r'].idxmax()]
+                    time_min = (max_row['window'] - 0.5) * WINDOW_SIZE_SEC / 60.0
                     lines.append(f"    {pair_name}: max r̄ = {max_row['mean_r']:.3f} "
-                               f"at minute {int(max_row['minute'])} ({max_row['dose']})")
+                               f"at {time_min:.1f} min (window {int(max_row['window'])}, {max_row['dose']})")
             lines.append('')
         
         lines.extend([
@@ -1043,9 +1050,9 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict,
     
     lines.extend([
         'MODEL SPECIFICATION:',
-        '  Fixed effects: ArousalIndex ~ State*Dose + minute_c + State:minute_c + Dose:minute_c',
+        '  Fixed effects: ArousalIndex ~ State*Dose + window_c + State:window_c + Dose:window_c',
         '  Random effects: ~ 1 | subject',
-        '  Where minute_c = minute - mean(minute) [centered time]',
+        '  Where window_c = window - mean(window) [centered time]',
         '',
     ])
     
@@ -1116,10 +1123,10 @@ def create_model_summary_txt(diagnostics: Dict, hypothesis_results: Dict,
         '',
         'PCA Results:',
         f"  PC1 explained variance: {var_exp:.4f} ({var_exp*100:.2f}%)",
-        f"  Loadings: HR_z={loadings[0]:.3f}, SCL_AUC_z={loadings[1]:.3f}, RVT_z={loadings[2]:.3f}",
+        f"  Loadings: HR_z={loadings[0]:.3f}, SMNA_AUC_z={loadings[1]:.3f}, RVT_z={loadings[2]:.3f}",
         '',
         'LME Formula:',
-        '  ArousalIndex ~ State*Dose + minute_c + State:minute_c + Dose:minute_c',
+        '  ArousalIndex ~ State*Dose + window_c + State:window_c + Dose:window_c',
         '  Random: ~ 1 | subject',
         '',
         'Model Fit:',
@@ -1267,16 +1274,16 @@ def prepare_coefficient_data(coefficients: Dict) -> pd.DataFrame:
     order = [
         'State[T.DMT]',
         'Dose[T.High]',
-        'State[T.DMT]:minute_c',
-        'Dose[T.High]:minute_c',
+        'State[T.DMT]:window_c',
+        'Dose[T.High]:window_c',
         'State[T.DMT]:Dose[T.High]'
     ]
     
     labels = {
         'State[T.DMT]': 'State (DMT vs RS)',
         'Dose[T.High]': 'Dose (High vs Low)',
-        'State[T.DMT]:minute_c': 'State × Time',
-        'Dose[T.High]:minute_c': 'Dose × Time',
+        'State[T.DMT]:window_c': 'State × Time',
+        'Dose[T.High]:window_c': 'Dose × Time',
         'State[T.DMT]:Dose[T.High]': 'State × Dose'
     }
     
@@ -1356,9 +1363,9 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
 
 def compute_empirical_means_and_ci(df: pd.DataFrame, confidence: float = 0.95) -> pd.DataFrame:
     """Compute empirical means and confidence intervals."""
-    grouped = df.groupby(['minute', 'State', 'Dose'], observed=False)['ArousalIndex']
+    grouped = df.groupby(['window', 'State', 'Dose'], observed=False)['ArousalIndex']
     stats_df = grouped.agg(['count', 'mean', 'std', 'sem']).reset_index()
-    stats_df.columns = ['minute', 'State', 'Dose', 'n', 'mean', 'std', 'se']
+    stats_df.columns = ['window', 'State', 'Dose', 'n', 'mean', 'std', 'se']
     stats_df['condition'] = stats_df['State'].astype(str) + '_' + stats_df['Dose'].astype(str)
     
     alpha = 1 - confidence
@@ -1457,9 +1464,9 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
     """
     print("Creating combined summary plot...")
     
-    # Common grid: 0..540s (9 minutes), 1s step for minute-level data
-    # Since we have minute-level data, create grid at minute centers
-    minute_grid = np.arange(1, N_MINUTES + 1)  # minutes 1-9
+    # Common grid: 0..540s (9 minutes), using 30-second windows
+    # Since we have window-level data, create grid at window centers
+    window_grid = np.arange(1, N_WINDOWS + 1)  # windows 1-18
     
     state_data: Dict[str, Dict[str, np.ndarray]] = {}
     
@@ -1475,12 +1482,12 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
         low_mat = []
         
         for subject in subjects:
-            subj_df = state_df[state_df['subject'] == subject].sort_values('minute')
+            subj_df = state_df[state_df['subject'] == subject].sort_values('window')
             
             high_vals = subj_df[subj_df['Dose'] == 'High']['ArousalIndex'].values
             low_vals = subj_df[subj_df['Dose'] == 'Low']['ArousalIndex'].values
             
-            if len(high_vals) == N_MINUTES and len(low_vals) == N_MINUTES:
+            if len(high_vals) == N_WINDOWS and len(low_vals) == N_WINDOWS:
                 high_mat.append(high_vals)
                 low_mat.append(low_vals)
         
@@ -1526,21 +1533,26 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
     # RS (left)
     rs = state_data['RS']
     print(f"Computing FDR for RS with {rs['H_mat'].shape[0]} subjects, {rs['H_mat'].shape[1]} time points")
-    rs_fdr = _compute_fdr_results(rs['H_mat'], rs['L_mat'], minute_grid)
+    rs_fdr = _compute_fdr_results(rs['H_mat'], rs['L_mat'], window_grid)
     rs_segments = rs_fdr.get('segments', [])
     print(f"Adding {len(rs_segments)} shaded regions to RS panel")
     
-    # Shade significant minute ranges
-    for m0, m1 in rs_segments:
-        ax1.axvspan(m0 - 0.5, m1 + 0.5, color='0.85', alpha=0.35, zorder=0)
+    # Convert window grid to time in minutes for plotting
+    time_grid = (window_grid - 0.5) * WINDOW_SIZE_SEC / 60.0
     
-    line_h1 = ax1.plot(minute_grid, rs['mean_h'], color=COLOR_RS_HIGH, lw=2.0, 
+    # Shade significant window ranges (convert to time)
+    for w0, w1 in rs_segments:
+        t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
+        t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
+        ax1.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
+    
+    line_h1 = ax1.plot(time_grid, rs['mean_h'], color=COLOR_RS_HIGH, lw=2.0, 
                        marker='o', markersize=5, label='High')[0]
-    ax1.fill_between(minute_grid, rs['mean_h'] - rs['sem_h'], rs['mean_h'] + rs['sem_h'], 
+    ax1.fill_between(time_grid, rs['mean_h'] - rs['sem_h'], rs['mean_h'] + rs['sem_h'], 
                      color=COLOR_RS_HIGH, alpha=0.25)
-    line_l1 = ax1.plot(minute_grid, rs['mean_l'], color=COLOR_RS_LOW, lw=2.0, 
+    line_l1 = ax1.plot(time_grid, rs['mean_l'], color=COLOR_RS_LOW, lw=2.0, 
                        marker='o', markersize=5, label='Low')[0]
-    ax1.fill_between(minute_grid, rs['mean_l'] - rs['sem_l'], rs['mean_l'] + rs['sem_l'], 
+    ax1.fill_between(time_grid, rs['mean_l'] - rs['sem_l'], rs['mean_l'] + rs['sem_l'], 
                      color=COLOR_RS_LOW, alpha=0.25)
     
     legend1 = ax1.legend([line_h1, line_l1], ['High', 'Low'], loc='upper right', 
@@ -1565,20 +1577,23 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
     # DMT (right)
     dmt = state_data['DMT']
     print(f"Computing FDR for DMT with {dmt['H_mat'].shape[0]} subjects, {dmt['H_mat'].shape[1]} time points")
-    dmt_fdr = _compute_fdr_results(dmt['H_mat'], dmt['L_mat'], minute_grid)
+    dmt_fdr = _compute_fdr_results(dmt['H_mat'], dmt['L_mat'], window_grid)
     dmt_segments = dmt_fdr.get('segments', [])
     print(f"Adding {len(dmt_segments)} shaded regions to DMT panel")
     
-    for m0, m1 in dmt_segments:
-        ax2.axvspan(m0 - 0.5, m1 + 0.5, color='0.85', alpha=0.35, zorder=0)
+    # Shade significant window ranges (convert to time)
+    for w0, w1 in dmt_segments:
+        t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
+        t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
+        ax2.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
     
-    line_h2 = ax2.plot(minute_grid, dmt['mean_h'], color=COLOR_DMT_HIGH, lw=2.0, 
+    line_h2 = ax2.plot(time_grid, dmt['mean_h'], color=COLOR_DMT_HIGH, lw=2.0, 
                        marker='o', markersize=5, label='High')[0]
-    ax2.fill_between(minute_grid, dmt['mean_h'] - dmt['sem_h'], dmt['mean_h'] + dmt['sem_h'], 
+    ax2.fill_between(time_grid, dmt['mean_h'] - dmt['sem_h'], dmt['mean_h'] + dmt['sem_h'], 
                      color=COLOR_DMT_HIGH, alpha=0.25)
-    line_l2 = ax2.plot(minute_grid, dmt['mean_l'], color=COLOR_DMT_LOW, lw=2.0, 
+    line_l2 = ax2.plot(time_grid, dmt['mean_l'], color=COLOR_DMT_LOW, lw=2.0, 
                        marker='o', markersize=5, label='Low')[0]
-    ax2.fill_between(minute_grid, dmt['mean_l'] - dmt['sem_l'], dmt['mean_l'] + dmt['sem_l'], 
+    ax2.fill_between(time_grid, dmt['mean_l'] - dmt['sem_l'], dmt['mean_l'] + dmt['sem_l'], 
                      color=COLOR_DMT_LOW, alpha=0.25)
     
     legend2 = ax2.legend([line_h2, line_l2], ['High', 'Low'], loc='upper right', 
@@ -1595,8 +1610,10 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
     
     # X ticks: minutes 1-9
     for ax in (ax1, ax2):
-        ax.set_xticks(minute_grid)
-        ax.set_xlim(0.5, N_MINUTES + 0.5)
+        # Convert window grid to time in minutes for x-axis
+        time_ticks = np.arange(0, 10)  # 0-9 minutes
+        ax.set_xticks(time_ticks)
+        ax.set_xlim(-0.2, 9.2)
         ax.tick_params(axis='both', labelsize=20)
     
     plt.tight_layout()
@@ -1609,18 +1626,20 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
         report_lines: List[str] = [
             'FDR COMPARISON: High vs Low (Composite Arousal Index, RS and DMT)',
             f"Alpha = {rs_fdr.get('alpha', 0.05)}",
-            f"Time resolution: minute-level (minutes 1-{N_MINUTES})",
+            f"Time resolution: 30-second windows (windows 1-{N_WINDOWS}, 0-9 minutes)",
             '',
         ]
         
         def _panel_section(name: str, res: Dict):
             report_lines.append(f'PANEL {name}:')
             segs = res.get('segments', [])
-            report_lines.append(f"  Significant minute ranges (count={len(segs)}):")
+            report_lines.append(f"  Significant window ranges (count={len(segs)}):")
             if len(segs) == 0:
                 report_lines.append('    - None')
-            for (m0, m1) in segs:
-                report_lines.append(f"    - Minute {int(m0)} to {int(m1)}")
+            for (w0, w1) in segs:
+                t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0
+                t1 = w1 * WINDOW_SIZE_SEC / 60.0
+                report_lines.append(f"    - Window {int(w0)} to {int(w1)} ({t0:.1f}-{t1:.1f} min)")
             # Summary of p-values
             p_adj = [v for v in res.get('pvals_adj', []) if isinstance(v, (int, float)) and not np.isnan(v)]
             if p_adj:
@@ -1672,7 +1691,7 @@ def create_stacked_subjects_plot(df: pd.DataFrame) -> Optional[str]:
     if n == 1:
         axes = np.array([axes])
     
-    minute_ticks = np.arange(1, N_MINUTES + 1)
+    time_ticks = np.arange(0, 10)  # 0-9 minutes for x-axis
     
     from matplotlib.lines import Line2D
     
@@ -1683,22 +1702,25 @@ def create_stacked_subjects_plot(df: pd.DataFrame) -> Optional[str]:
         subj_df = df[df['subject'] == subject].copy()
         
         # RS data
-        rs_df = subj_df[subj_df['State'] == 'RS'].sort_values('minute')
+        rs_df = subj_df[subj_df['State'] == 'RS'].sort_values('window')
         rs_high = rs_df[rs_df['Dose'] == 'High']
         rs_low = rs_df[rs_df['Dose'] == 'Low']
         
         if len(rs_high) > 0:
-            ax_rs.plot(rs_high['minute'], rs_high['ArousalIndex'], 
+            # Convert window to time in minutes for x-axis
+            time_minutes = (rs_high['window'] - 0.5) * WINDOW_SIZE_SEC / 60.0
+            ax_rs.plot(time_minutes, rs_high['ArousalIndex'], 
                       color=COLOR_RS_HIGH, lw=1.4, marker='o', markersize=3)
         if len(rs_low) > 0:
-            ax_rs.plot(rs_low['minute'], rs_low['ArousalIndex'], 
+            time_minutes = (rs_low['window'] - 0.5) * WINDOW_SIZE_SEC / 60.0
+            ax_rs.plot(time_minutes, rs_low['ArousalIndex'], 
                       color=COLOR_RS_LOW, lw=1.4, marker='o', markersize=3)
         
         ax_rs.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
         ax_rs.set_ylabel(r'$\mathbf{Composite\ Arousal}$' + '\nIndex (PC1)', fontsize=12)
         ax_rs.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_rs.set_title('Resting State (RS)', fontweight='bold')
-        ax_rs.set_xlim(0.5, N_MINUTES + 0.5)
+        ax_rs.set_xlim(-0.2, 9.2)
         ax_rs.grid(True, which='major', axis='y', alpha=0.25)
         ax_rs.grid(False, which='major', axis='x')
         
@@ -1712,22 +1734,25 @@ def create_stacked_subjects_plot(df: pd.DataFrame) -> Optional[str]:
         legend_rs.get_frame().set_alpha(0.9)
         
         # DMT data
-        dmt_df = subj_df[subj_df['State'] == 'DMT'].sort_values('minute')
+        dmt_df = subj_df[subj_df['State'] == 'DMT'].sort_values('window')
         dmt_high = dmt_df[dmt_df['Dose'] == 'High']
         dmt_low = dmt_df[dmt_df['Dose'] == 'Low']
         
         if len(dmt_high) > 0:
-            ax_dmt.plot(dmt_high['minute'], dmt_high['ArousalIndex'], 
+            # Convert window to time in minutes for x-axis
+            time_minutes = (dmt_high['window'] - 0.5) * WINDOW_SIZE_SEC / 60.0
+            ax_dmt.plot(time_minutes, dmt_high['ArousalIndex'], 
                        color=COLOR_DMT_HIGH, lw=1.4, marker='o', markersize=3)
         if len(dmt_low) > 0:
-            ax_dmt.plot(dmt_low['minute'], dmt_low['ArousalIndex'], 
+            time_minutes = (dmt_low['window'] - 0.5) * WINDOW_SIZE_SEC / 60.0
+            ax_dmt.plot(time_minutes, dmt_low['ArousalIndex'], 
                        color=COLOR_DMT_LOW, lw=1.4, marker='o', markersize=3)
         
         ax_dmt.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
         ax_dmt.set_ylabel(r'$\mathbf{Composite\ Arousal}$' + '\nIndex (PC1)', fontsize=12)
         ax_dmt.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_dmt.set_title('DMT', fontweight='bold')
-        ax_dmt.set_xlim(0.5, N_MINUTES + 0.5)
+        ax_dmt.set_xlim(-0.2, 9.2)
         ax_dmt.grid(True, which='major', axis='y', alpha=0.25)
         ax_dmt.grid(False, which='major', axis='x')
         
@@ -1741,8 +1766,8 @@ def create_stacked_subjects_plot(df: pd.DataFrame) -> Optional[str]:
         legend_dmt.get_frame().set_alpha(0.9)
         
         # Ticks
-        ax_rs.set_xticks(minute_ticks)
-        ax_dmt.set_xticks(minute_ticks)
+        ax_rs.set_xticks(time_ticks)
+        ax_dmt.set_xticks(time_ticks)
     
     fig.tight_layout(pad=2.0)
     
@@ -1779,7 +1804,7 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
     
     conditions = stats_df['condition'].unique()
     for condition in sorted(conditions):
-        cond_data = stats_df[stats_df['condition'] == condition].sort_values('minute')
+        cond_data = stats_df[stats_df['condition'] == condition].sort_values('window')
         if len(cond_data) == 0:
             continue
         
@@ -1794,16 +1819,18 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
         else:
             color = '#666666'
         
-        ax.plot(cond_data['minute'], cond_data['mean'], color=color, linewidth=2.5, 
+        # Convert window to time in minutes for x-axis
+        time_minutes = (cond_data['window'] - 0.5) * WINDOW_SIZE_SEC / 60.0
+        ax.plot(time_minutes, cond_data['mean'], color=color, linewidth=2.5, 
                 label=condition.replace('_', ' '), marker='o', markersize=5)
-        ax.fill_between(cond_data['minute'], cond_data['ci_lower'], cond_data['ci_upper'], 
+        ax.fill_between(time_minutes, cond_data['ci_lower'], cond_data['ci_upper'], 
                        color=color, alpha=0.2)
     
     ax.set_xlabel('Time (minutes)')
     ax.set_ylabel('Arousal Index (PC1)')
-    ticks = list(range(1, N_MINUTES + 1))
+    ticks = list(range(0, 10))  # 0-9 minutes
     ax.set_xticks(ticks)
-    ax.set_xlim(0.8, N_MINUTES + 0.2)
+    ax.set_xlim(-0.2, 9.2)
     ax.grid(True, which='major', axis='y', alpha=0.25)
     ax.grid(False, which='major', axis='x')
     
@@ -1909,3 +1936,4 @@ def main() -> bool:
 if __name__ == '__main__':
     success = main()
     sys.exit(0 if success else 1)
+

@@ -1,13 +1,15 @@
 FDR COMPARISON: High vs Low (Composite Arousal Index, RS and DMT)
 Alpha = 0.05
-Time resolution: minute-level (minutes 1-9)
+Time resolution: 30-second windows (windows 1-18, 0-9 minutes)
 
 PANEL RS:
-  Significant minute ranges (count=1):
-    - Minute 3 to 7
-  Min p_FDR: 0.003615; Median p_FDR: 0.035791
+  Significant window ranges (count=0):
+    - None
+  Min p_FDR: 0.725370; Median p_FDR: 0.735151
 
 PANEL DMT:
-  Significant minute ranges (count=1):
-    - Minute 4 to 9
-  Min p_FDR: 0.015096; Median p_FDR: 0.031465
+  Significant window ranges (count=3):
+    - Window 6 to 6 (2.5-3.0 min)
+    - Window 8 to 13 (3.5-6.5 min)
+    - Window 15 to 18 (7.0-9.0 min)
+  Min p_FDR: 0.010569; Median p_FDR: 0.032801

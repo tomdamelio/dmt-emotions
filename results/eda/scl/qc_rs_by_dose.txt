@@ -1,0 +1,14 @@
+QC CHECK: RS WindowMean by Dose
+============================================================
+
+Scale: z-scored
+
+      count    mean     std
+Dose                       
+Low     198 -0.0703  0.8091
+High    198 -0.7866  0.6225
+
+Note: Z-scoring uses ALL sessions of subject (RS_high + DMT_high + RS_low + DMT_low).
+Both sessions share the same normalization parameters (mu and sigma).
+RS High and RS Low should have similar means (both near 0) since they use
+the same subject-level baseline.

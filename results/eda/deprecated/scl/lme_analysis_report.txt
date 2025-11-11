@@ -1,0 +1,101 @@
+================================================================================
+LME ANALYSIS REPORT: SCL AUC by Minute (first 9 minutes)
+================================================================================
+
+Analysis date: 2025-11-06 21:04:02
+Dataset: 396 observations from 11 subjects
+
+DESIGN:
+  Within-subjects 2×2: State (RS vs DMT) × Dose (Low vs High)
+  Time windows: 9 one-minute windows (0-8 minutes)
+  Dependent variable: AUC of SCL (EDL)
+  Baseline correction: False
+
+MODEL SPECIFICATION:
+  Fixed effects: AUC ~ State*Dose + minute_c + State:minute_c + Dose:minute_c
+  Random effects: ~ 1 | subject
+  Where minute_c = minute - mean(minute) [centered time]
+
+MODEL FIT STATISTICS:
+  AIC: nan
+  BIC: nan
+  Log-likelihood: -2251.01
+  N observations: 396
+  N subjects: 11
+  Random effects variance:              Group
+Group  9759.928191
+  Residual variance: 5039.708407
+
+Model converged without warnings
+
+HYPOTHESIS TESTING RESULTS (with BH-FDR correction):
+============================================================
+
+FAMILY STATE:
+------------------------------
+  State[T.DMT]:
+    β =  61.0822, SE = 10.0902
+    95% CI: [ 41.3058,  80.8587]
+    p_raw = 0.0000, p_FDR = 0.0000 ***
+
+  State[T.DMT]:minute_c:
+    β =   3.0012, SE = 2.7633
+    95% CI: [ -2.4148,   8.4172]
+    p_raw = 0.2774, p_FDR = 0.2774 
+
+
+FAMILY DOSE:
+------------------------------
+  Dose[T.High]:
+    β = -65.0081, SE = 10.0902
+    95% CI: [-84.7845, -45.2316]
+    p_raw = 0.0000, p_FDR = 0.0000 ***
+
+  Dose[T.High]:minute_c:
+    β =   5.2479, SE = 2.7633
+    95% CI: [ -0.1681,  10.6639]
+    p_raw = 0.0575, p_FDR = 0.0575 
+
+
+FAMILY INTERACTION:
+------------------------------
+  State[T.DMT]:Dose[T.High]:
+    β =  44.0915, SE = 14.2697
+    95% CI: [ 16.1234,  72.0596]
+    p_raw = 0.0020, p_FDR = 0.0020 **
+
+
+CONDITIONAL CONTRASTS:
+------------------------------
+  High - Low within RS:
+    β = -65.0081, SE = 10.0902, p = 0.0000 ***
+
+  (High - Low within DMT) - (High - Low within RS):
+    β =  44.0915, SE = 14.2697, p = 0.0020 **
+
+
+DATA SUMMARY:
+------------------------------
+Cell means (AUC by State × Dose):
+            count      mean       std
+State Dose                           
+RS    Low      99  264.7759  136.9038
+      High     99  199.7678   71.2167
+DMT   Low      99  325.8581  153.7682
+      High     99  304.9415   97.0031
+
+Time trend (AUC by minute):
+        count      mean       std
+minute                           
+1          44  282.3763  122.7519
+2          44  291.1114  127.3207
+3          44  291.5637  134.6915
+4          44  285.5590  133.9965
+5          44  278.8123  132.7433
+6          44  269.4321  129.3097
+7          44  261.2586  126.9999
+8          44  255.0805  125.4388
+9          44  249.3284  123.6168
+
+
+================================================================================

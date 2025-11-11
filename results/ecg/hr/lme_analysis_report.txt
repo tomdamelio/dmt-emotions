@@ -1,32 +1,34 @@
 ================================================================================
-LME ANALYSIS REPORT: HR (Heart Rate) by Minute (first 9 minutes)
+LME ANALYSIS REPORT: HR (Heart Rate) by 30-second Windows (first 9 minutes)
 ================================================================================
 
-Analysis date: 2025-11-05 21:39:50
-Dataset: 396 observations from 11 subjects
+Analysis date: 2025-11-10 23:23:15
+Dataset: 1584 observations from 11 subjects
 
 DESIGN:
   Within-subjects 2×2: State (RS vs DMT) × Dose (Low vs High)
-  Time windows: 9 one-minute windows (0-8 minutes)
-  Dependent variable: Mean HR per minute (bpm)
-  Baseline correction: False
+  Time windows: 18 thirty-second windows (0-540 seconds = 9 minutes)
+  Dependent variable: Mean HR per 30-second window (z-scored)
+  Z-scoring: Enabled
+  Z-score baseline: All sessions per subject (RS_high + DMT_high + RS_low + DMT_low)
 
 MODEL SPECIFICATION:
-  Fixed effects: HR ~ State*Dose + minute_c + State:minute_c + Dose:minute_c
+  Fixed effects: HR ~ State*Dose + window_c + State:window_c + Dose:window_c
   Random effects: ~ 1 | subject
-  Where minute_c = minute - mean(minute) [centered time]
+  Where window_c = window - mean(window) [centered time]
 
 MODEL FIT STATISTICS:
   AIC: nan
   BIC: nan
-  Log-likelihood: -1479.05
-  N observations: 396
+  Log-likelihood: -799.04
+  N observations: 792
   N subjects: 11
-  Random effects variance:            Group
-Group  78.650872
-  Residual variance: 97.328278
+  Random effects variance:           Group
+Group  0.002962
+  Residual variance: 0.419433
 
-Model converged without warnings
+CONVERGENCE WARNINGS:
+  - The MLE may be on the boundary of the parameter space.
 
 HYPOTHESIS TESTING RESULTS (with BH-FDR correction):
 ============================================================
@@ -34,47 +36,47 @@ HYPOTHESIS TESTING RESULTS (with BH-FDR correction):
 FAMILY STATE:
 ------------------------------
   State[T.DMT]:
-    β =  10.8283, SE = 1.4022
-    95% CI: [  8.0800,  13.5766]
+    β =   0.6914, SE = 0.0651
+    95% CI: [  0.5639,   0.8190]
     p_raw = 0.0000, p_FDR = 0.0000 ***
 
-  State[T.DMT]:minute_c:
-    β =  -2.4170, SE = 0.3840
-    95% CI: [ -3.1696,  -1.6643]
+  State[T.DMT]:window_c:
+    β =  -0.0856, SE = 0.0089
+    95% CI: [ -0.1030,  -0.0682]
     p_raw = 0.0000, p_FDR = 0.0000 ***
 
 
 FAMILY DOSE:
 ------------------------------
   Dose[T.High]:
-    β =  -2.2057, SE = 1.4022
-    95% CI: [ -4.9540,   0.5426]
-    p_raw = 0.1157, p_FDR = 0.2314 
+    β =  -0.2677, SE = 0.0651
+    95% CI: [ -0.3952,  -0.1401]
+    p_raw = 0.0000, p_FDR = 0.0001 ***
 
-  Dose[T.High]:minute_c:
-    β =   0.3412, SE = 0.3840
-    95% CI: [ -0.4114,   1.0939]
-    p_raw = 0.3742, p_FDR = 0.3742 
+  Dose[T.High]:window_c:
+    β =   0.0115, SE = 0.0089
+    95% CI: [ -0.0059,   0.0289]
+    p_raw = 0.1950, p_FDR = 0.1950 
 
 
 FAMILY INTERACTION:
 ------------------------------
   State[T.DMT]:Dose[T.High]:
-    β =  15.8396, SE = 1.9830
-    95% CI: [ 11.9529,  19.7263]
+    β =   1.1316, SE = 0.0921
+    95% CI: [  0.9511,   1.3120]
     p_raw = 0.0000, p_FDR = 0.0000 ***
 
 
 CONDITIONAL CONTRASTS:
 ------------------------------
   High - Low within RS:
-    β =  -2.2057, SE = 1.4022, p = 0.1157 
+    β =  -0.2677, SE = 0.0651, p = 0.0000 ***
 
   High - Low within DMT (simple effect):
-    β =  13.6339, SE = 2.4287, p =    nan 
+    β =   0.8639, SE = 0.1127, p =    nan 
 
   (High - Low within DMT) - (High - Low within RS):
-    β =  15.8396, SE = 1.9830, p = 0.0000 ***
+    β =   1.1316, SE = 0.0921, p = 0.0000 ***
 
 
 DATA SUMMARY:
@@ -82,23 +84,32 @@ DATA SUMMARY:
 Cell means (HR by State × Dose):
             count     mean      std
 State Dose                         
-RS    Low      99  68.0182   9.2877
-      High     99  65.8125   9.1876
-DMT   Low      99  78.8465  13.8516
-      High     99  92.4804  19.7636
+RS    Low     396  33.8454  34.8233
+      High    396  32.6214  33.8788
+DMT   Low     396  39.4747  40.4750
+      High    396  46.8379  47.7911
 
-Time trend (HR by minute):
+Time trend (HR by 30-second window):
         count     mean      std
-minute                         
-1          44  76.3196  15.2273
-2          44  81.6604  21.6782
-3          44  82.0623  22.2641
-4          44  78.5569  18.3692
-5          44  76.6240  17.0505
-6          44  74.9100  15.6489
-7          44  73.3697  14.5190
-8          44  72.1532  13.5273
-9          44  70.9482  12.4336
+window                         
+1          88  37.4998  38.8634
+2          88  38.8973  40.7243
+3          88  40.6257  43.1383
+4          88  41.4843  44.0116
+5          88  41.3446  44.0939
+6          88  40.7710  43.5083
+7          88  40.0566  42.1031
+8          88  38.8538  40.7445
+9          88  38.4963  40.3465
+10         88  38.3441  40.2117
+11         88  37.9776  39.6760
+12         88  37.0273  38.7716
+13         88  36.8445  38.4171
+14         88  36.4532  38.1372
+15         88  36.2008  37.8072
+16         88  35.8726  37.3582
+17         88  35.3999  36.8126
+18         88  35.3577  36.8721
 
 
 ================================================================================

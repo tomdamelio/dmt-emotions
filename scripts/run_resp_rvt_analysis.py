@@ -3,7 +3,7 @@
 Unified RSP_RVT (Respiratory Volume per Time) Analysis: LME modeling and visualization (first 9 minutes).
 
 This script processes respiration-derived respiratory volume per time (RSP_RVT) from NeuroKit RSP_RVT column:
-  1) Build long-format per-minute RSP_RVT dataset (mean RVT per minute, 0–8)
+  1) Build long-format per-30-second window RSP_RVT dataset (mean RVT per window, 0–540s)
   2) Fit LME with State × Dose and time effects; apply BH-FDR per family
   3) Create coefficient, marginal means, interaction, diagnostics plots
   4) Write model summary as TXT and figure captions
@@ -100,11 +100,24 @@ COLOR_RS_LOW = tab20c_colors[10]   # Third green gradient (lighter) for Low
 COLOR_DMT_HIGH = tab20c_colors[8]  # Same intense green for High
 COLOR_DMT_LOW = tab20c_colors[10]  # Same lighter green for Low
 
-# Analysis window: first 9 minutes
-N_MINUTES = 9  # minutes 0..8
-MAX_TIME_SEC = 60 * N_MINUTES
+# Analysis window: first 9 minutes (18 windows of 30 seconds each)
+N_WINDOWS = 18  # 30-second windows: 0-30s, 30-60s, ..., 510-540s
+WINDOW_SIZE_SEC = 30  # 30-second windows
+MAX_TIME_SEC = N_WINDOWS * WINDOW_SIZE_SEC  # 540 seconds = 9 minutes
 
-# Baseline correction flag (optional, disabled by default)
+# Z-scoring configuration
+USE_ZSCORE = True  # If True: z-score using session/subject baseline; If False: use absolute RVT values
+ZSCORE_BY_SUBJECT = True  # If True: z-score using all sessions of subject; If False: z-score each session independently
+EXPORT_ABSOLUTE_SCALE = True  # Also export absolute scale for QC (only when USE_ZSCORE=True)
+
+# Optional trims (in seconds) - set to None to disable
+RS_TRIM_START = None  # Trim start of RS (e.g., 5.0 for first 5 seconds)
+DMT_TRIM_START = None  # Trim start of DMT (e.g., 5.0 for first 5 seconds)
+
+# Minimum samples per window to accept a session
+MIN_SAMPLES_PER_WINDOW = 10
+
+# Baseline correction flag (deprecated - use z-scoring instead)
 BASELINE_CORRECTION = False
 
 
@@ -158,25 +171,191 @@ def load_resp_csv(csv_path: str) -> Optional[pd.DataFrame]:
     return df
 
 
-def compute_rvt_mean_per_minute(t: np.ndarray, rvt: np.ndarray, minute: int) -> Optional[float]:
-    """Compute mean RSP_RVT for a specific minute window."""
-    start_time = minute * 60.0
-    end_time = (minute + 1) * 60.0
+def compute_rvt_mean_per_window(t: np.ndarray, rvt: np.ndarray, window_idx: int) -> Optional[float]:
+    """Compute mean RSP_RVT for a specific 30-second window.
+    
+    Parameters:
+        t: Time array (seconds)
+        rvt: RVT values (can be absolute or z-scored)
+        window_idx: Window index (0-based, each window is 30 seconds)
+    """
+    start_time = window_idx * WINDOW_SIZE_SEC
+    end_time = (window_idx + 1) * WINDOW_SIZE_SEC
     mask = (t >= start_time) & (t < end_time)
     if not np.any(mask):
         return None
     rvt_win = rvt[mask]
-    rvt_win_valid = rvt_win[(rvt_win > 0) & (rvt_win < 50000)]  # Physiological range (RVT = Amplitude × Rate)
+    
+    # Check if we're dealing with z-scored data (values can be negative)
+    has_negative = np.any(rvt_win < 0)
+    if has_negative:
+        # Z-scored data: just remove NaNs
+        rvt_win_valid = rvt_win[~np.isnan(rvt_win)]
+    else:
+        # Absolute data: apply physiological range filter
+        rvt_win_valid = rvt_win[(rvt_win > 0) & (rvt_win < 50000)]  # Physiological range (RVT = Amplitude × Rate)
+    
     if len(rvt_win_valid) < 2:
         return None
     return float(np.nanmean(rvt_win_valid))
 
 
+def zscore_with_session_baseline(t_rs: np.ndarray, y_rs: np.ndarray,
+                                 t_dmt: np.ndarray, y_dmt: np.ndarray) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Dict]:
+    """Z-score both RS and DMT using the entire session (RS + DMT) as baseline.
+    
+    This approach normalizes the entire session together, using mu and sigma
+    computed from the concatenated RS + DMT data.
+    
+    Returns:
+        (y_rs_z, y_dmt_z, diagnostics_dict)
+    """
+    diagnostics = {'scalable': False, 'mu': np.nan, 'sigma': np.nan, 'reason': ''}
+    
+    # Apply optional trims
+    if RS_TRIM_START is not None:
+        mask_rs = t_rs >= RS_TRIM_START
+        t_rs = t_rs[mask_rs]
+        y_rs = y_rs[mask_rs]
+    
+    if DMT_TRIM_START is not None:
+        mask_dmt = t_dmt >= DMT_TRIM_START
+        t_dmt = t_dmt[mask_dmt]
+        y_dmt = y_dmt[mask_dmt]
+    
+    # Check minimum samples
+    if len(y_rs) < MIN_SAMPLES_PER_WINDOW or len(y_dmt) < MIN_SAMPLES_PER_WINDOW:
+        diagnostics['reason'] = f'Insufficient samples: RS={len(y_rs)}, DMT={len(y_dmt)}'
+        return None, None, diagnostics
+    
+    # Filter physiological range
+    y_rs_valid = y_rs[(y_rs > 0) & (y_rs < 50000)]
+    y_dmt_valid = y_dmt[(y_dmt > 0) & (y_dmt < 50000)]
+    
+    # Concatenate entire session (RS + DMT) to compute mu and sigma
+    y_session = np.concatenate([y_rs_valid, y_dmt_valid])
+    
+    if len(y_session) < MIN_SAMPLES_PER_WINDOW * 2:
+        diagnostics['reason'] = f'Session insufficient valid samples: {len(y_session)}'
+        return None, None, diagnostics
+    
+    # Compute mu and sigma from entire session
+    mu = np.nanmean(y_session)
+    sigma = np.nanstd(y_session, ddof=1)
+    
+    # Check sigma validity
+    if sigma == 0.0 or not np.isfinite(sigma):
+        diagnostics['reason'] = f'Invalid sigma: {sigma}'
+        return None, None, diagnostics
+    
+    # Apply z-scoring to both RS and DMT using session parameters
+    y_rs_z = (y_rs - mu) / sigma
+    y_dmt_z = (y_dmt - mu) / sigma
+    
+    diagnostics['scalable'] = True
+    diagnostics['mu'] = float(mu)
+    diagnostics['sigma'] = float(sigma)
+    diagnostics['n_session'] = len(y_session)
+    diagnostics['n_rs'] = len(y_rs_valid)
+    diagnostics['n_dmt'] = len(y_dmt_valid)
+    
+    return y_rs_z, y_dmt_z, diagnostics
+
+
+def zscore_with_subject_baseline(t_rs_high: np.ndarray, y_rs_high: np.ndarray,
+                                 t_dmt_high: np.ndarray, y_dmt_high: np.ndarray,
+                                 t_rs_low: np.ndarray, y_rs_low: np.ndarray,
+                                 t_dmt_low: np.ndarray, y_dmt_low: np.ndarray) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray], Dict]:
+    """Z-score all sessions of a subject using combined baseline (all RS + all DMT).
+    
+    This approach normalizes both sessions together, using mu and sigma
+    computed from all data (RS_high + DMT_high + RS_low + DMT_low).
+    
+    Returns:
+        (y_rs_high_z, y_dmt_high_z, y_rs_low_z, y_dmt_low_z, diagnostics_dict)
+    """
+    diagnostics = {'scalable': False, 'mu': np.nan, 'sigma': np.nan, 'reason': ''}
+    
+    # Apply optional trims
+    if RS_TRIM_START is not None:
+        mask_rs_h = t_rs_high >= RS_TRIM_START
+        t_rs_high = t_rs_high[mask_rs_h]
+        y_rs_high = y_rs_high[mask_rs_h]
+        
+        mask_rs_l = t_rs_low >= RS_TRIM_START
+        t_rs_low = t_rs_low[mask_rs_l]
+        y_rs_low = y_rs_low[mask_rs_l]
+    
+    if DMT_TRIM_START is not None:
+        mask_dmt_h = t_dmt_high >= DMT_TRIM_START
+        t_dmt_high = t_dmt_high[mask_dmt_h]
+        y_dmt_high = y_dmt_high[mask_dmt_h]
+        
+        mask_dmt_l = t_dmt_low >= DMT_TRIM_START
+        t_dmt_low = t_dmt_low[mask_dmt_l]
+        y_dmt_low = y_dmt_low[mask_dmt_l]
+    
+    # Check minimum samples per session
+    if (len(y_rs_high) < MIN_SAMPLES_PER_WINDOW or len(y_dmt_high) < MIN_SAMPLES_PER_WINDOW or
+        len(y_rs_low) < MIN_SAMPLES_PER_WINDOW or len(y_dmt_low) < MIN_SAMPLES_PER_WINDOW):
+        diagnostics['reason'] = f'Insufficient samples: RS_high={len(y_rs_high)}, DMT_high={len(y_dmt_high)}, RS_low={len(y_rs_low)}, DMT_low={len(y_dmt_low)}'
+        return None, None, None, None, diagnostics
+    
+    # Filter physiological range for all arrays
+    y_rs_high_valid = y_rs_high[(y_rs_high > 0) & (y_rs_high < 50000)]
+    y_dmt_high_valid = y_dmt_high[(y_dmt_high > 0) & (y_dmt_high < 50000)]
+    y_rs_low_valid = y_rs_low[(y_rs_low > 0) & (y_rs_low < 50000)]
+    y_dmt_low_valid = y_dmt_low[(y_dmt_low > 0) & (y_dmt_low < 50000)]
+    
+    # Concatenate ALL subject data (both sessions) to compute mu and sigma
+    y_all = np.concatenate([y_rs_high_valid, y_dmt_high_valid, y_rs_low_valid, y_dmt_low_valid])
+    
+    if len(y_all) < MIN_SAMPLES_PER_WINDOW * 4:
+        diagnostics['reason'] = f'Subject insufficient valid samples: {len(y_all)}'
+        return None, None, None, None, diagnostics
+    
+    # Compute mu and sigma from ALL subject data
+    mu = np.nanmean(y_all)
+    sigma = np.nanstd(y_all, ddof=1)
+    
+    # Check sigma validity
+    if sigma == 0.0 or not np.isfinite(sigma):
+        diagnostics['reason'] = f'Invalid sigma: {sigma}'
+        return None, None, None, None, diagnostics
+    
+    # Apply z-scoring to all sessions using subject-level parameters
+    y_rs_high_z = (y_rs_high - mu) / sigma
+    y_dmt_high_z = (y_dmt_high - mu) / sigma
+    y_rs_low_z = (y_rs_low - mu) / sigma
+    y_dmt_low_z = (y_dmt_low - mu) / sigma
+    
+    diagnostics['scalable'] = True
+    diagnostics['mu'] = float(mu)
+    diagnostics['sigma'] = float(sigma)
+    diagnostics['n_all'] = len(y_all)
+    diagnostics['n_rs_high'] = len(y_rs_high_valid)
+    diagnostics['n_dmt_high'] = len(y_dmt_high_valid)
+    diagnostics['n_rs_low'] = len(y_rs_low_valid)
+    diagnostics['n_dmt_low'] = len(y_dmt_low_valid)
+    
+    return y_rs_high_z, y_dmt_high_z, y_rs_low_z, y_dmt_low_z, diagnostics
+
+
 def prepare_long_data_resp_rvt() -> pd.DataFrame:
-    """Build long-format per-minute RSP_RVT table (first 9 minutes)."""
+    """Build long-format per-30-second window RSP_RVT table (first 9 minutes = 18 windows).
+    
+    If USE_ZSCORE=True: z-scores using session or subject baseline.
+    If ZSCORE_BY_SUBJECT=True: uses all sessions of subject for normalization.
+    If ZSCORE_BY_SUBJECT=False: uses each session independently for normalization.
+    If USE_ZSCORE=False: uses absolute RVT values.
+    """
     rows: List[Dict] = []
+    qc_log: List[str] = []
+    
     for subject in SUJETOS_VALIDADOS_RESP:
         high_session, low_session = determine_sessions(subject)
+        
+        # Load all data for this subject
         dmt_high_path, dmt_low_path = build_resp_paths(subject, high_session, low_session)
         rs_high_path = build_rs_resp_path(subject, high_session)
         rs_low_path = build_rs_resp_path(subject, low_session)
@@ -186,67 +365,164 @@ def prepare_long_data_resp_rvt() -> pd.DataFrame:
         rs_high = load_resp_csv(rs_high_path)
         rs_low = load_resp_csv(rs_low_path)
         
+        # Check if all data is available
         if any(x is None for x in (dmt_high, dmt_low, rs_high, rs_low)):
+            qc_log.append(f"{subject}: Missing data files")
             continue
 
         # Extract time and RSP_RVT
         t_dmt_high = dmt_high['time'].to_numpy()
-        rvt_dmt_high = pd.to_numeric(dmt_high['RSP_RVT'], errors='coerce').to_numpy()
+        rvt_dmt_high_abs = pd.to_numeric(dmt_high['RSP_RVT'], errors='coerce').to_numpy()
         t_dmt_low = dmt_low['time'].to_numpy()
-        rvt_dmt_low = pd.to_numeric(dmt_low['RSP_RVT'], errors='coerce').to_numpy()
+        rvt_dmt_low_abs = pd.to_numeric(dmt_low['RSP_RVT'], errors='coerce').to_numpy()
         t_rs_high = rs_high['time'].to_numpy()
-        rvt_rs_high = pd.to_numeric(rs_high['RSP_RVT'], errors='coerce').to_numpy()
+        rvt_rs_high_abs = pd.to_numeric(rs_high['RSP_RVT'], errors='coerce').to_numpy()
         t_rs_low = rs_low['time'].to_numpy()
-        rvt_rs_low = pd.to_numeric(rs_low['RSP_RVT'], errors='coerce').to_numpy()
+        rvt_rs_low_abs = pd.to_numeric(rs_low['RSP_RVT'], errors='coerce').to_numpy()
 
-        # Optional baseline correction
-        if BASELINE_CORRECTION:
-            # Subtract mean of first minute
-            baseline_dmt_high = compute_rvt_mean_per_minute(t_dmt_high, rvt_dmt_high, 0)
-            baseline_dmt_low = compute_rvt_mean_per_minute(t_dmt_low, rvt_dmt_low, 0)
-            baseline_rs_high = compute_rvt_mean_per_minute(t_rs_high, rvt_rs_high, 0)
-            baseline_rs_low = compute_rvt_mean_per_minute(t_rs_low, rvt_rs_low, 0)
-            if baseline_dmt_high is not None:
-                rvt_dmt_high = rvt_dmt_high - baseline_dmt_high
-            if baseline_dmt_low is not None:
-                rvt_dmt_low = rvt_dmt_low - baseline_dmt_low
-            if baseline_rs_high is not None:
-                rvt_rs_high = rvt_rs_high - baseline_rs_high
-            if baseline_rs_low is not None:
-                rvt_rs_low = rvt_rs_low - baseline_rs_low
-
-        for minute in range(N_MINUTES):
-            rvt_dmt_h = compute_rvt_mean_per_minute(t_dmt_high, rvt_dmt_high, minute)
-            rvt_dmt_l = compute_rvt_mean_per_minute(t_dmt_low, rvt_dmt_low, minute)
-            rvt_rs_h = compute_rvt_mean_per_minute(t_rs_high, rvt_rs_high, minute)
-            rvt_rs_l = compute_rvt_mean_per_minute(t_rs_low, rvt_rs_low, minute)
+        if USE_ZSCORE:
+            if ZSCORE_BY_SUBJECT:
+                # Z-score using ALL sessions of subject as baseline
+                rvt_rs_high_z, rvt_dmt_high_z, rvt_rs_low_z, rvt_dmt_low_z, diag = zscore_with_subject_baseline(
+                    t_rs_high, rvt_rs_high_abs, t_dmt_high, rvt_dmt_high_abs,
+                    t_rs_low, rvt_rs_low_abs, t_dmt_low, rvt_dmt_low_abs
+                )
+                
+                if not diag['scalable']:
+                    qc_log.append(f"{subject}: Not scalable (subject-level): {diag['reason']}")
+                    continue
+                
+                # Process each 30-second window with z-scored data for BOTH sessions
+                for window_idx in range(N_WINDOWS):
+                    window_label = window_idx + 1
+                    
+                    # Compute window means for z-scored data
+                    rvt_dmt_h_z = compute_rvt_mean_per_window(t_dmt_high, rvt_dmt_high_z, window_idx)
+                    rvt_dmt_l_z = compute_rvt_mean_per_window(t_dmt_low, rvt_dmt_low_z, window_idx)
+                    rvt_rs_h_z = compute_rvt_mean_per_window(t_rs_high, rvt_rs_high_z, window_idx)
+                    rvt_rs_l_z = compute_rvt_mean_per_window(t_rs_low, rvt_rs_low_z, window_idx)
+                    
+                    if None not in (rvt_dmt_h_z, rvt_dmt_l_z, rvt_rs_h_z, rvt_rs_l_z):
+                        rows.extend([
+                            {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'DMT', 'Dose': 'High', 'RSP_RVT': rvt_dmt_h_z, 'Scale': 'z'},
+                            {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'DMT', 'Dose': 'Low', 'RSP_RVT': rvt_dmt_l_z, 'Scale': 'z'},
+                            {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'RS', 'Dose': 'High', 'RSP_RVT': rvt_rs_h_z, 'Scale': 'z'},
+                            {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'RS', 'Dose': 'Low', 'RSP_RVT': rvt_rs_l_z, 'Scale': 'z'},
+                        ])
+                        
+                        # Optional: absolute scale for QC
+                        if EXPORT_ABSOLUTE_SCALE:
+                            rvt_dmt_h_abs = compute_rvt_mean_per_window(t_dmt_high, rvt_dmt_high_abs, window_idx)
+                            rvt_dmt_l_abs = compute_rvt_mean_per_window(t_dmt_low, rvt_dmt_low_abs, window_idx)
+                            rvt_rs_h_abs = compute_rvt_mean_per_window(t_rs_high, rvt_rs_high_abs, window_idx)
+                            rvt_rs_l_abs = compute_rvt_mean_per_window(t_rs_low, rvt_rs_low_abs, window_idx)
+                            
+                            if None not in (rvt_dmt_h_abs, rvt_dmt_l_abs, rvt_rs_h_abs, rvt_rs_l_abs):
+                                rows.extend([
+                                    {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'DMT', 'Dose': 'High', 'RSP_RVT': rvt_dmt_h_abs, 'Scale': 'abs'},
+                                    {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'DMT', 'Dose': 'Low', 'RSP_RVT': rvt_dmt_l_abs, 'Scale': 'abs'},
+                                    {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'RS', 'Dose': 'High', 'RSP_RVT': rvt_rs_h_abs, 'Scale': 'abs'},
+                                    {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'RS', 'Dose': 'Low', 'RSP_RVT': rvt_rs_l_abs, 'Scale': 'abs'},
+                                ])
             
-            if None not in (rvt_dmt_h, rvt_dmt_l, rvt_rs_h, rvt_rs_l):
-                minute_label = minute + 1  # store minutes as 1..9 instead of 0..8
-                rows.extend([
-                    {'subject': subject, 'minute': minute_label, 'State': 'DMT', 'Dose': 'High', 'RSP_RVT': rvt_dmt_h},
-                    {'subject': subject, 'minute': minute_label, 'State': 'DMT', 'Dose': 'Low', 'RSP_RVT': rvt_dmt_l},
-                    {'subject': subject, 'minute': minute_label, 'State': 'RS', 'Dose': 'High', 'RSP_RVT': rvt_rs_h},
-                    {'subject': subject, 'minute': minute_label, 'State': 'RS', 'Dose': 'Low', 'RSP_RVT': rvt_rs_l},
-                ])
+            else:
+                # Z-score each session independently (session-level normalization)
+                # Process HIGH session
+                rvt_rs_high_z, rvt_dmt_high_z, diag_high = zscore_with_session_baseline(
+                    t_rs_high, rvt_rs_high_abs, t_dmt_high, rvt_dmt_high_abs
+                )
+                
+                # Process LOW session
+                rvt_rs_low_z, rvt_dmt_low_z, diag_low = zscore_with_session_baseline(
+                    t_rs_low, rvt_rs_low_abs, t_dmt_low, rvt_dmt_low_abs
+                )
+                
+                if not (diag_high['scalable'] and diag_low['scalable']):
+                    if not diag_high['scalable']:
+                        qc_log.append(f"{subject} HIGH session not scalable: {diag_high['reason']}")
+                    if not diag_low['scalable']:
+                        qc_log.append(f"{subject} LOW session not scalable: {diag_low['reason']}")
+                    continue
+                
+                # Process each 30-second window with z-scored data
+                for window_idx in range(N_WINDOWS):
+                    window_label = window_idx + 1
+                    
+                    rvt_dmt_h_z = compute_rvt_mean_per_window(t_dmt_high, rvt_dmt_high_z, window_idx)
+                    rvt_dmt_l_z = compute_rvt_mean_per_window(t_dmt_low, rvt_dmt_low_z, window_idx)
+                    rvt_rs_h_z = compute_rvt_mean_per_window(t_rs_high, rvt_rs_high_z, window_idx)
+                    rvt_rs_l_z = compute_rvt_mean_per_window(t_rs_low, rvt_rs_low_z, window_idx)
+                    
+                    if None not in (rvt_dmt_h_z, rvt_dmt_l_z, rvt_rs_h_z, rvt_rs_l_z):
+                        rows.extend([
+                            {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'DMT', 'Dose': 'High', 'RSP_RVT': rvt_dmt_h_z, 'Scale': 'z'},
+                            {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'DMT', 'Dose': 'Low', 'RSP_RVT': rvt_dmt_l_z, 'Scale': 'z'},
+                            {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'RS', 'Dose': 'High', 'RSP_RVT': rvt_rs_h_z, 'Scale': 'z'},
+                            {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'RS', 'Dose': 'Low', 'RSP_RVT': rvt_rs_l_z, 'Scale': 'z'},
+                        ])
+                        
+                        # Optional: absolute scale for QC
+                        if EXPORT_ABSOLUTE_SCALE:
+                            rvt_dmt_h_abs = compute_rvt_mean_per_window(t_dmt_high, rvt_dmt_high_abs, window_idx)
+                            rvt_dmt_l_abs = compute_rvt_mean_per_window(t_dmt_low, rvt_dmt_low_abs, window_idx)
+                            rvt_rs_h_abs = compute_rvt_mean_per_window(t_rs_high, rvt_rs_high_abs, window_idx)
+                            rvt_rs_l_abs = compute_rvt_mean_per_window(t_rs_low, rvt_rs_low_abs, window_idx)
+                            
+                            if None not in (rvt_dmt_h_abs, rvt_dmt_l_abs, rvt_rs_h_abs, rvt_rs_l_abs):
+                                rows.extend([
+                                    {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'DMT', 'Dose': 'High', 'RSP_RVT': rvt_dmt_h_abs, 'Scale': 'abs'},
+                                    {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'DMT', 'Dose': 'Low', 'RSP_RVT': rvt_dmt_l_abs, 'Scale': 'abs'},
+                                    {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'RS', 'Dose': 'High', 'RSP_RVT': rvt_rs_h_abs, 'Scale': 'abs'},
+                                    {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'RS', 'Dose': 'Low', 'RSP_RVT': rvt_rs_l_abs, 'Scale': 'abs'},
+                                ])
+        
+        else:
+            # Use absolute values (no z-scoring)
+            for window_idx in range(N_WINDOWS):
+                window_label = window_idx + 1
+                
+                rvt_dmt_h = compute_rvt_mean_per_window(t_dmt_high, rvt_dmt_high_abs, window_idx)
+                rvt_dmt_l = compute_rvt_mean_per_window(t_dmt_low, rvt_dmt_low_abs, window_idx)
+                rvt_rs_h = compute_rvt_mean_per_window(t_rs_high, rvt_rs_high_abs, window_idx)
+                rvt_rs_l = compute_rvt_mean_per_window(t_rs_low, rvt_rs_low_abs, window_idx)
+                
+                if None not in (rvt_dmt_h, rvt_dmt_l, rvt_rs_h, rvt_rs_l):
+                    rows.extend([
+                        {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'DMT', 'Dose': 'High', 'RSP_RVT': rvt_dmt_h, 'Scale': 'abs'},
+                        {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'DMT', 'Dose': 'Low', 'RSP_RVT': rvt_dmt_l, 'Scale': 'abs'},
+                        {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'RS', 'Dose': 'High', 'RSP_RVT': rvt_rs_h, 'Scale': 'abs'},
+                        {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'RS', 'Dose': 'Low', 'RSP_RVT': rvt_rs_l, 'Scale': 'abs'},
+                    ])
 
     if not rows:
         raise ValueError('No valid RSP_RVT data found for any subject!')
+    
+    # Save QC log
+    if USE_ZSCORE and qc_log:
+        print(f"Warning: {len(qc_log)} sessions/subjects excluded from z-scoring:")
+        for msg in qc_log:
+            print(f"  {msg}")
 
     df = pd.DataFrame(rows)
     df['State'] = pd.Categorical(df['State'], categories=['RS', 'DMT'], ordered=True)
     df['Dose'] = pd.Categorical(df['Dose'], categories=['Low', 'High'], ordered=True)
+    df['Scale'] = pd.Categorical(df['Scale'], categories=['z', 'abs'], ordered=True)
     df['subject'] = pd.Categorical(df['subject'])
-    df['minute_c'] = df['minute'] - df['minute'].mean()
+    df['window_c'] = df['window'] - df['window'].mean()
     return df
 
 
 def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
     if mixedlm is None:
         return None, {'error': 'statsmodels not available'}
+    # Filter to appropriate scale (z-scored if USE_ZSCORE=True, else absolute)
+    scale_to_use = 'z' if USE_ZSCORE else 'abs'
+    df_model = df[df['Scale'] == scale_to_use].copy()
+    if len(df_model) == 0:
+        return None, {'error': f'No {scale_to_use}-scaled data available'}
     try:
-        formula = 'RSP_RVT ~ State * Dose + minute_c + State:minute_c + Dose:minute_c'
-        model = mixedlm(formula, df, groups=df['subject'])  # type: ignore[arg-type]
+        formula = 'RSP_RVT ~ State * Dose + window_c + State:window_c + Dose:window_c'
+        model = mixedlm(formula, df_model, groups=df_model['subject'])  # type: ignore[arg-type]
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter('always')
             fitted = model.fit()
@@ -257,8 +533,8 @@ def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
         'aic': getattr(fitted, 'aic', np.nan),
         'bic': getattr(fitted, 'bic', np.nan),
         'loglik': getattr(fitted, 'llf', np.nan),
-        'n_obs': getattr(fitted, 'nobs', len(df)),
-        'n_groups': len(df['subject'].unique()),
+        'n_obs': getattr(fitted, 'nobs', len(df_model)),
+        'n_groups': len(df_model['subject'].unique()),
         'convergence_warnings': convergence_warnings,
         'random_effects_var': getattr(fitted, 'cov_re', None),
         'residual_var': getattr(fitted, 'scale', np.nan),
@@ -286,10 +562,10 @@ def plot_model_diagnostics(fitted_model, df: pd.DataFrame, output_dir: str) -> N
     axes[1, 0].axhline(y=0, color='red', linestyle='--', alpha=0.7)
     axes[1, 0].set_xlabel('Subject Index')
     axes[1, 0].set_ylabel('Mean Residual')
-    minute_residuals = df.groupby('minute', observed=False).apply(lambda x: residuals[x.index].mean(), include_groups=False)
-    axes[1, 1].plot(minute_residuals.index, minute_residuals.values, 'o-', alpha=0.7)
+    window_residuals = df.groupby('window', observed=False).apply(lambda x: residuals[x.index].mean(), include_groups=False)
+    axes[1, 1].plot(window_residuals.index, window_residuals.values, 'o-', alpha=0.7)
     axes[1, 1].axhline(y=0, color='red', linestyle='--', alpha=0.7)
-    axes[1, 1].set_xlabel('Minute')
+    axes[1, 1].set_xlabel('Window (30s)')
     axes[1, 1].set_ylabel('Mean Residual')
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'lme_diagnostics.png'), dpi=300, bbox_inches='tight')
@@ -324,10 +600,10 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
         'conf_int': conf_int.to_dict(),
     }
     families: Dict[str, List[str]] = {'State': [], 'Dose': [], 'Interaction': []}
-    for p in ['State[T.DMT]', 'State[T.DMT]:minute_c']:
+    for p in ['State[T.DMT]', 'State[T.DMT]:window_c']:
         if p in pvalues.index:
             families['State'].append(p)
-    for p in ['Dose[T.High]', 'Dose[T.High]:minute_c']:
+    for p in ['Dose[T.High]', 'Dose[T.High]:window_c']:
         if p in pvalues.index:
             families['Dose'].append(p)
     for p in ['State[T.DMT]:Dose[T.High]']:
@@ -381,24 +657,29 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
 
 
 def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, df: pd.DataFrame, output_dir: str) -> str:
+    df_z = df[df['Scale'] == 'z']
+    zscore_mode = "subject-level (all sessions)" if ZSCORE_BY_SUBJECT else "session-level (independent)"
     lines: List[str] = [
         '=' * 80,
-        'LME ANALYSIS REPORT: RSP_RVT (Respiratory Volume per Time (RVT)) by Minute (first 9 minutes)',
+        'LME ANALYSIS REPORT: RSP_RVT (Respiratory Volume per Time) by 30-second Windows (first 9 minutes)',
         '=' * 80,
         '',
         f"Analysis date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        f"Dataset: {len(df)} observations from {len(df['subject'].unique())} subjects",
+        f"Dataset: {len(df_z)} observations from {len(df_z['subject'].unique())} subjects",
         '',
         'DESIGN:',
         '  Within-subjects 2×2: State (RS vs DMT) × Dose (Low vs High)',
-        '  Time windows: 9 one-minute windows (0-8 minutes)',
-        '  Dependent variable: Mean RSP_RVT per minute (a.u./min)',
-        f'  Baseline correction: {BASELINE_CORRECTION}',
+        '  Time windows: 18 thirty-second windows (0-540 seconds = 9 minutes)',
+        '  Dependent variable: Mean RSP_RVT per 30-second window',
+        f'  Z-scoring: {USE_ZSCORE}',
+        f'  Z-scoring mode: {zscore_mode if USE_ZSCORE else "N/A"}',
+        f'  {"Subject parameters (mu, sigma) computed from all sessions (RS_high + DMT_high + RS_low + DMT_low)" if USE_ZSCORE and ZSCORE_BY_SUBJECT else "Session parameters (mu, sigma) computed per session (RS + DMT)" if USE_ZSCORE else "Absolute RVT values (a.u./min)"}',
         '',
         'MODEL SPECIFICATION:',
-        '  Fixed effects: RSP_RVT ~ State*Dose + minute_c + State:minute_c + Dose:minute_c',
+        '  Fixed effects: RSP_RVT ~ State*Dose + window_c + State:window_c + Dose:window_c',
         '  Random effects: ~ 1 | subject',
-        '  Where minute_c = minute - mean(minute) [centered time]',
+        '  Where window_c = window - mean(window) [centered time]',
+        f'  Scale: {"z-scored" if USE_ZSCORE else "absolute"}',
         '',
     ]
     if fitted_model is not None:
@@ -437,11 +718,26 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, d
         for _, res in hypothesis_results['conditional_contrasts'].items():
             sig = '***' if res['p_raw'] < 0.001 else '**' if res['p_raw'] < 0.01 else '*' if res['p_raw'] < 0.05 else ''
             lines.extend([f"  {res['description']}:", f"    β = {res['beta']:8.4f}, SE = {res['se']:6.4f}, p = {res['p_raw']:6.4f} {sig}", ''])
-    lines.extend(['', 'DATA SUMMARY:', '-' * 30])
-    cell = df.groupby(['State', 'Dose'], observed=False)['RSP_RVT'].agg(['count', 'mean', 'std']).round(4)
+    lines.extend(['', 'DATA SUMMARY (Z-SCORED):', '-' * 30])
+    cell = df_z.groupby(['State', 'Dose'], observed=False)['RSP_RVT'].agg(['count', 'mean', 'std']).round(4)
     lines.extend(['Cell means (RSP_RVT by State × Dose):', str(cell), ''])
-    trend = df.groupby('minute', observed=False)['RSP_RVT'].agg(['count', 'mean', 'std']).round(4)
-    lines.extend(['Time trend (RSP_RVT by minute):', str(trend), ''])
+    trend = df_z.groupby('window', observed=False)['RSP_RVT'].agg(['count', 'mean', 'std']).round(4)
+    lines.extend(['Time trend (RSP_RVT by 30-second window):', str(trend), ''])
+    
+    # QC check: RS by dose
+    lines.extend(['', 'QC CHECK: RS by Dose:', '-' * 30])
+    rs_only = df_z[df_z['State'] == 'RS']
+    rs_by_dose = rs_only.groupby('Dose', observed=False)['RSP_RVT'].agg(['count', 'mean', 'std']).round(4)
+    lines.extend([str(rs_by_dose), ''])
+    if USE_ZSCORE:
+        if ZSCORE_BY_SUBJECT:
+            lines.extend(['Note: Z-scoring uses ALL sessions of subject (RS_high + DMT_high + RS_low + DMT_low),',
+                          'so RS values reflect subject-level normalization. High and Low RS should be similar',
+                          'since they share the same normalization parameters.', ''])
+        else:
+            lines.extend(['Note: Z-scoring uses entire session (RS+DMT) independently per session,', 
+                          'so RS values reflect session-level normalization. High and Low RS may differ',
+                          'since each session has its own normalization parameters.', ''])
     lines.extend(['', '=' * 80])
     out_path = os.path.join(output_dir, 'lme_analysis_report.txt')
     with open(out_path, 'w', encoding='utf-8') as f:
@@ -506,15 +802,15 @@ def prepare_coefficient_data(coefficients: Dict) -> pd.DataFrame:
     order = [
         'State[T.DMT]',
         'Dose[T.High]',
-        'State[T.DMT]:minute_c',
-        'Dose[T.High]:minute_c',
+        'State[T.DMT]:window_c',
+        'Dose[T.High]:window_c',
         'State[T.DMT]:Dose[T.High]'
     ]
     labels = {
         'State[T.DMT]': 'State (DMT vs RS)',
         'Dose[T.High]': 'Dose (High vs Low)',
-        'State[T.DMT]:minute_c': 'State × Time',
-        'Dose[T.High]:minute_c': 'Dose × Time',
+        'State[T.DMT]:window_c': 'State × Time',
+        'Dose[T.High]:window_c': 'Dose × Time',
         'State[T.DMT]:Dose[T.High]': 'State × Dose'
     }
     # Use Respiration modality color (green tones from tab20c) with distinct shades for visual distinction
@@ -553,8 +849,8 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
     fig, ax = plt.subplots(figsize=(10, 8))
     coef_df = coef_df.sort_values('order')
     y_positions = np.arange(len(coef_df))
-    for _, row in coef_df.iterrows():
-        y_pos = y_positions[row['order']]
+    for idx, row in coef_df.iterrows():
+        y_pos = y_positions[coef_df.index.get_loc(idx)]
         # Tamaño uniforme para todos los elementos
         linewidth = 6.5
         alpha = 1.0
@@ -576,9 +872,12 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
 
 
 def compute_empirical_means_and_ci(df: pd.DataFrame, confidence: float = 0.95) -> pd.DataFrame:
-    grouped = df.groupby(['minute', 'State', 'Dose'], observed=False)['RSP_RVT']
+    # Use appropriate scale based on USE_ZSCORE
+    scale_to_use = 'z' if USE_ZSCORE else 'abs'
+    df_scale = df[df['Scale'] == scale_to_use]
+    grouped = df_scale.groupby(['window', 'State', 'Dose'], observed=False)['RSP_RVT']
     stats_df = grouped.agg(['count', 'mean', 'std', 'sem']).reset_index()
-    stats_df.columns = ['minute', 'State', 'Dose', 'n', 'mean', 'std', 'se']
+    stats_df.columns = ['window', 'State', 'Dose', 'n', 'mean', 'std', 'se']
     stats_df['condition'] = stats_df['State'].astype(str) + '_' + stats_df['Dose'].astype(str)
     alpha = 1 - confidence
     t_critical = scistats.t.ppf(1 - alpha/2, stats_df['n'] - 1) if scistats is not None else 1.96
@@ -609,7 +908,7 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
         ax.plot(cond_data['minute'], cond_data['mean'], color=color, linewidth=2.5, label=condition.replace('_', ' '), marker='o', markersize=5)
         ax.fill_between(cond_data['minute'], cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
     ax.set_xlabel('Time (minutes)')
-    ax.set_ylabel('RSP_RVT (a.u./min)')
+    ax.set_ylabel('RSP_RVT (Z-scored)')
     ticks = list(range(1, N_MINUTES + 1))
     ax.set_xticks(ticks)
     ax.set_xlim(0.8, N_MINUTES + 0.2)
@@ -636,7 +935,7 @@ def create_state_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
         ax.plot(state_data['minute'], state_data['mean'], color=color, linewidth=3, label=f'{state}', marker='o', markersize=6)
         ax.fill_between(state_data['minute'], state_data['ci_lower'], state_data['ci_upper'], color=color, alpha=0.2)
     ax.set_xlabel('Time (minutes)')
-    ax.set_ylabel('RSP_RVT (a.u./min)')
+    ax.set_ylabel('RSP_RVT (Z-scored)')
     ticks = list(range(1, N_MINUTES + 1))
     ax.set_xticks(ticks)
     ax.set_xlim(0.8, N_MINUTES + 0.2)
@@ -657,7 +956,7 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str) -> None:
         ax1.plot(cond_data['minute'], cond_data['mean'], color=color, linewidth=2.5, label=condition.replace('RS_', ''), marker='o', markersize=4)
         ax1.fill_between(cond_data['minute'], cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
     ax1.set_xlabel('Time (minutes)')
-    ax1.set_ylabel('RSP_RVT (a.u./min)')
+    ax1.set_ylabel('RSP_RVT (Z-scored)')
     ax1.grid(True, which='major', axis='y', alpha=0.25)
     ax1.grid(False, which='major', axis='x')
     ticks = list(range(1, N_MINUTES + 1))
@@ -801,7 +1100,12 @@ def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha
 
 
 def create_combined_summary_plot(out_dir: str) -> Optional[str]:
-    """Create RS+DMT summary (9 minutes) with FDR shading."""
+    """Create RS+DMT summary (9 minutes) with FDR shading.
+    
+    Uses z-scored data if USE_ZSCORE=True, else absolute RVT values.
+    If ZSCORE_BY_SUBJECT=True: uses subject-level normalization.
+    If ZSCORE_BY_SUBJECT=False: uses session-level normalization.
+    """
     t_grid = np.arange(0.0, 541.0, 0.5)
 
     state_data: Dict[str, Dict[str, np.ndarray]] = {}
@@ -810,29 +1114,69 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
         low_curves: List[np.ndarray] = []
         for subject in SUJETOS_VALIDADOS_RESP:
             try:
-                if kind == 'DMT':
-                    high_session, low_session = determine_sessions(subject)
-                    p_high, p_low = build_resp_paths(subject, high_session, low_session)
-                    d_high = load_resp_csv(p_high)
-                    d_low = load_resp_csv(p_low)
-                    if any(x is None for x in (d_high, d_low)):
-                        continue
-                    th = d_high['time'].to_numpy()
-                    yh = pd.to_numeric(d_high['RSP_RVT'], errors='coerce').to_numpy()
-                    tl = d_low['time'].to_numpy()
-                    yl = pd.to_numeric(d_low['RSP_RVT'], errors='coerce').to_numpy()
-                else:  # RS
-                    high_session, low_session = determine_sessions(subject)
-                    p_rsh = build_rs_resp_path(subject, high_session)
-                    p_rsl = build_rs_resp_path(subject, low_session)
-                    r_high = load_resp_csv(p_rsh)
-                    r_low = load_resp_csv(p_rsl)
-                    if any(x is None for x in (r_high, r_low)):
-                        continue
-                    th = r_high['time'].to_numpy()
-                    yh = pd.to_numeric(r_high['RSP_RVT'], errors='coerce').to_numpy()
-                    tl = r_low['time'].to_numpy()
-                    yl = pd.to_numeric(r_low['RSP_RVT'], errors='coerce').to_numpy()
+                high_session, low_session = determine_sessions(subject)
+                
+                # Load all data for this subject
+                p_high_dmt, p_low_dmt = build_resp_paths(subject, high_session, low_session)
+                p_rsh = build_rs_resp_path(subject, high_session)
+                p_rsl = build_rs_resp_path(subject, low_session)
+                
+                d_high_dmt = load_resp_csv(p_high_dmt)
+                d_low_dmt = load_resp_csv(p_low_dmt)
+                r_high = load_resp_csv(p_rsh)
+                r_low = load_resp_csv(p_rsl)
+                
+                if any(x is None for x in (d_high_dmt, d_low_dmt, r_high, r_low)):
+                    continue
+                
+                th_dmt_abs = d_high_dmt['time'].to_numpy()
+                yh_dmt_abs = pd.to_numeric(d_high_dmt['RSP_RVT'], errors='coerce').to_numpy()
+                tl_dmt_abs = d_low_dmt['time'].to_numpy()
+                yl_dmt_abs = pd.to_numeric(d_low_dmt['RSP_RVT'], errors='coerce').to_numpy()
+                th_rs_abs = r_high['time'].to_numpy()
+                yh_rs_abs = pd.to_numeric(r_high['RSP_RVT'], errors='coerce').to_numpy()
+                tl_rs_abs = r_low['time'].to_numpy()
+                yl_rs_abs = pd.to_numeric(r_low['RSP_RVT'], errors='coerce').to_numpy()
+                
+                if USE_ZSCORE:
+                    if ZSCORE_BY_SUBJECT:
+                        # Z-score using ALL sessions of subject
+                        yh_rs_z, yh_dmt_z, yl_rs_z, yl_dmt_z, diag = zscore_with_subject_baseline(
+                            th_rs_abs, yh_rs_abs, th_dmt_abs, yh_dmt_abs,
+                            tl_rs_abs, yl_rs_abs, tl_dmt_abs, yl_dmt_abs
+                        )
+                        
+                        if not diag['scalable']:
+                            continue
+                        
+                        if kind == 'DMT':
+                            th, yh = th_dmt_abs, yh_dmt_z
+                            tl, yl = tl_dmt_abs, yl_dmt_z
+                        else:  # RS
+                            th, yh = th_rs_abs, yh_rs_z
+                            tl, yl = tl_rs_abs, yl_rs_z
+                    else:
+                        # Z-score each session independently
+                        yh_rs_z, yh_dmt_z, diag_h = zscore_with_session_baseline(th_rs_abs, yh_rs_abs, th_dmt_abs, yh_dmt_abs)
+                        yl_rs_z, yl_dmt_z, diag_l = zscore_with_session_baseline(tl_rs_abs, yl_rs_abs, tl_dmt_abs, yl_dmt_abs)
+                        
+                        if not (diag_h['scalable'] and diag_l['scalable']):
+                            continue
+                        
+                        if kind == 'DMT':
+                            th, yh = th_dmt_abs, yh_dmt_z
+                            tl, yl = tl_dmt_abs, yl_dmt_z
+                        else:  # RS
+                            th, yh = th_rs_abs, yh_rs_z
+                            tl, yl = tl_rs_abs, yl_rs_z
+                else:
+                    # Use absolute values
+                    if kind == 'DMT':
+                        th, yh = th_dmt_abs, yh_dmt_abs
+                        tl, yl = tl_dmt_abs, yl_dmt_abs
+                    else:  # RS
+                        th, yh = th_rs_abs, yh_rs_abs
+                        tl, yl = tl_rs_abs, yl_rs_abs
 
                 # Trim to 0..540s
                 mh = (th >= 0.0) & (th <= 540.0)
@@ -918,7 +1262,7 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     ax1.text(-0.20, 0.5, 'Respiration', transform=ax1.transAxes, 
              fontsize=28, fontweight='bold', color=tab20c_colors[8],
              rotation=90, va='center', ha='center')
-    ax1.text(-0.12, 0.5, 'RVT (a.u./min)', transform=ax1.transAxes, 
+    ax1.text(-0.12, 0.5, 'RVT (Z-scored)', transform=ax1.transAxes, 
              fontsize=28, fontweight='normal', color='black', 
              rotation=90, va='center', ha='center')
     ax1.set_title('Resting State (RS)', fontweight='bold')
@@ -987,7 +1331,10 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
 def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     """Create DMT-only extended plot (~19 minutes) with FDR shading.
     
-    Saves results/resp/rvt/all_subs_dmt_resp_hr.png
+    Uses z-scored data if USE_ZSCORE=True, else absolute RVT values.
+    If ZSCORE_BY_SUBJECT=True: uses subject-level normalization.
+    If ZSCORE_BY_SUBJECT=False: uses session-level normalization.
+    Saves results/resp/rvt/all_subs_dmt_resp_rvt.png
     """
     # Use a coarser grid for better statistical power in the extended timeframe
     t_grid = np.arange(0.0, 1150.0, 1.0)  # 1-second resolution instead of 0.5s
@@ -996,15 +1343,57 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     for subject in SUJETOS_VALIDADOS_RESP:
         try:
             high_session, low_session = determine_sessions(subject)
+            
+            # Load all data for this subject
             p_high, p_low = build_resp_paths(subject, high_session, low_session)
+            p_rsh = build_rs_resp_path(subject, high_session)
+            p_rsl = build_rs_resp_path(subject, low_session)
+            
             d_high = load_resp_csv(p_high)
             d_low = load_resp_csv(p_low)
-            if any(x is None for x in (d_high, d_low)):
+            r_high = load_resp_csv(p_rsh)
+            r_low = load_resp_csv(p_rsl)
+            
+            if any(x is None for x in (d_high, d_low, r_high, r_low)):
                 continue
-            th = d_high['time'].to_numpy()
-            yh = pd.to_numeric(d_high['RSP_RVT'], errors='coerce').to_numpy()
-            tl = d_low['time'].to_numpy()
-            yl = pd.to_numeric(d_low['RSP_RVT'], errors='coerce').to_numpy()
+            
+            th_abs = d_high['time'].to_numpy()
+            yh_abs = pd.to_numeric(d_high['RSP_RVT'], errors='coerce').to_numpy()
+            tl_abs = d_low['time'].to_numpy()
+            yl_abs = pd.to_numeric(d_low['RSP_RVT'], errors='coerce').to_numpy()
+            tr_h = r_high['time'].to_numpy()
+            yr_h = pd.to_numeric(r_high['RSP_RVT'], errors='coerce').to_numpy()
+            tr_l = r_low['time'].to_numpy()
+            yr_l = pd.to_numeric(r_low['RSP_RVT'], errors='coerce').to_numpy()
+            
+            if USE_ZSCORE:
+                if ZSCORE_BY_SUBJECT:
+                    # Z-score using ALL sessions of subject
+                    _, yh_z, _, yl_z, diag = zscore_with_subject_baseline(
+                        tr_h, yr_h, th_abs, yh_abs,
+                        tr_l, yr_l, tl_abs, yl_abs
+                    )
+                    
+                    if not diag['scalable']:
+                        continue
+                    
+                    th, yh = th_abs, yh_z
+                    tl, yl = tl_abs, yl_z
+                else:
+                    # Z-score each session independently
+                    _, yh_z, diag_h = zscore_with_session_baseline(tr_h, yr_h, th_abs, yh_abs)
+                    _, yl_z, diag_l = zscore_with_session_baseline(tr_l, yr_l, tl_abs, yl_abs)
+                    
+                    if not (diag_h['scalable'] and diag_l['scalable']):
+                        continue
+                    
+                    th, yh = th_abs, yh_z
+                    tl, yl = tl_abs, yl_z
+            else:
+                # Use absolute values
+                th, yh = th_abs, yh_abs
+                tl, yl = tl_abs, yl_abs
+            
             mh = (th >= 0.0) & (th < 1150.0)
             ml = (tl >= 0.0) & (tl < 1150.0)
             th, yh = th[mh], yh[mh]
@@ -1069,7 +1458,7 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     legend.get_frame().set_facecolor('white')
     legend.get_frame().set_alpha(0.9)
     ax.set_xlabel('Time (minutes)')
-    ax.set_ylabel(r'$\mathbf{Respiration}$' + '\nRVT (a.u./min)', fontsize=28)
+    ax.set_ylabel(r'$\mathbf{Respiration}$' + '\nRVT (z-scored)', fontsize=28)
     ax.set_title('DMT', fontweight='bold')
     # Subtle grid: y-only, light alpha
     ax.grid(True, which='major', axis='y', alpha=0.25)
@@ -1109,42 +1498,90 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
 
 
 def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
-    """Create a stacked per-subject figure (RS left, DMT right) for 9 minutes."""
+    """Create a stacked per-subject figure (RS left, DMT right) for 9 minutes.
+    
+    Uses z-scored data if USE_ZSCORE=True, else absolute RVT values.
+    If ZSCORE_BY_SUBJECT=True: uses subject-level normalization.
+    If ZSCORE_BY_SUBJECT=False: uses session-level normalization.
+    """
     limit_sec = 550.0
     rows: List[Dict] = []
     for subject in SUJETOS_VALIDADOS_RESP:
         try:
-            # DMT
             high_session, low_session = determine_sessions(subject)
+            
+            # Load all data
             p_high, p_low = build_resp_paths(subject, high_session, low_session)
+            p_rsh = build_rs_resp_path(subject, high_session)
+            p_rsl = build_rs_resp_path(subject, low_session)
+            
             d_high = load_resp_csv(p_high)
             d_low = load_resp_csv(p_low)
-            if any(x is None for x in (d_high, d_low)):
+            r_high = load_resp_csv(p_rsh)
+            r_low = load_resp_csv(p_rsl)
+            
+            if any(x is None for x in (d_high, d_low, r_high, r_low)):
                 continue
-            th = d_high['time'].to_numpy()
-            yh = pd.to_numeric(d_high['RSP_RVT'], errors='coerce').to_numpy()
-            tl = d_low['time'].to_numpy()
-            yl = pd.to_numeric(d_low['RSP_RVT'], errors='coerce').to_numpy()
-            mh = (th >= 0.0) & (th <= limit_sec)
-            ml = (tl >= 0.0) & (tl <= limit_sec)
-            th, yh = th[mh], yh[mh]
-            tl, yl = tl[ml], yl[ml]
-
-            # RS
-            p_r1 = build_rs_resp_path(subject, 'session1')
-            p_r2 = build_rs_resp_path(subject, 'session2')
-            r1 = load_resp_csv(p_r1)
-            r2 = load_resp_csv(p_r2)
-            if any(x is None for x in (r1, r2)):
-                continue
-            tr1 = r1['time'].to_numpy()
-            yr1 = pd.to_numeric(r1['RSP_RVT'], errors='coerce').to_numpy()
-            tr2 = r2['time'].to_numpy()
-            yr2 = pd.to_numeric(r2['RSP_RVT'], errors='coerce').to_numpy()
-            m1 = (tr1 >= 0.0) & (tr1 <= limit_sec)
-            m2 = (tr2 >= 0.0) & (tr2 <= limit_sec)
-            tr1, yr1 = tr1[m1], yr1[m1]
-            tr2, yr2 = tr2[m2], yr2[m2]
+            
+            th_abs = d_high['time'].to_numpy()
+            yh_abs = pd.to_numeric(d_high['RSP_RVT'], errors='coerce').to_numpy()
+            tl_abs = d_low['time'].to_numpy()
+            yl_abs = pd.to_numeric(d_low['RSP_RVT'], errors='coerce').to_numpy()
+            tr_h_abs = r_high['time'].to_numpy()
+            yr_h_abs = pd.to_numeric(r_high['RSP_RVT'], errors='coerce').to_numpy()
+            tr_l_abs = r_low['time'].to_numpy()
+            yr_l_abs = pd.to_numeric(r_low['RSP_RVT'], errors='coerce').to_numpy()
+            
+            if USE_ZSCORE:
+                if ZSCORE_BY_SUBJECT:
+                    # Z-score using ALL sessions of subject
+                    yr_h_z, yh_z, yr_l_z, yl_z, diag = zscore_with_subject_baseline(
+                        tr_h_abs, yr_h_abs, th_abs, yh_abs,
+                        tr_l_abs, yr_l_abs, tl_abs, yl_abs
+                    )
+                    
+                    if not diag['scalable']:
+                        continue
+                    
+                    # Trim to time window
+                    mh = (th_abs >= 0.0) & (th_abs <= limit_sec)
+                    ml = (tl_abs >= 0.0) & (tl_abs <= limit_sec)
+                    th, yh = th_abs[mh], yh_z[mh]
+                    tl, yl = tl_abs[ml], yl_z[ml]
+                    
+                    m1 = (tr_h_abs >= 0.0) & (tr_h_abs <= limit_sec)
+                    m2 = (tr_l_abs >= 0.0) & (tr_l_abs <= limit_sec)
+                    tr1, yr1 = tr_h_abs[m1], yr_h_z[m1]
+                    tr2, yr2 = tr_l_abs[m2], yr_l_z[m2]
+                else:
+                    # Z-score each session independently
+                    yr_h_z, yh_z, diag_h = zscore_with_session_baseline(tr_h_abs, yr_h_abs, th_abs, yh_abs)
+                    yr_l_z, yl_z, diag_l = zscore_with_session_baseline(tr_l_abs, yr_l_abs, tl_abs, yl_abs)
+                    
+                    if not (diag_h['scalable'] and diag_l['scalable']):
+                        continue
+                    
+                    # Trim to time window
+                    mh = (th_abs >= 0.0) & (th_abs <= limit_sec)
+                    ml = (tl_abs >= 0.0) & (tl_abs <= limit_sec)
+                    th, yh = th_abs[mh], yh_z[mh]
+                    tl, yl = tl_abs[ml], yl_z[ml]
+                    
+                    m1 = (tr_h_abs >= 0.0) & (tr_h_abs <= limit_sec)
+                    m2 = (tr_l_abs >= 0.0) & (tr_l_abs <= limit_sec)
+                    tr1, yr1 = tr_h_abs[m1], yr_h_z[m1]
+                    tr2, yr2 = tr_l_abs[m2], yr_l_z[m2]
+            else:
+                # Use absolute values
+                mh = (th_abs >= 0.0) & (th_abs <= limit_sec)
+                ml = (tl_abs >= 0.0) & (tl_abs <= limit_sec)
+                th, yh = th_abs[mh], yh_abs[mh]
+                tl, yl = tl_abs[ml], yl_abs[ml]
+                
+                m1 = (tr_h_abs >= 0.0) & (tr_h_abs <= limit_sec)
+                m2 = (tr_l_abs >= 0.0) & (tr_l_abs <= limit_sec)
+                tr1, yr1 = tr_h_abs[m1], yr_h_abs[m1]
+                tr2, yr2 = tr_l_abs[m2], yr_l_abs[m2]
 
             # RS dose mapping
             try:
@@ -1199,7 +1636,7 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         else:
             ax_rs.plot(row['t_rs2'], row['y_rs2'], color=c_rs_low, lw=1.4)
         ax_rs.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
-        ax_rs.set_ylabel(r'$\mathbf{Respiration}$' + '\nRVT (a.u./min)', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_rs.set_ylabel(r'$\mathbf{Respiration}$' + '\nRVT (z-scored)', fontsize=STACKED_AXES_LABEL_SIZE)
         ax_rs.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_rs.set_title('Resting State (RS)', fontweight='bold')
         ax_rs.set_xlim(0.0, limit_sec)
@@ -1216,7 +1653,7 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         ax_dmt.plot(row['t_dmt_h'], row['y_dmt_h'], color=c_dmt_high, lw=1.4)
         ax_dmt.plot(row['t_dmt_l'], row['y_dmt_l'], color=c_dmt_low, lw=1.4)
         ax_dmt.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
-        ax_dmt.set_ylabel(r'$\mathbf{Respiration}$' + '\nRVT (a.u./min)', fontsize=STACKED_AXES_LABEL_SIZE)
+        ax_dmt.set_ylabel(r'$\mathbf{Respiration}$' + '\nRVT (z-scored)', fontsize=STACKED_AXES_LABEL_SIZE)
         ax_dmt.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_dmt.set_title('DMT', fontweight='bold')
         ax_dmt.set_xlim(0.0, limit_sec)
@@ -1301,16 +1738,49 @@ def main() -> bool:
     plots_dir = os.path.join(out_dir, 'plots')
     os.makedirs(plots_dir, exist_ok=True)
     try:
-        # Data
-        print("Preparing long-format RSP_RVT data...")
+        # Data preparation
+        scale_mode = "z-scoring (subject baseline)" if USE_ZSCORE and ZSCORE_BY_SUBJECT else "z-scoring (session baseline)" if USE_ZSCORE else "absolute RVT values"
+        print(f"Preparing long-format data with {scale_mode}...")
         df = prepare_long_data_resp_rvt()
-        df.to_csv(os.path.join(out_dir, 'resp_rvt_minute_long_data.csv'), index=False)
-        print(f"  Loaded {len(df['subject'].unique())} subjects with {len(df)} observations")
         
-        # LME
-        print("Fitting LME model...")
+        # Save all scales
+        df.to_csv(os.path.join(out_dir, 'resp_rvt_minute_long_data_all_scales.csv'), index=False)
+        print(f"  ✓ Saved all scales: {len(df)} rows")
+        
+        # Save primary scale data separately
+        scale_to_use = 'z' if USE_ZSCORE else 'abs'
+        df_primary = df[df['Scale'] == scale_to_use]
+        scale_filename = 'resp_rvt_minute_long_data_z.csv' if USE_ZSCORE else 'resp_rvt_minute_long_data_abs.csv'
+        df_primary.to_csv(os.path.join(out_dir, scale_filename), index=False)
+        scale_desc = "z-scored" if USE_ZSCORE else "absolute"
+        print(f"  ✓ Saved {scale_desc} data: {len(df_primary)} rows from {len(df_primary['subject'].unique())} subjects")
+        
+        # QC check: RS by dose
+        rs_qc = df_primary[df_primary['State'] == 'RS'].groupby('Dose', observed=False)['RSP_RVT'].agg(['count', 'mean', 'std']).round(4)
+        with open(os.path.join(out_dir, 'qc_rs_by_dose.txt'), 'w') as f:
+            f.write('QC CHECK: RS RSP_RVT by Dose\n')
+            f.write('=' * 60 + '\n\n')
+            f.write(f'Scale: {scale_desc}\n\n')
+            f.write(str(rs_qc) + '\n\n')
+            if USE_ZSCORE:
+                if ZSCORE_BY_SUBJECT:
+                    f.write('Note: Z-scoring uses ALL sessions of subject (RS_high + DMT_high + RS_low + DMT_low).\n')
+                    f.write('Both sessions share the same normalization parameters (mu and sigma).\n')
+                    f.write('RS High and RS Low should have similar means (both near 0) since they use\n')
+                    f.write('the same subject-level baseline.\n')
+                else:
+                    f.write('Note: Z-scoring uses entire session (RS + DMT concatenated) as baseline.\n')
+                    f.write('Each session is normalized independently using mu and sigma computed\n')
+                    f.write('from the full session data (RS + DMT together).\n')
+                    f.write('RS values reflect session-level normalization, not pure baseline.\n')
+            else:
+                f.write('Note: Using absolute RVT values (a.u./min) without normalization.\n')
+        print(f"  ✓ QC check saved")
+        
+        # LME model (uses appropriate scale)
+        print(f"Fitting LME model on {scale_desc} data...")
         fitted, diagnostics = fit_lme_model(df)
-        plot_model_diagnostics(fitted, df, plots_dir)
+        plot_model_diagnostics(fitted, df_primary, plots_dir)
         
         # Hypothesis testing + report
         print("Performing hypothesis testing with FDR correction...")
@@ -1354,7 +1824,22 @@ def main() -> bool:
         # Captions
         generate_captions_file(out_dir)
         
-        print(f"\nRespiration RVT analysis complete! Results in: {out_dir}")
+        print(f"\n✓ Respiration RVT analysis complete! Results in: {out_dir}")
+        if USE_ZSCORE:
+            print(f"  - Z-scored window means used for LME modeling")
+            if ZSCORE_BY_SUBJECT:
+                print(f"  - Subject-level normalization: ALL sessions used as baseline")
+                print(f"  - Mu and sigma computed from RS_high + DMT_high + RS_low + DMT_low")
+                print(f"  - Both sessions of each subject share same normalization parameters")
+            else:
+                print(f"  - Session-level normalization: Each session normalized independently")
+                print(f"  - Mu and sigma computed per session from RS + DMT")
+                print(f"  - Each session has its own normalization parameters")
+            print(f"  - Continuous plots show z-scored data")
+        else:
+            print(f"  - Absolute RVT values (a.u./min) used for LME modeling")
+            print(f"  - No normalization applied")
+            print(f"  - Continuous plots show absolute values")
     except Exception as e:
         print(f'Respiration RVT analysis failed: {e}')
         import traceback

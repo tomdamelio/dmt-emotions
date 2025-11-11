@@ -3,7 +3,7 @@
 Unified HR (Heart Rate) Analysis: LME modeling and visualization (first 9 minutes).
 
 This script processes ECG-derived heart rate (HR) from NeuroKit ECG_Rate column:
-  1) Build long-format per-minute HR dataset (mean HR per minute, 0–8)
+  1) Build long-format per-30-second window HR dataset (mean HR per window, 0–540s)
   2) Fit LME with State × Dose and time effects; apply BH-FDR per family
   3) Create coefficient, marginal means, interaction, diagnostics plots
   4) Write model summary as TXT and figure captions
@@ -100,11 +100,24 @@ COLOR_RS_LOW = tab20c_colors[2]    # Third red gradient (lighter) for Low
 COLOR_DMT_HIGH = tab20c_colors[0]  # Same intense red for High
 COLOR_DMT_LOW = tab20c_colors[2]   # Same lighter red for Low
 
-# Analysis window: first 9 minutes
-N_MINUTES = 9  # minutes 0..8
-MAX_TIME_SEC = 60 * N_MINUTES
+# Analysis window: first 9 minutes (18 windows of 30 seconds each)
+N_WINDOWS = 18  # 30-second windows: 0-30s, 30-60s, ..., 510-540s
+WINDOW_SIZE_SEC = 30  # 30-second windows
+MAX_TIME_SEC = N_WINDOWS * WINDOW_SIZE_SEC  # 540 seconds = 9 minutes
 
-# Baseline correction flag (optional, disabled by default)
+# Z-scoring configuration: use session baseline (RS+DMT)
+USE_SESSION_ZSCORE = True  # If True: z-score using session baseline (RS+DMT); If False: use absolute bpm values
+ZSCORE_BY_SUBJECT = True  # If True: use all sessions from subject for mu/sigma; If False: each session independent
+EXPORT_ABSOLUTE_SCALE = True  # Also export absolute scale for QC (only when USE_SESSION_ZSCORE=True)
+
+# Optional trims (in seconds) - set to None to disable
+RS_TRIM_START = None  # Trim start of RS (e.g., 5.0 for first 5 seconds)
+DMT_TRIM_START = None  # Trim start of DMT (e.g., 5.0 for first 5 seconds)
+
+# Minimum samples per window to accept a session
+MIN_SAMPLES_PER_WINDOW = 10
+
+# Baseline correction flag (deprecated, use z-scoring instead)
 BASELINE_CORRECTION = False
 
 
@@ -158,23 +171,200 @@ def load_ecg_csv(csv_path: str) -> Optional[pd.DataFrame]:
     return df
 
 
-def compute_hr_mean_per_minute(t: np.ndarray, hr: np.ndarray, minute: int) -> Optional[float]:
-    """Compute mean HR for a specific minute window."""
-    start_time = minute * 60.0
-    end_time = (minute + 1) * 60.0
+def compute_hr_mean_per_window(t: np.ndarray, hr: np.ndarray, window_idx: int) -> Optional[float]:
+    """Compute mean HR for a specific 30-second window.
+    
+    Args:
+        t: Time array
+        hr: HR values (can be absolute bpm or z-scored)
+        window_idx: Window index (0-based, each window is 30 seconds)
+    """
+    start_time = window_idx * WINDOW_SIZE_SEC
+    end_time = (window_idx + 1) * WINDOW_SIZE_SEC
     mask = (t >= start_time) & (t < end_time)
     if not np.any(mask):
         return None
     hr_win = hr[mask]
-    hr_win_valid = hr_win[(hr_win >= 35) & (hr_win <= 200)]  # Physiological range
-    if len(hr_win_valid) < 2:
+    
+    # Just remove NaNs (no physiological filtering)
+    hr_win_valid = hr_win[~np.isnan(hr_win)]
+    
+    if len(hr_win_valid) < MIN_SAMPLES_PER_WINDOW:
         return None
     return float(np.nanmean(hr_win_valid))
 
 
+def zscore_with_subject_baseline(t_rs_high: np.ndarray, y_rs_high: np.ndarray,
+                                t_dmt_high: np.ndarray, y_dmt_high: np.ndarray,
+                                t_rs_low: np.ndarray, y_rs_low: np.ndarray,
+                                t_dmt_low: np.ndarray, y_dmt_low: np.ndarray) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray], Dict]:
+    """Z-score all sessions from a subject using combined baseline.
+    
+    This approach:
+    1. Removes NaN values only (no physiological filtering)
+    2. Computes mu and sigma from ALL valid data (both sessions: RS_high + DMT_high + RS_low + DMT_low)
+    3. Applies z-scoring to all data points
+    
+    Returns:
+        (y_rs_high_z, y_dmt_high_z, y_rs_low_z, y_dmt_low_z, diagnostics_dict)
+    """
+    diagnostics = {'scalable': False, 'mu': np.nan, 'sigma': np.nan, 'reason': ''}
+    
+    # Apply optional trims
+    if RS_TRIM_START is not None:
+        mask_rs_h = t_rs_high >= RS_TRIM_START
+        mask_rs_l = t_rs_low >= RS_TRIM_START
+        t_rs_high = t_rs_high[mask_rs_h]
+        y_rs_high = y_rs_high[mask_rs_h]
+        t_rs_low = t_rs_low[mask_rs_l]
+        y_rs_low = y_rs_low[mask_rs_l]
+    
+    if DMT_TRIM_START is not None:
+        mask_dmt_h = t_dmt_high >= DMT_TRIM_START
+        mask_dmt_l = t_dmt_low >= DMT_TRIM_START
+        t_dmt_high = t_dmt_high[mask_dmt_h]
+        y_dmt_high = y_dmt_high[mask_dmt_h]
+        t_dmt_low = t_dmt_low[mask_dmt_l]
+        y_dmt_low = y_dmt_low[mask_dmt_l]
+    
+    # Check minimum samples
+    if any(len(y) < MIN_SAMPLES_PER_WINDOW for y in [y_rs_high, y_dmt_high, y_rs_low, y_dmt_low]):
+        diagnostics['reason'] = f'Insufficient samples in one or more sessions'
+        return None, None, None, None, diagnostics
+    
+    # Remove NaNs only (no physiological filtering)
+    mask_rs_h_valid = ~np.isnan(y_rs_high)
+    mask_dmt_h_valid = ~np.isnan(y_dmt_high)
+    mask_rs_l_valid = ~np.isnan(y_rs_low)
+    mask_dmt_l_valid = ~np.isnan(y_dmt_low)
+    
+    y_rs_h_clean = y_rs_high[mask_rs_h_valid]
+    y_dmt_h_clean = y_dmt_high[mask_dmt_h_valid]
+    y_rs_l_clean = y_rs_low[mask_rs_l_valid]
+    y_dmt_l_clean = y_dmt_low[mask_dmt_l_valid]
+    
+    # Concatenate ALL clean subject data to compute mu and sigma
+    y_subject_clean = np.concatenate([y_rs_h_clean, y_dmt_h_clean, y_rs_l_clean, y_dmt_l_clean])
+    
+    if len(y_subject_clean) < MIN_SAMPLES_PER_WINDOW * 4:
+        diagnostics['reason'] = f'Subject insufficient valid samples after filtering: {len(y_subject_clean)}'
+        return None, None, None, None, diagnostics
+    
+    # Compute mu and sigma from CLEAN (filtered) subject data
+    mu = np.nanmean(y_subject_clean)
+    sigma = np.nanstd(y_subject_clean, ddof=1)
+    
+    # Check sigma validity
+    if sigma == 0.0 or not np.isfinite(sigma):
+        diagnostics['reason'] = f'Invalid sigma: {sigma}'
+        return None, None, None, None, diagnostics
+    
+    # Apply z-scoring ONLY to FILTERED data (values outside range become NaN)
+    # This prevents artifacts from being propagated as extreme z-scores
+    y_rs_high_z = np.full_like(y_rs_high, np.nan, dtype=float)
+    y_dmt_high_z = np.full_like(y_dmt_high, np.nan, dtype=float)
+    y_rs_low_z = np.full_like(y_rs_low, np.nan, dtype=float)
+    y_dmt_low_z = np.full_like(y_dmt_low, np.nan, dtype=float)
+    
+    y_rs_high_z[mask_rs_h_valid] = (y_rs_h_clean - mu) / sigma
+    y_dmt_high_z[mask_dmt_h_valid] = (y_dmt_h_clean - mu) / sigma
+    y_rs_low_z[mask_rs_l_valid] = (y_rs_l_clean - mu) / sigma
+    y_dmt_low_z[mask_dmt_l_valid] = (y_dmt_l_clean - mu) / sigma
+    
+    diagnostics['scalable'] = True
+    diagnostics['mu'] = float(mu)
+    diagnostics['sigma'] = float(sigma)
+    diagnostics['n_subject'] = int(len(y_subject_clean))
+    diagnostics['n_rs_high_clean'] = int(len(y_rs_h_clean))
+    diagnostics['n_dmt_high_clean'] = int(len(y_dmt_h_clean))
+    diagnostics['n_rs_low_clean'] = int(len(y_rs_l_clean))
+    diagnostics['n_dmt_low_clean'] = int(len(y_dmt_l_clean))
+    
+    return y_rs_high_z, y_dmt_high_z, y_rs_low_z, y_dmt_low_z, diagnostics
+
+
+def zscore_with_session_baseline(t_rs: np.ndarray, y_rs: np.ndarray, 
+                                 t_dmt: np.ndarray, y_dmt: np.ndarray) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Dict]:
+    """Z-score both RS and DMT using the entire session (RS + DMT) as baseline.
+    
+    This approach:
+    1. Removes NaN values only (no physiological filtering)
+    2. Computes mu and sigma from valid session data (RS + DMT)
+    3. Applies z-scoring to all data points
+    
+    Returns:
+        (y_rs_z, y_dmt_z, diagnostics_dict)
+    """
+    diagnostics = {'scalable': False, 'mu': np.nan, 'sigma': np.nan, 'reason': ''}
+    
+    # Apply optional trims
+    if RS_TRIM_START is not None:
+        mask_rs = t_rs >= RS_TRIM_START
+        t_rs = t_rs[mask_rs]
+        y_rs = y_rs[mask_rs]
+    
+    if DMT_TRIM_START is not None:
+        mask_dmt = t_dmt >= DMT_TRIM_START
+        t_dmt = t_dmt[mask_dmt]
+        y_dmt = y_dmt[mask_dmt]
+    
+    # Check minimum samples
+    if len(y_rs) < MIN_SAMPLES_PER_WINDOW or len(y_dmt) < MIN_SAMPLES_PER_WINDOW:
+        diagnostics['reason'] = f'Insufficient samples: RS={len(y_rs)}, DMT={len(y_dmt)}'
+        return None, None, diagnostics
+    
+    # Remove NaNs only (no physiological filtering)
+    mask_rs_valid = ~np.isnan(y_rs)
+    mask_dmt_valid = ~np.isnan(y_dmt)
+    
+    y_rs_clean = y_rs[mask_rs_valid]
+    y_dmt_clean = y_dmt[mask_dmt_valid]
+    
+    # Concatenate clean session data to compute mu and sigma
+    y_session_clean = np.concatenate([y_rs_clean, y_dmt_clean])
+    
+    if len(y_session_clean) < MIN_SAMPLES_PER_WINDOW * 2:
+        diagnostics['reason'] = f'Session insufficient valid samples after filtering: {len(y_session_clean)}'
+        return None, None, diagnostics
+    
+    # Compute mu and sigma from CLEAN (filtered) session data
+    mu = np.nanmean(y_session_clean)
+    sigma = np.nanstd(y_session_clean, ddof=1)
+    
+    # Check sigma validity
+    if sigma == 0.0 or not np.isfinite(sigma):
+        diagnostics['reason'] = f'Invalid sigma: {sigma}'
+        return None, None, diagnostics
+    
+    # Apply z-scoring ONLY to FILTERED data (values outside range become NaN)
+    # This prevents artifacts from being propagated as extreme z-scores
+    y_rs_z = np.full_like(y_rs, np.nan, dtype=float)
+    y_dmt_z = np.full_like(y_dmt, np.nan, dtype=float)
+    
+    y_rs_z[mask_rs_valid] = (y_rs_clean - mu) / sigma
+    y_dmt_z[mask_dmt_valid] = (y_dmt_clean - mu) / sigma
+    
+    diagnostics['scalable'] = True
+    diagnostics['mu'] = float(mu)
+    diagnostics['sigma'] = float(sigma)
+    diagnostics['n_session'] = int(len(y_session_clean))
+    diagnostics['n_rs_clean'] = int(len(y_rs_clean))
+    diagnostics['n_dmt_clean'] = int(len(y_dmt_clean))
+    diagnostics['n_rs_total'] = int(len(y_rs))
+    diagnostics['n_dmt_total'] = int(len(y_dmt))
+    
+    return y_rs_z, y_dmt_z, diagnostics
+
+
 def prepare_long_data_hr() -> pd.DataFrame:
-    """Build long-format per-minute HR table (first 9 minutes)."""
+    """Build long-format per-30-second window HR table (first 9 minutes = 18 windows).
+    
+    If USE_SESSION_ZSCORE=True: z-scores using session baseline (RS+DMT).
+    If USE_SESSION_ZSCORE=False: uses absolute bpm values.
+    """
     rows: List[Dict] = []
+    qc_log: List[str] = []
+    
     for subject in SUJETOS_VALIDADOS_ECG:
         high_session, low_session = determine_sessions(subject)
         dmt_high_path, dmt_low_path = build_ecg_paths(subject, high_session, low_session)
@@ -189,64 +379,129 @@ def prepare_long_data_hr() -> pd.DataFrame:
         if any(x is None for x in (dmt_high, dmt_low, rs_high, rs_low)):
             continue
 
-        # Extract time and HR
-        t_dmt_high = dmt_high['time'].to_numpy()
-        hr_dmt_high = pd.to_numeric(dmt_high['ECG_Rate'], errors='coerce').to_numpy()
-        t_dmt_low = dmt_low['time'].to_numpy()
-        hr_dmt_low = pd.to_numeric(dmt_low['ECG_Rate'], errors='coerce').to_numpy()
-        t_rs_high = rs_high['time'].to_numpy()
-        hr_rs_high = pd.to_numeric(rs_high['ECG_Rate'], errors='coerce').to_numpy()
-        t_rs_low = rs_low['time'].to_numpy()
-        hr_rs_low = pd.to_numeric(rs_low['ECG_Rate'], errors='coerce').to_numpy()
+        # Extract time and HR (absolute values)
+        t_dmt_high_abs = dmt_high['time'].to_numpy()
+        hr_dmt_high_abs = pd.to_numeric(dmt_high['ECG_Rate'], errors='coerce').to_numpy()
+        t_dmt_low_abs = dmt_low['time'].to_numpy()
+        hr_dmt_low_abs = pd.to_numeric(dmt_low['ECG_Rate'], errors='coerce').to_numpy()
+        t_rs_high_abs = rs_high['time'].to_numpy()
+        hr_rs_high_abs = pd.to_numeric(rs_high['ECG_Rate'], errors='coerce').to_numpy()
+        t_rs_low_abs = rs_low['time'].to_numpy()
+        hr_rs_low_abs = pd.to_numeric(rs_low['ECG_Rate'], errors='coerce').to_numpy()
 
-        # Optional baseline correction
-        if BASELINE_CORRECTION:
-            # Subtract mean of first minute
-            baseline_dmt_high = compute_hr_mean_per_minute(t_dmt_high, hr_dmt_high, 0)
-            baseline_dmt_low = compute_hr_mean_per_minute(t_dmt_low, hr_dmt_low, 0)
-            baseline_rs_high = compute_hr_mean_per_minute(t_rs_high, hr_rs_high, 0)
-            baseline_rs_low = compute_hr_mean_per_minute(t_rs_low, hr_rs_low, 0)
-            if baseline_dmt_high is not None:
-                hr_dmt_high = hr_dmt_high - baseline_dmt_high
-            if baseline_dmt_low is not None:
-                hr_dmt_low = hr_dmt_low - baseline_dmt_low
-            if baseline_rs_high is not None:
-                hr_rs_high = hr_rs_high - baseline_rs_high
-            if baseline_rs_low is not None:
-                hr_rs_low = hr_rs_low - baseline_rs_low
-
-        for minute in range(N_MINUTES):
-            hr_dmt_h = compute_hr_mean_per_minute(t_dmt_high, hr_dmt_high, minute)
-            hr_dmt_l = compute_hr_mean_per_minute(t_dmt_low, hr_dmt_low, minute)
-            hr_rs_h = compute_hr_mean_per_minute(t_rs_high, hr_rs_high, minute)
-            hr_rs_l = compute_hr_mean_per_minute(t_rs_low, hr_rs_low, minute)
+        if USE_SESSION_ZSCORE:
+            if ZSCORE_BY_SUBJECT:
+                # Z-score using ALL sessions from subject as baseline
+                hr_rs_high_z, hr_dmt_high_z, hr_rs_low_z, hr_dmt_low_z, diag_subj = zscore_with_subject_baseline(
+                    t_rs_high_abs, hr_rs_high_abs, t_dmt_high_abs, hr_dmt_high_abs,
+                    t_rs_low_abs, hr_rs_low_abs, t_dmt_low_abs, hr_dmt_low_abs
+                )
+                
+                if not diag_subj['scalable']:
+                    qc_log.append(f"{subject} not scalable: {diag_subj['reason']}")
+                    continue
+                
+                diag_high = diag_subj  # For compatibility
+                diag_low = diag_subj
+            else:
+                # Z-score each session independently
+                hr_rs_high_z, hr_dmt_high_z, diag_high = zscore_with_session_baseline(
+                    t_rs_high_abs, hr_rs_high_abs, t_dmt_high_abs, hr_dmt_high_abs
+                )
+                
+                hr_rs_low_z, hr_dmt_low_z, diag_low = zscore_with_session_baseline(
+                    t_rs_low_abs, hr_rs_low_abs, t_dmt_low_abs, hr_dmt_low_abs
+                )
+                
+                if not (diag_high['scalable'] and diag_low['scalable']):
+                    if not diag_high['scalable']:
+                        qc_log.append(f"{subject} HIGH session not scalable: {diag_high['reason']}")
+                    if not diag_low['scalable']:
+                        qc_log.append(f"{subject} LOW session not scalable: {diag_low['reason']}")
+                    continue
             
-            if None not in (hr_dmt_h, hr_dmt_l, hr_rs_h, hr_rs_l):
-                minute_label = minute + 1  # store minutes as 1..9 instead of 0..8
-                rows.extend([
-                    {'subject': subject, 'minute': minute_label, 'State': 'DMT', 'Dose': 'High', 'HR': hr_dmt_h},
-                    {'subject': subject, 'minute': minute_label, 'State': 'DMT', 'Dose': 'Low', 'HR': hr_dmt_l},
-                    {'subject': subject, 'minute': minute_label, 'State': 'RS', 'Dose': 'High', 'HR': hr_rs_h},
-                    {'subject': subject, 'minute': minute_label, 'State': 'RS', 'Dose': 'Low', 'HR': hr_rs_l},
-                ])
+            if diag_high['scalable'] and diag_low['scalable']:
+                # Process each 30-second window with z-scored data
+                for window_idx in range(N_WINDOWS):
+                    window_label = window_idx + 1
+                    
+                    # Compute window means for z-scored data
+                    hr_dmt_h_z = compute_hr_mean_per_window(t_dmt_high_abs, hr_dmt_high_z, window_idx)
+                    hr_dmt_l_z = compute_hr_mean_per_window(t_dmt_low_abs, hr_dmt_low_z, window_idx)
+                    hr_rs_h_z = compute_hr_mean_per_window(t_rs_high_abs, hr_rs_high_z, window_idx)
+                    hr_rs_l_z = compute_hr_mean_per_window(t_rs_low_abs, hr_rs_low_z, window_idx)
+                    
+                    if None not in (hr_dmt_h_z, hr_dmt_l_z, hr_rs_h_z, hr_rs_l_z):
+                        rows.extend([
+                            {'subject': subject, 'window': window_label, 'State': 'DMT', 'Dose': 'High', 'HR': hr_dmt_h_z, 'Scale': 'z'},
+                            {'subject': subject, 'window': window_label, 'State': 'DMT', 'Dose': 'Low', 'HR': hr_dmt_l_z, 'Scale': 'z'},
+                            {'subject': subject, 'window': window_label, 'State': 'RS', 'Dose': 'High', 'HR': hr_rs_h_z, 'Scale': 'z'},
+                            {'subject': subject, 'window': window_label, 'State': 'RS', 'Dose': 'Low', 'HR': hr_rs_l_z, 'Scale': 'z'},
+                        ])
+                        
+                        # Optional: absolute scale for QC
+                        if EXPORT_ABSOLUTE_SCALE:
+                            # Compute window means for absolute values
+                            hr_dmt_h_abs = compute_hr_mean_per_window(t_dmt_high_abs, hr_dmt_high_abs, window_idx)
+                            hr_dmt_l_abs = compute_hr_mean_per_window(t_dmt_low_abs, hr_dmt_low_abs, window_idx)
+                            hr_rs_h_abs = compute_hr_mean_per_window(t_rs_high_abs, hr_rs_high_abs, window_idx)
+                            hr_rs_l_abs = compute_hr_mean_per_window(t_rs_low_abs, hr_rs_low_abs, window_idx)
+                            
+                            if None not in (hr_dmt_h_abs, hr_dmt_l_abs, hr_rs_h_abs, hr_rs_l_abs):
+                                rows.extend([
+                                    {'subject': subject, 'window': window_label, 'State': 'DMT', 'Dose': 'High', 'HR': hr_dmt_h_abs, 'Scale': 'abs'},
+                                    {'subject': subject, 'window': window_label, 'State': 'DMT', 'Dose': 'Low', 'HR': hr_dmt_l_abs, 'Scale': 'abs'},
+                                    {'subject': subject, 'window': window_label, 'State': 'RS', 'Dose': 'High', 'HR': hr_rs_h_abs, 'Scale': 'abs'},
+                                    {'subject': subject, 'window': window_label, 'State': 'RS', 'Dose': 'Low', 'HR': hr_rs_l_abs, 'Scale': 'abs'},
+                                ])
+        else:
+            # Use absolute values (no z-scoring)
+            for window_idx in range(N_WINDOWS):
+                window_label = window_idx + 1
+                
+                # Compute window means for absolute values
+                hr_dmt_h_abs = compute_hr_mean_per_window(t_dmt_high_abs, hr_dmt_high_abs, window_idx)
+                hr_dmt_l_abs = compute_hr_mean_per_window(t_dmt_low_abs, hr_dmt_low_abs, window_idx)
+                hr_rs_h_abs = compute_hr_mean_per_window(t_rs_high_abs, hr_rs_high_abs, window_idx)
+                hr_rs_l_abs = compute_hr_mean_per_window(t_rs_low_abs, hr_rs_low_abs, window_idx)
+                
+                if None not in (hr_dmt_h_abs, hr_dmt_l_abs, hr_rs_h_abs, hr_rs_l_abs):
+                    rows.extend([
+                        {'subject': subject, 'window': window_label, 'State': 'DMT', 'Dose': 'High', 'HR': hr_dmt_h_abs, 'Scale': 'abs'},
+                        {'subject': subject, 'window': window_label, 'State': 'DMT', 'Dose': 'Low', 'HR': hr_dmt_l_abs, 'Scale': 'abs'},
+                        {'subject': subject, 'window': window_label, 'State': 'RS', 'Dose': 'High', 'HR': hr_rs_h_abs, 'Scale': 'abs'},
+                        {'subject': subject, 'window': window_label, 'State': 'RS', 'Dose': 'Low', 'HR': hr_rs_l_abs, 'Scale': 'abs'},
+                    ])
 
     if not rows:
         raise ValueError('No valid HR data found for any subject!')
+    
+    # Save QC log
+    if USE_SESSION_ZSCORE and qc_log:
+        print(f"Warning: {len(qc_log)} sessions excluded from z-scoring:")
+        for msg in qc_log:
+            print(f"  {msg}")
 
     df = pd.DataFrame(rows)
     df['State'] = pd.Categorical(df['State'], categories=['RS', 'DMT'], ordered=True)
     df['Dose'] = pd.Categorical(df['Dose'], categories=['Low', 'High'], ordered=True)
+    df['Scale'] = pd.Categorical(df['Scale'], categories=['z', 'abs'], ordered=True)
     df['subject'] = pd.Categorical(df['subject'])
-    df['minute_c'] = df['minute'] - df['minute'].mean()
+    df['window_c'] = df['window'] - df['window'].mean()
     return df
 
 
 def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
     if mixedlm is None:
         return None, {'error': 'statsmodels not available'}
+    # Filter to appropriate scale (z-scored if USE_SESSION_ZSCORE=True, else absolute)
+    scale_to_use = 'z' if USE_SESSION_ZSCORE else 'abs'
+    df_model = df[df['Scale'] == scale_to_use].copy()
+    if len(df_model) == 0:
+        return None, {'error': f'No {scale_to_use}-scaled data available'}
     try:
-        formula = 'HR ~ State * Dose + minute_c + State:minute_c + Dose:minute_c'
-        model = mixedlm(formula, df, groups=df['subject'])  # type: ignore[arg-type]
+        formula = 'HR ~ State * Dose + window_c + State:window_c + Dose:window_c'
+        model = mixedlm(formula, df_model, groups=df_model['subject'])  # type: ignore[arg-type]
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter('always')
             fitted = model.fit()
@@ -257,8 +512,8 @@ def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
         'aic': getattr(fitted, 'aic', np.nan),
         'bic': getattr(fitted, 'bic', np.nan),
         'loglik': getattr(fitted, 'llf', np.nan),
-        'n_obs': getattr(fitted, 'nobs', len(df)),
-        'n_groups': len(df['subject'].unique()),
+        'n_obs': getattr(fitted, 'nobs', len(df_model)),
+        'n_groups': len(df_model['subject'].unique()),
         'convergence_warnings': convergence_warnings,
         'random_effects_var': getattr(fitted, 'cov_re', None),
         'residual_var': getattr(fitted, 'scale', np.nan),
@@ -286,10 +541,10 @@ def plot_model_diagnostics(fitted_model, df: pd.DataFrame, output_dir: str) -> N
     axes[1, 0].axhline(y=0, color='red', linestyle='--', alpha=0.7)
     axes[1, 0].set_xlabel('Subject Index')
     axes[1, 0].set_ylabel('Mean Residual')
-    minute_residuals = df.groupby('minute', observed=False).apply(lambda x: residuals[x.index].mean(), include_groups=False)
-    axes[1, 1].plot(minute_residuals.index, minute_residuals.values, 'o-', alpha=0.7)
+    window_residuals = df.groupby('window', observed=False).apply(lambda x: residuals[x.index].mean(), include_groups=False)
+    axes[1, 1].plot(window_residuals.index, window_residuals.values, 'o-', alpha=0.7)
     axes[1, 1].axhline(y=0, color='red', linestyle='--', alpha=0.7)
-    axes[1, 1].set_xlabel('Minute')
+    axes[1, 1].set_xlabel('Window (30s)')
     axes[1, 1].set_ylabel('Mean Residual')
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'lme_diagnostics.png'), dpi=300, bbox_inches='tight')
@@ -324,10 +579,10 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
         'conf_int': conf_int.to_dict(),
     }
     families: Dict[str, List[str]] = {'State': [], 'Dose': [], 'Interaction': []}
-    for p in ['State[T.DMT]', 'State[T.DMT]:minute_c']:
+    for p in ['State[T.DMT]', 'State[T.DMT]:window_c']:
         if p in pvalues.index:
             families['State'].append(p)
-    for p in ['Dose[T.High]', 'Dose[T.High]:minute_c']:
+    for p in ['Dose[T.High]', 'Dose[T.High]:window_c']:
         if p in pvalues.index:
             families['Dose'].append(p)
     for p in ['State[T.DMT]:Dose[T.High]']:
@@ -383,7 +638,7 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
 def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, df: pd.DataFrame, output_dir: str) -> str:
     lines: List[str] = [
         '=' * 80,
-        'LME ANALYSIS REPORT: HR (Heart Rate) by Minute (first 9 minutes)',
+        'LME ANALYSIS REPORT: HR (Heart Rate) by 30-second Windows (first 9 minutes)',
         '=' * 80,
         '',
         f"Analysis date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}",
@@ -391,14 +646,15 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, d
         '',
         'DESIGN:',
         '  Within-subjects 2×2: State (RS vs DMT) × Dose (Low vs High)',
-        '  Time windows: 9 one-minute windows (0-8 minutes)',
-        '  Dependent variable: Mean HR per minute (bpm)',
-        f'  Baseline correction: {BASELINE_CORRECTION}',
+        '  Time windows: 18 thirty-second windows (0-540 seconds = 9 minutes)',
+        f'  Dependent variable: Mean HR per 30-second window ({"z-scored" if USE_SESSION_ZSCORE else "bpm"})',
+        f'  Z-scoring: {"Enabled" if USE_SESSION_ZSCORE else "Disabled (absolute values)"}',
+        f'  Z-score baseline: {"All sessions per subject (RS_high + DMT_high + RS_low + DMT_low)" if (USE_SESSION_ZSCORE and ZSCORE_BY_SUBJECT) else "Each session independently (RS + DMT)" if USE_SESSION_ZSCORE else "N/A"}',
         '',
         'MODEL SPECIFICATION:',
-        '  Fixed effects: HR ~ State*Dose + minute_c + State:minute_c + Dose:minute_c',
+        '  Fixed effects: HR ~ State*Dose + window_c + State:window_c + Dose:window_c',
         '  Random effects: ~ 1 | subject',
-        '  Where minute_c = minute - mean(minute) [centered time]',
+        '  Where window_c = window - mean(window) [centered time]',
         '',
     ]
     if fitted_model is not None:
@@ -440,8 +696,8 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, d
     lines.extend(['', 'DATA SUMMARY:', '-' * 30])
     cell = df.groupby(['State', 'Dose'], observed=False)['HR'].agg(['count', 'mean', 'std']).round(4)
     lines.extend(['Cell means (HR by State × Dose):', str(cell), ''])
-    trend = df.groupby('minute', observed=False)['HR'].agg(['count', 'mean', 'std']).round(4)
-    lines.extend(['Time trend (HR by minute):', str(trend), ''])
+    trend = df.groupby('window', observed=False)['HR'].agg(['count', 'mean', 'std']).round(4)
+    lines.extend(['Time trend (HR by 30-second window):', str(trend), ''])
     lines.extend(['', '=' * 80])
     out_path = os.path.join(output_dir, 'lme_analysis_report.txt')
     with open(out_path, 'w', encoding='utf-8') as f:
@@ -506,15 +762,15 @@ def prepare_coefficient_data(coefficients: Dict) -> pd.DataFrame:
     order = [
         'State[T.DMT]',
         'Dose[T.High]',
-        'State[T.DMT]:minute_c',
-        'Dose[T.High]:minute_c',
+        'State[T.DMT]:window_c',
+        'Dose[T.High]:window_c',
         'State[T.DMT]:Dose[T.High]'
     ]
     labels = {
         'State[T.DMT]': 'State (DMT vs RS)',
         'Dose[T.High]': 'Dose (High vs Low)',
-        'State[T.DMT]:minute_c': 'State × Time',
-        'Dose[T.High]:minute_c': 'Dose × Time',
+        'State[T.DMT]:window_c': 'State × Time',
+        'Dose[T.High]:window_c': 'Dose × Time',
         'State[T.DMT]:Dose[T.High]': 'State × Dose'
     }
     # Use ECG modality color (red tones from tab20c) with distinct shades for visual distinction
@@ -576,9 +832,12 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
 
 
 def compute_empirical_means_and_ci(df: pd.DataFrame, confidence: float = 0.95) -> pd.DataFrame:
-    grouped = df.groupby(['minute', 'State', 'Dose'], observed=False)['HR']
+    # Use appropriate scale based on USE_SESSION_ZSCORE
+    scale_to_use = 'z' if USE_SESSION_ZSCORE else 'abs'
+    df_scale = df[df['Scale'] == scale_to_use]
+    grouped = df_scale.groupby(['window', 'State', 'Dose'], observed=False)['HR']
     stats_df = grouped.agg(['count', 'mean', 'std', 'sem']).reset_index()
-    stats_df.columns = ['minute', 'State', 'Dose', 'n', 'mean', 'std', 'se']
+    stats_df.columns = ['window', 'State', 'Dose', 'n', 'mean', 'std', 'se']
     stats_df['condition'] = stats_df['State'].astype(str) + '_' + stats_df['Dose'].astype(str)
     alpha = 1 - confidence
     t_critical = scistats.t.ppf(1 - alpha/2, stats_df['n'] - 1) if scistats is not None else 1.96
@@ -593,7 +852,7 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
     fig, ax = plt.subplots(figsize=(12, 8))
     conditions = stats_df['condition'].unique()
     for condition in sorted(conditions):
-        cond_data = stats_df[stats_df['condition'] == condition].sort_values('minute')
+        cond_data = stats_df[stats_df['condition'] == condition].sort_values('window')
         if len(cond_data) == 0:
             continue
         if condition == 'RS_Low':
@@ -606,13 +865,15 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
             color = COLOR_DMT_HIGH
         else:
             color = '#666666'
-        ax.plot(cond_data['minute'], cond_data['mean'], color=color, linewidth=2.5, label=condition.replace('_', ' '), marker='o', markersize=5)
-        ax.fill_between(cond_data['minute'], cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
+        # Convert window index to time in minutes for x-axis
+        time_minutes = (cond_data['window'] - 0.5) * WINDOW_SIZE_SEC / 60.0  # Center of each window
+        ax.plot(time_minutes, cond_data['mean'], color=color, linewidth=2.5, label=condition.replace('_', ' '), marker='o', markersize=5)
+        ax.fill_between(time_minutes, cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
     ax.set_xlabel('Time (minutes)')
     ax.set_ylabel('HR (bpm)')
-    ticks = list(range(1, N_MINUTES + 1))
+    ticks = list(range(0, 10))  # 0-9 minutes
     ax.set_xticks(ticks)
-    ax.set_xlim(0.8, N_MINUTES + 0.2)
+    ax.set_xlim(-0.2, 9.2)
     ax.grid(True, which='major', axis='y', alpha=0.25)
     ax.grid(False, which='major', axis='x')
     legend = ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
@@ -624,22 +885,24 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
 
 
 def create_state_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
-    state_means = stats_df.groupby(['minute', 'State'], observed=False).agg({'mean': 'mean', 'n': 'sum'}).reset_index()
-    state_se = stats_df.groupby(['minute', 'State'], observed=False)['se'].apply(lambda x: np.sqrt(np.sum(x**2) / max(len(x), 1))).reset_index(name='se')
-    state_means = state_means.merge(state_se, on=['minute', 'State'], how='left')
+    state_means = stats_df.groupby(['window', 'State'], observed=False).agg({'mean': 'mean', 'n': 'sum'}).reset_index()
+    state_se = stats_df.groupby(['window', 'State'], observed=False)['se'].apply(lambda x: np.sqrt(np.sum(x**2) / max(len(x), 1))).reset_index(name='se')
+    state_means = state_means.merge(state_se, on=['window', 'State'], how='left')
     t_crit = 1.96
     state_means['ci_lower'] = state_means['mean'] - t_crit * state_means['se']
     state_means['ci_upper'] = state_means['mean'] + t_crit * state_means['se']
     fig, ax = plt.subplots(figsize=(10, 6))
     for state, color in [('DMT', COLOR_DMT_HIGH), ('RS', COLOR_RS_HIGH)]:
-        state_data = state_means[state_means['State'] == state].sort_values('minute')
-        ax.plot(state_data['minute'], state_data['mean'], color=color, linewidth=3, label=f'{state}', marker='o', markersize=6)
-        ax.fill_between(state_data['minute'], state_data['ci_lower'], state_data['ci_upper'], color=color, alpha=0.2)
+        state_data = state_means[state_means['State'] == state].sort_values('window')
+        # Convert window index to time in minutes for x-axis
+        time_minutes = (state_data['window'] - 0.5) * WINDOW_SIZE_SEC / 60.0  # Center of each window
+        ax.plot(time_minutes, state_data['mean'], color=color, linewidth=3, label=f'{state}', marker='o', markersize=6)
+        ax.fill_between(time_minutes, state_data['ci_lower'], state_data['ci_upper'], color=color, alpha=0.2)
     ax.set_xlabel('Time (minutes)')
     ax.set_ylabel('HR (bpm)')
-    ticks = list(range(1, N_MINUTES + 1))
+    ticks = list(range(0, 10))  # 0-9 minutes
     ax.set_xticks(ticks)
-    ax.set_xlim(0.8, N_MINUTES + 0.2)
+    ax.set_xlim(-0.2, 9.2)
     ax.grid(True, which='major', axis='y', alpha=0.25)
     ax.grid(False, which='major', axis='x')
     legend = ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
@@ -653,28 +916,32 @@ def create_state_effect_plot(stats_df: pd.DataFrame, output_path: str) -> None:
 def create_interaction_plot(stats_df: pd.DataFrame, output_path: str) -> None:
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6), sharey=True)
     for condition, color in [('RS_High', COLOR_RS_HIGH), ('RS_Low', COLOR_RS_LOW)]:
-        cond_data = stats_df[stats_df['condition'] == condition].sort_values('minute')
-        ax1.plot(cond_data['minute'], cond_data['mean'], color=color, linewidth=2.5, label=condition.replace('RS_', ''), marker='o', markersize=4)
-        ax1.fill_between(cond_data['minute'], cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
+        cond_data = stats_df[stats_df['condition'] == condition].sort_values('window')
+        # Convert window index to time in minutes for x-axis
+        time_minutes = (cond_data['window'] - 0.5) * WINDOW_SIZE_SEC / 60.0  # Center of each window
+        ax1.plot(time_minutes, cond_data['mean'], color=color, linewidth=2.5, label=condition.replace('RS_', ''), marker='o', markersize=4)
+        ax1.fill_between(time_minutes, cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
     ax1.set_xlabel('Time (minutes)')
     ax1.set_ylabel('HR (bpm)')
     ax1.grid(True, which='major', axis='y', alpha=0.25)
     ax1.grid(False, which='major', axis='x')
-    ticks = list(range(1, N_MINUTES + 1))
+    ticks = list(range(0, 10))  # 0-9 minutes
     ax1.set_xticks(ticks)
-    ax1.set_xlim(0.8, N_MINUTES + 0.2)
+    ax1.set_xlim(-0.2, 9.2)
     leg1 = ax1.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg1.get_frame().set_facecolor('white')
     leg1.get_frame().set_alpha(0.9)
     for condition, color in [('DMT_High', COLOR_DMT_HIGH), ('DMT_Low', COLOR_DMT_LOW)]:
-        cond_data = stats_df[stats_df['condition'] == condition].sort_values('minute')
-        ax2.plot(cond_data['minute'], cond_data['mean'], color=color, linewidth=2.5, label=condition.replace('DMT_', ''), marker='o', markersize=4)
-        ax2.fill_between(cond_data['minute'], cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
+        cond_data = stats_df[stats_df['condition'] == condition].sort_values('window')
+        # Convert window index to time in minutes for x-axis
+        time_minutes = (cond_data['window'] - 0.5) * WINDOW_SIZE_SEC / 60.0  # Center of each window
+        ax2.plot(time_minutes, cond_data['mean'], color=color, linewidth=2.5, label=condition.replace('DMT_', ''), marker='o', markersize=4)
+        ax2.fill_between(time_minutes, cond_data['ci_lower'], cond_data['ci_upper'], color=color, alpha=0.2)
     ax2.set_xlabel('Time (minutes)')
     ax2.grid(True, which='major', axis='y', alpha=0.25)
     ax2.grid(False, which='major', axis='x')
     ax2.set_xticks(ticks)
-    ax2.set_xlim(0.8, N_MINUTES + 0.2)
+    ax2.set_xlim(-0.2, 9.2)
     leg2 = ax2.legend(loc='upper right', frameon=True, fancybox=True, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg2.get_frame().set_facecolor('white')
     leg2.get_frame().set_alpha(0.9)
@@ -699,7 +966,7 @@ def create_model_summary_txt(diagnostics: Dict, coef_df: pd.DataFrame, output_pa
         '=' * 60,
         '',
         'Fixed Effects Formula:',
-        'HR ~ State*Dose + minute_c + State:minute_c + Dose:minute_c',
+        'HR ~ State*Dose + window_c + State:window_c + Dose:window_c',
         '',
         'Random Effects: ~ 1 | subject',
         '',
@@ -817,10 +1084,46 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
                     d_low = load_ecg_csv(p_low)
                     if any(x is None for x in (d_high, d_low)):
                         continue
-                    th = d_high['time'].to_numpy()
-                    yh = pd.to_numeric(d_high['ECG_Rate'], errors='coerce').to_numpy()
-                    tl = d_low['time'].to_numpy()
-                    yl = pd.to_numeric(d_low['ECG_Rate'], errors='coerce').to_numpy()
+                    th_abs = d_high['time'].to_numpy()
+                    yh_abs = pd.to_numeric(d_high['ECG_Rate'], errors='coerce').to_numpy()
+                    tl_abs = d_low['time'].to_numpy()
+                    yl_abs = pd.to_numeric(d_low['ECG_Rate'], errors='coerce').to_numpy()
+                    
+                    if USE_SESSION_ZSCORE:
+                        # Load RS data for z-scoring
+                        p_rsh = build_rs_ecg_path(subject, high_session)
+                        p_rsl = build_rs_ecg_path(subject, low_session)
+                        r_high = load_ecg_csv(p_rsh)
+                        r_low = load_ecg_csv(p_rsl)
+                        if any(x is None for x in (r_high, r_low)):
+                            continue
+                        tr_h = r_high['time'].to_numpy()
+                        yr_h = pd.to_numeric(r_high['ECG_Rate'], errors='coerce').to_numpy()
+                        tr_l = r_low['time'].to_numpy()
+                        yr_l = pd.to_numeric(r_low['ECG_Rate'], errors='coerce').to_numpy()
+                        
+                        if ZSCORE_BY_SUBJECT:
+                            # Z-score using all sessions from subject
+                            _, yh_z, _, yl_z, diag = zscore_with_subject_baseline(
+                                tr_h, yr_h, th_abs, yh_abs,
+                                tr_l, yr_l, tl_abs, yl_abs
+                            )
+                            if not diag['scalable']:
+                                continue
+                        else:
+                            # Z-score each session independently
+                            _, yh_z, diag_h = zscore_with_session_baseline(tr_h, yr_h, th_abs, yh_abs)
+                            _, yl_z, diag_l = zscore_with_session_baseline(tr_l, yr_l, tl_abs, yl_abs)
+                            if not (diag_h['scalable'] and diag_l['scalable']):
+                                continue
+                        
+                        th, yh = th_abs, yh_z
+                        tl, yl = tl_abs, yl_z
+                    else:
+                        # Use absolute values
+                        th, yh = th_abs, yh_abs
+                        tl, yl = tl_abs, yl_abs
+                        
                 else:  # RS
                     high_session, low_session = determine_sessions(subject)
                     p_rsh = build_rs_ecg_path(subject, high_session)
@@ -829,10 +1132,44 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
                     r_low = load_ecg_csv(p_rsl)
                     if any(x is None for x in (r_high, r_low)):
                         continue
-                    th = r_high['time'].to_numpy()
-                    yh = pd.to_numeric(r_high['ECG_Rate'], errors='coerce').to_numpy()
-                    tl = r_low['time'].to_numpy()
-                    yl = pd.to_numeric(r_low['ECG_Rate'], errors='coerce').to_numpy()
+                    th_abs = r_high['time'].to_numpy()
+                    yh_abs = pd.to_numeric(r_high['ECG_Rate'], errors='coerce').to_numpy()
+                    tl_abs = r_low['time'].to_numpy()
+                    yl_abs = pd.to_numeric(r_low['ECG_Rate'], errors='coerce').to_numpy()
+                    
+                    if USE_SESSION_ZSCORE:
+                        # Load DMT data for z-scoring
+                        p_high_dmt, p_low_dmt = build_ecg_paths(subject, high_session, low_session)
+                        d_high_dmt = load_ecg_csv(p_high_dmt)
+                        d_low_dmt = load_ecg_csv(p_low_dmt)
+                        if any(x is None for x in (d_high_dmt, d_low_dmt)):
+                            continue
+                        th_dmt = d_high_dmt['time'].to_numpy()
+                        yh_dmt = pd.to_numeric(d_high_dmt['ECG_Rate'], errors='coerce').to_numpy()
+                        tl_dmt = d_low_dmt['time'].to_numpy()
+                        yl_dmt = pd.to_numeric(d_low_dmt['ECG_Rate'], errors='coerce').to_numpy()
+                        
+                        if ZSCORE_BY_SUBJECT:
+                            # Z-score using all sessions from subject
+                            yh_z, _, yl_z, _, diag = zscore_with_subject_baseline(
+                                th_abs, yh_abs, th_dmt, yh_dmt,
+                                tl_abs, yl_abs, tl_dmt, yl_dmt
+                            )
+                            if not diag['scalable']:
+                                continue
+                        else:
+                            # Z-score each session independently
+                            yh_z, _, diag_h = zscore_with_session_baseline(th_abs, yh_abs, th_dmt, yh_dmt)
+                            yl_z, _, diag_l = zscore_with_session_baseline(tl_abs, yl_abs, tl_dmt, yl_dmt)
+                            if not (diag_h['scalable'] and diag_l['scalable']):
+                                continue
+                        
+                        th, yh = th_abs, yh_z
+                        tl, yl = tl_abs, yl_z
+                    else:
+                        # Use absolute values
+                        th, yh = th_abs, yh_abs
+                        tl, yl = tl_abs, yl_abs
 
                 # Trim to 0..540s
                 mh = (th >= 0.0) & (th <= 540.0)
@@ -915,10 +1252,11 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     legend1.get_frame().set_alpha(0.9)
     ax1.set_xlabel('Time (minutes)')
     # Use red color from tab20c for Electrocardiography (ECG/HR modality) - only first line colored
+    ylabel_text = 'HR (z-scored)' if USE_SESSION_ZSCORE else 'HR (bpm)'
     ax1.text(-0.20, 0.5, 'Electrocardiography', transform=ax1.transAxes, 
              fontsize=28, fontweight='bold', color=tab20c_colors[0],
              rotation=90, va='center', ha='center')
-    ax1.text(-0.12, 0.5, 'HR (bpm)', transform=ax1.transAxes, 
+    ax1.text(-0.12, 0.5, ylabel_text, transform=ax1.transAxes, 
              fontsize=28, fontweight='normal', color='black', 
              rotation=90, va='center', ha='center')
     ax1.set_title('Resting State (RS)', fontweight='bold')
@@ -951,6 +1289,11 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
         ax.set_xticks(minute_ticks * 60)
         ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{int(x // 60)}"))
         ax.set_xlim(0.0, 540.0)
+        if USE_SESSION_ZSCORE:
+            # Z-scored y-range
+            ax.set_ylim(-3.0, 3.0)
+            ax.set_yticks(np.arange(-3.0, 4.0, 1.0))
+        # else: auto-scale for absolute values
 
     plt.tight_layout()
     out_path = os.path.join(out_dir, 'plots', 'all_subs_ecg_hr.png')
@@ -1001,10 +1344,46 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
             d_low = load_ecg_csv(p_low)
             if any(x is None for x in (d_high, d_low)):
                 continue
-            th = d_high['time'].to_numpy()
-            yh = pd.to_numeric(d_high['ECG_Rate'], errors='coerce').to_numpy()
-            tl = d_low['time'].to_numpy()
-            yl = pd.to_numeric(d_low['ECG_Rate'], errors='coerce').to_numpy()
+            th_abs = d_high['time'].to_numpy()
+            yh_abs = pd.to_numeric(d_high['ECG_Rate'], errors='coerce').to_numpy()
+            tl_abs = d_low['time'].to_numpy()
+            yl_abs = pd.to_numeric(d_low['ECG_Rate'], errors='coerce').to_numpy()
+            
+            if USE_SESSION_ZSCORE:
+                # Load RS data for z-scoring
+                p_rsh = build_rs_ecg_path(subject, high_session)
+                p_rsl = build_rs_ecg_path(subject, low_session)
+                r_high = load_ecg_csv(p_rsh)
+                r_low = load_ecg_csv(p_rsl)
+                if any(x is None for x in (r_high, r_low)):
+                    continue
+                tr_h = r_high['time'].to_numpy()
+                yr_h = pd.to_numeric(r_high['ECG_Rate'], errors='coerce').to_numpy()
+                tr_l = r_low['time'].to_numpy()
+                yr_l = pd.to_numeric(r_low['ECG_Rate'], errors='coerce').to_numpy()
+                
+                if ZSCORE_BY_SUBJECT:
+                    # Z-score using all sessions from subject
+                    _, yh_z, _, yl_z, diag = zscore_with_subject_baseline(
+                        tr_h, yr_h, th_abs, yh_abs,
+                        tr_l, yr_l, tl_abs, yl_abs
+                    )
+                    if not diag['scalable']:
+                        continue
+                else:
+                    # Z-score each session independently
+                    _, yh_z, diag_h = zscore_with_session_baseline(tr_h, yr_h, th_abs, yh_abs)
+                    _, yl_z, diag_l = zscore_with_session_baseline(tr_l, yr_l, tl_abs, yl_abs)
+                    if not (diag_h['scalable'] and diag_l['scalable']):
+                        continue
+                
+                th, yh = th_abs, yh_z
+                tl, yl = tl_abs, yl_z
+            else:
+                # Use absolute values
+                th, yh = th_abs, yh_abs
+                tl, yl = tl_abs, yl_abs
+            
             mh = (th >= 0.0) & (th < 1150.0)
             ml = (tl >= 0.0) & (tl < 1150.0)
             th, yh = th[mh], yh[mh]
@@ -1070,10 +1449,11 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     legend.get_frame().set_alpha(0.9)
     ax.set_xlabel('Time (minutes)')
     # Use red color from tab20c for Electrocardiography (ECG/HR modality) - only first line colored
+    ylabel_text = 'HR (z-scored)' if USE_SESSION_ZSCORE else 'HR (bpm)'
     ax.text(-0.20, 0.5, 'Electrocardiography', transform=ax.transAxes, 
             fontsize=28, fontweight='bold', color=tab20c_colors[0],
             rotation=90, va='center', ha='center')
-    ax.text(-0.12, 0.5, 'HR (bpm)', transform=ax.transAxes, 
+    ax.text(-0.12, 0.5, ylabel_text, transform=ax.transAxes, 
             fontsize=28, fontweight='normal', color='black', 
             rotation=90, va='center', ha='center')
     ax.set_title('DMT', fontweight='bold')
@@ -1084,6 +1464,10 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     ax.set_xticks(minute_ticks)
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{int(x//60)}"))
     ax.set_xlim(0.0, 1150.0)
+    if USE_SESSION_ZSCORE:
+        ax.set_ylim(-3.0, 3.0)
+        ax.set_yticks(np.arange(-3.0, 4.0, 1.0))
+    # else: auto-scale for absolute values
 
     plt.tight_layout()
     out_path = os.path.join(out_dir, 'plots', 'all_subs_dmt_ecg_hr.png')
@@ -1120,37 +1504,86 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
     rows: List[Dict] = []
     for subject in SUJETOS_VALIDADOS_ECG:
         try:
-            # DMT
+            # Load DMT data
             high_session, low_session = determine_sessions(subject)
             p_high, p_low = build_ecg_paths(subject, high_session, low_session)
             d_high = load_ecg_csv(p_high)
             d_low = load_ecg_csv(p_low)
             if any(x is None for x in (d_high, d_low)):
                 continue
-            th = d_high['time'].to_numpy()
-            yh = pd.to_numeric(d_high['ECG_Rate'], errors='coerce').to_numpy()
-            tl = d_low['time'].to_numpy()
-            yl = pd.to_numeric(d_low['ECG_Rate'], errors='coerce').to_numpy()
-            mh = (th >= 0.0) & (th <= limit_sec)
-            ml = (tl >= 0.0) & (tl <= limit_sec)
-            th, yh = th[mh], yh[mh]
-            tl, yl = tl[ml], yl[ml]
+            th_abs = d_high['time'].to_numpy()
+            yh_abs = pd.to_numeric(d_high['ECG_Rate'], errors='coerce').to_numpy()
+            tl_abs = d_low['time'].to_numpy()
+            yl_abs = pd.to_numeric(d_low['ECG_Rate'], errors='coerce').to_numpy()
 
-            # RS
+            # Load RS data
             p_r1 = build_rs_ecg_path(subject, 'session1')
             p_r2 = build_rs_ecg_path(subject, 'session2')
             r1 = load_ecg_csv(p_r1)
             r2 = load_ecg_csv(p_r2)
             if any(x is None for x in (r1, r2)):
                 continue
-            tr1 = r1['time'].to_numpy()
-            yr1 = pd.to_numeric(r1['ECG_Rate'], errors='coerce').to_numpy()
-            tr2 = r2['time'].to_numpy()
-            yr2 = pd.to_numeric(r2['ECG_Rate'], errors='coerce').to_numpy()
-            m1 = (tr1 >= 0.0) & (tr1 <= limit_sec)
-            m2 = (tr2 >= 0.0) & (tr2 <= limit_sec)
-            tr1, yr1 = tr1[m1], yr1[m1]
-            tr2, yr2 = tr2[m2], yr2[m2]
+            tr1_abs = r1['time'].to_numpy()
+            yr1_abs = pd.to_numeric(r1['ECG_Rate'], errors='coerce').to_numpy()
+            tr2_abs = r2['time'].to_numpy()
+            yr2_abs = pd.to_numeric(r2['ECG_Rate'], errors='coerce').to_numpy()
+            
+            if USE_SESSION_ZSCORE:
+                # Determine which RS corresponds to which DMT
+                dose_s1 = get_dosis_sujeto(subject, 1)
+                
+                if ZSCORE_BY_SUBJECT:
+                    # Z-score using all sessions from subject
+                    if str(dose_s1).lower().startswith('alta') or str(dose_s1).lower().startswith('a'):
+                        # Session 1 is High, Session 2 is Low
+                        yr1_z, yh_z, yr2_z, yl_z, diag = zscore_with_subject_baseline(
+                            tr1_abs, yr1_abs, th_abs, yh_abs,
+                            tr2_abs, yr2_abs, tl_abs, yl_abs
+                        )
+                    else:
+                        # Session 1 is Low, Session 2 is High
+                        yr2_z, yh_z, yr1_z, yl_z, diag = zscore_with_subject_baseline(
+                            tr2_abs, yr2_abs, th_abs, yh_abs,
+                            tr1_abs, yr1_abs, tl_abs, yl_abs
+                        )
+                    
+                    if not diag['scalable']:
+                        continue
+                else:
+                    # Z-score each session independently
+                    if str(dose_s1).lower().startswith('alta') or str(dose_s1).lower().startswith('a'):
+                        # Session 1 is High, Session 2 is Low
+                        yr1_z, yh_z, diag_h = zscore_with_session_baseline(tr1_abs, yr1_abs, th_abs, yh_abs)
+                        yr2_z, yl_z, diag_l = zscore_with_session_baseline(tr2_abs, yr2_abs, tl_abs, yl_abs)
+                    else:
+                        # Session 1 is Low, Session 2 is High
+                        yr1_z, yl_z, diag_l = zscore_with_session_baseline(tr1_abs, yr1_abs, tl_abs, yl_abs)
+                        yr2_z, yh_z, diag_h = zscore_with_session_baseline(tr2_abs, yr2_abs, th_abs, yh_abs)
+                    
+                    if not (diag_h['scalable'] and diag_l['scalable']):
+                        continue
+                
+                # Trim to time window
+                mh = (th_abs >= 0.0) & (th_abs <= limit_sec)
+                ml = (tl_abs >= 0.0) & (tl_abs <= limit_sec)
+                th, yh = th_abs[mh], yh_z[mh]
+                tl, yl = tl_abs[ml], yl_z[ml]
+                
+                m1 = (tr1_abs >= 0.0) & (tr1_abs <= limit_sec)
+                m2 = (tr2_abs >= 0.0) & (tr2_abs <= limit_sec)
+                tr1, yr1 = tr1_abs[m1], yr1_z[m1]
+                tr2, yr2 = tr2_abs[m2], yr2_z[m2]
+            else:
+                # Use absolute values
+                mh = (th_abs >= 0.0) & (th_abs <= limit_sec)
+                ml = (tl_abs >= 0.0) & (tl_abs <= limit_sec)
+                th, yh = th_abs[mh], yh_abs[mh]
+                tl, yl = tl_abs[ml], yl_abs[ml]
+                
+                m1 = (tr1_abs >= 0.0) & (tr1_abs <= limit_sec)
+                m2 = (tr2_abs >= 0.0) & (tr2_abs <= limit_sec)
+                tr1, yr1 = tr1_abs[m1], yr1_abs[m1]
+                tr2, yr2 = tr2_abs[m2], yr2_abs[m2]
 
             # RS dose mapping
             try:
@@ -1205,7 +1638,8 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         else:
             ax_rs.plot(row['t_rs2'], row['y_rs2'], color=c_rs_low, lw=1.4)
         ax_rs.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
-        ax_rs.set_ylabel(r'$\mathbf{Electrocardiography}$' + '\nHR (bpm)', fontsize=12)
+        scale_label = 'HR (z-scored)' if USE_SESSION_ZSCORE else 'HR (bpm)'
+        ax_rs.set_ylabel(r'$\mathbf{Electrocardiography}$' + f'\n{scale_label}', fontsize=12)
         ax_rs.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_rs.set_title('Resting State (RS)', fontweight='bold')
         ax_rs.set_xlim(0.0, limit_sec)
@@ -1222,7 +1656,8 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         ax_dmt.plot(row['t_dmt_h'], row['y_dmt_h'], color=c_dmt_high, lw=1.4)
         ax_dmt.plot(row['t_dmt_l'], row['y_dmt_l'], color=c_dmt_low, lw=1.4)
         ax_dmt.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
-        ax_dmt.set_ylabel(r'$\mathbf{Electrocardiography}$' + '\nHR (bpm)', fontsize=12)
+        scale_label = 'HR (z-scored)' if USE_SESSION_ZSCORE else 'HR (bpm)'
+        ax_dmt.set_ylabel(r'$\mathbf{Electrocardiography}$' + f'\n{scale_label}', fontsize=12)
         ax_dmt.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_dmt.set_title('DMT', fontweight='bold')
         ax_dmt.set_xlim(0.0, limit_sec)
@@ -1240,6 +1675,12 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         ax_rs.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{int(x//60)}"))
         ax_dmt.set_xticks(minute_ticks)
         ax_dmt.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: f"{int(x//60)}"))
+        if USE_SESSION_ZSCORE:
+            ax_rs.set_ylim(-4.0, 4.0)
+            ax_dmt.set_ylim(-4.0, 4.0)
+            ax_rs.set_yticks([-4.0, -2.0, 0.0, 2.0, 4.0])
+            ax_dmt.set_yticks([-4.0, -2.0, 0.0, 2.0, 4.0])
+        # else: auto-scale for absolute values
 
     # Apply tight_layout first to finalize subplot positions
     fig.tight_layout(pad=2.0)
@@ -1307,16 +1748,33 @@ def main() -> bool:
     plots_dir = os.path.join(out_dir, 'plots')
     os.makedirs(plots_dir, exist_ok=True)
     try:
-        # Data
-        print("Preparing long-format HR data...")
+        # Data preparation
+        if USE_SESSION_ZSCORE:
+            if ZSCORE_BY_SUBJECT:
+                scale_mode = "z-scoring (subject baseline: all sessions)"
+            else:
+                scale_mode = "z-scoring (session baseline: RS+DMT per session)"
+        else:
+            scale_mode = "absolute bpm values"
+        print(f"Preparing long-format HR data with {scale_mode}...")
         df = prepare_long_data_hr()
-        df.to_csv(os.path.join(out_dir, 'hr_minute_long_data.csv'), index=False)
-        print(f"  ✓ Loaded {len(df['subject'].unique())} subjects with {len(df)} observations")
         
-        # LME
-        print("Fitting LME model...")
+        # Save all scales
+        df.to_csv(os.path.join(out_dir, 'hr_minute_long_data_all_scales.csv'), index=False)
+        print(f"  ✓ Saved all scales: {len(df)} rows")
+        
+        # Save primary scale data separately
+        scale_to_use = 'z' if USE_SESSION_ZSCORE else 'abs'
+        df_primary = df[df['Scale'] == scale_to_use]
+        scale_filename = 'hr_minute_long_data_z.csv' if USE_SESSION_ZSCORE else 'hr_minute_long_data_abs.csv'
+        df_primary.to_csv(os.path.join(out_dir, scale_filename), index=False)
+        scale_desc = "z-scored" if USE_SESSION_ZSCORE else "absolute"
+        print(f"  ✓ Saved {scale_desc} data: {len(df_primary)} rows from {len(df_primary['subject'].unique())} subjects")
+        
+        # LME model (uses appropriate scale)
+        print(f"Fitting LME model on {scale_desc} data...")
         fitted, diagnostics = fit_lme_model(df)
-        plot_model_diagnostics(fitted, df, plots_dir)
+        plot_model_diagnostics(fitted, df_primary, plots_dir)
         
         # Hypothesis testing + report
         print("Performing hypothesis testing with FDR correction...")
@@ -1345,22 +1803,29 @@ def main() -> bool:
         # Model summary txt
         create_model_summary_txt(diagnostics, coef_df, os.path.join(out_dir, 'model_summary.txt'))
         
-        # Combined summary (9 min with FDR)
-        print("Creating combined summary plot with FDR...")
+        # Continuous timecourse plots
+        print(f"Creating continuous timecourse plots ({scale_desc})...")
         create_combined_summary_plot(out_dir)
-        
-        # DMT-only extended (19 min with FDR)
-        print("Creating DMT-only extended plot...")
         create_dmt_only_20min_plot(out_dir)
-        
-        # Stacked per-subject
-        print("Creating stacked per-subject plot...")
         create_stacked_subjects_plot(out_dir)
         
         # Captions
         generate_captions_file(out_dir)
         
         print(f"\n✓ HR analysis complete! Results in: {out_dir}")
+        if USE_SESSION_ZSCORE:
+            print(f"  - Z-scored window means used for LME modeling")
+            if ZSCORE_BY_SUBJECT:
+                print(f"  - All sessions per subject used as baseline (RS_high + DMT_high + RS_low + DMT_low)")
+                print(f"  - Each subject normalized with their own mu and sigma")
+            else:
+                print(f"  - Each session (RS + DMT) used as baseline independently")
+                print(f"  - Each session normalized with its own mu and sigma")
+            print(f"  - Continuous plots show z-scored data")
+        else:
+            print(f"  - Absolute HR values (bpm) used for LME modeling")
+            print(f"  - No normalization applied")
+            print(f"  - Continuous plots show absolute values")
     except Exception as e:
         print(f'HR analysis failed: {e}')
         import traceback

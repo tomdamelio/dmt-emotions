@@ -1,30 +1,33 @@
 ================================================================================
-LME ANALYSIS REPORT: RSP_RVT (Respiratory Volume per Time (RVT)) by Minute (first 9 minutes)
+LME ANALYSIS REPORT: RSP_RVT (Respiratory Volume per Time) by 30-second Windows (first 9 minutes)
 ================================================================================
 
-Analysis date: 2025-11-05 21:43:45
-Dataset: 432 observations from 12 subjects
+Analysis date: 2025-11-11 00:50:34
+Dataset: 864 observations from 12 subjects
 
 DESIGN:
   Within-subjects 2×2: State (RS vs DMT) × Dose (Low vs High)
-  Time windows: 9 one-minute windows (0-8 minutes)
-  Dependent variable: Mean RSP_RVT per minute (a.u./min)
-  Baseline correction: False
+  Time windows: 18 thirty-second windows (0-540 seconds = 9 minutes)
+  Dependent variable: Mean RSP_RVT per 30-second window
+  Z-scoring: True
+  Z-scoring mode: subject-level (all sessions)
+  Subject parameters (mu, sigma) computed from all sessions (RS_high + DMT_high + RS_low + DMT_low)
 
 MODEL SPECIFICATION:
-  Fixed effects: RSP_RVT ~ State*Dose + minute_c + State:minute_c + Dose:minute_c
+  Fixed effects: RSP_RVT ~ State*Dose + window_c + State:window_c + Dose:window_c
   Random effects: ~ 1 | subject
-  Where minute_c = minute - mean(minute) [centered time]
+  Where window_c = window - mean(window) [centered time]
+  Scale: z-scored
 
 MODEL FIT STATISTICS:
   AIC: nan
   BIC: nan
-  Log-likelihood: -1963.94
-  N observations: 432
+  Log-likelihood: -804.06
+  N observations: 864
   N subjects: 12
-  Random effects variance:             Group
-Group  237.268843
-  Residual variance: 510.819930
+  Random effects variance:          Group
+Group  0.01076
+  Residual variance: 0.355827
 
 Model converged without warnings
 
@@ -34,71 +37,92 @@ HYPOTHESIS TESTING RESULTS (with BH-FDR correction):
 FAMILY STATE:
 ------------------------------
   State[T.DMT]:
-    β =  -0.5199, SE = 3.0757
-    95% CI: [ -6.5481,   5.5082]
-    p_raw = 0.8658, p_FDR = 0.8658 
+    β =   0.0183, SE = 0.0574
+    95% CI: [ -0.0942,   0.1308]
+    p_raw = 0.7493, p_FDR = 0.8066 
 
-  State[T.DMT]:minute_c:
-    β =   0.3100, SE = 0.8423
-    95% CI: [ -1.3408,   1.9609]
-    p_raw = 0.7128, p_FDR = 0.8658 
+  State[T.DMT]:window_c:
+    β =   0.0019, SE = 0.0078
+    95% CI: [ -0.0134,   0.0172]
+    p_raw = 0.8066, p_FDR = 0.8066 
 
 
 FAMILY DOSE:
 ------------------------------
   Dose[T.High]:
-    β =   6.8336, SE = 3.0757
-    95% CI: [  0.8054,  12.8617]
-    p_raw = 0.0263, p_FDR = 0.0526 
+    β =   0.1556, SE = 0.0574
+    95% CI: [  0.0431,   0.2681]
+    p_raw = 0.0067, p_FDR = 0.0134 *
 
-  Dose[T.High]:minute_c:
-    β =   0.1795, SE = 0.8423
-    95% CI: [ -1.4714,   1.8304]
-    p_raw = 0.8313, p_FDR = 0.8313 
+  Dose[T.High]:window_c:
+    β =  -0.0008, SE = 0.0078
+    95% CI: [ -0.0161,   0.0146]
+    p_raw = 0.9207, p_FDR = 0.9207 
 
 
 FAMILY INTERACTION:
 ------------------------------
   State[T.DMT]:Dose[T.High]:
-    β =  14.3527, SE = 4.3496
-    95% CI: [  5.8276,  22.8779]
-    p_raw = 0.0010, p_FDR = 0.0010 ***
+    β =   0.3240, SE = 0.0812
+    95% CI: [  0.1649,   0.4831]
+    p_raw = 0.0001, p_FDR = 0.0001 ***
 
 
 CONDITIONAL CONTRASTS:
 ------------------------------
   High - Low within RS:
-    β =   6.8336, SE = 3.0757, p = 0.0263 *
+    β =   0.1556, SE = 0.0574, p = 0.0067 **
 
   High - Low within DMT (simple effect):
-    β =  21.1863, SE = 5.3272, p =    nan 
+    β =   0.4797, SE = 0.0994, p =    nan 
 
   (High - Low within DMT) - (High - Low within RS):
-    β =  14.3527, SE = 4.3496, p = 0.0010 ***
+    β =   0.3240, SE = 0.0812, p = 0.0001 ***
 
 
-DATA SUMMARY:
+DATA SUMMARY (Z-SCORED):
 ------------------------------
 Cell means (RSP_RVT by State × Dose):
-            count     mean      std
-State Dose                         
-RS    Low     108  44.1959  25.4084
-      High    108  51.0295  23.2913
-DMT   Low     108  43.6760  21.6003
-      High    108  64.8623  35.6134
+            count    mean     std
+State Dose                       
+RS    Low     216 -0.2269  0.5138
+      High    216 -0.0713  0.4283
+DMT   Low     216 -0.2086  0.5844
+      High    216  0.2711  0.8207
 
-Time trend (RSP_RVT by minute):
-        count     mean      std
-minute                         
-1          48  48.8173  20.7826
-2          48  45.3690  24.1092
-3          48  50.8309  25.7471
-4          48  49.0790  26.1969
-5          48  52.4421  26.5271
-6          48  53.2102  29.0711
-7          48  54.6236  34.7021
-8          48  51.8879  33.1138
-9          48  52.2081  32.4006
+Time trend (RSP_RVT by 30-second window):
+        count    mean     std
+window                       
+1          48 -0.0394  0.7301
+2          48 -0.1115  0.7035
+3          48 -0.1606  0.7368
+4          48 -0.2644  0.5712
+5          48 -0.0420  0.6650
+6          48 -0.0768  0.6572
+7          48 -0.1186  0.5827
+8          48 -0.0592  0.6251
+9          48 -0.0251  0.6120
+10         48  0.0196  0.6087
+11         48  0.0132  0.6133
+12         48 -0.0045  0.6241
+13         48  0.0246  0.6913
+14         48  0.0032  0.6217
+15         48 -0.0481  0.6161
+16         48 -0.0690  0.5894
+17         48 -0.0181  0.6331
+18         48 -0.0835  0.5738
+
+
+QC CHECK: RS by Dose:
+------------------------------
+      count    mean     std
+Dose                       
+Low     216 -0.2269  0.5138
+High    216 -0.0713  0.4283
+
+Note: Z-scoring uses ALL sessions of subject (RS_high + DMT_high + RS_low + DMT_low),
+so RS values reflect subject-level normalization. High and Low RS should be similar
+since they share the same normalization parameters.
 
 
 ================================================================================

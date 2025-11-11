@@ -2,18 +2,19 @@ LME MODEL SUMMARY
 ============================================================
 
 Fixed Effects Formula:
-HR ~ State*Dose + minute_c + State:minute_c + Dose:minute_c
+HR ~ State*Dose + window_c + State:window_c + Dose:window_c
 
 Random Effects: ~ 1 | subject
 
 Model Fit Statistics:
 AIC: nan
 BIC: nan
-Log-likelihood: -1479.05
-N observations: 396
+Log-likelihood: -799.04
+N observations: 792
 N subjects: 11
 
 Significant Fixed Effects (p_FDR < 0.05):
-• State (DMT vs RS): β = 10.828 ***
-• State × Time: β = -2.417 ***
-• State × Dose: β = 15.840 ***
+• State (DMT vs RS): β = 0.691 ***
+• Dose (High vs Low): β = -0.268 ***
+• State × Time: β = -0.086 ***
+• State × Dose: β = 1.132 ***
