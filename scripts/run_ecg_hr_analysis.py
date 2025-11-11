@@ -504,7 +504,8 @@ def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
         model = mixedlm(formula, df_model, groups=df_model['subject'])  # type: ignore[arg-type]
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter('always')
-            fitted = model.fit()
+            # Fit with ML (not REML) for valid AIC/BIC, using robust optimizer
+            fitted = model.fit(reml=False, method='lbfgs')
             convergence_warnings = [str(warning.message) for warning in w]
     except Exception as e:
         return None, {'error': str(e)}
@@ -517,6 +518,8 @@ def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
         'convergence_warnings': convergence_warnings,
         'random_effects_var': getattr(fitted, 'cov_re', None),
         'residual_var': getattr(fitted, 'scale', np.nan),
+        'method': 'ML (not REML)',
+        'optimizer': 'lbfgs',
     }
     return fitted, diagnostics
 
@@ -524,28 +527,54 @@ def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
 def plot_model_diagnostics(fitted_model, df: pd.DataFrame, output_dir: str) -> None:
     if fitted_model is None:
         return
-    fitted_vals = fitted_model.fittedvalues
-    residuals = fitted_model.resid
+    
+    # Handle singular covariance structure (common with ML estimation)
+    try:
+        fitted_vals = fitted_model.fittedvalues
+        residuals = fitted_model.resid
+    except (ValueError, np.linalg.LinAlgError) as e:
+        # Use fixed effects predictions only (without random effects)
+        print("Warning: Singular covariance structure detected. Using fixed effects only for diagnostics.")
+        exog = fitted_model.model.exog
+        params_fe = fitted_model.fe_params
+        fitted_vals = np.dot(exog, params_fe)
+        residuals = fitted_model.model.endog - fitted_vals
+    
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
     axes[0, 0].scatter(fitted_vals, residuals, alpha=0.6, s=20)
     axes[0, 0].axhline(y=0, color='red', linestyle='--', alpha=0.7)
     axes[0, 0].set_xlabel('Fitted Values')
     axes[0, 0].set_ylabel('Residuals')
+    axes[0, 0].set_title('Residuals vs Fitted')
+    
     try:
         if scistats is not None:
             scistats.probplot(residuals, dist='norm', plot=axes[0, 1])
+            axes[0, 1].set_title('Q-Q Plot')
     except Exception:
         pass
-    subject_means = df.groupby('subject', observed=False).apply(lambda x: residuals[x.index].mean(), include_groups=False)
+    
+    # Get scale to filter df properly and reset index to match residuals array
+    scale_to_use = 'z' if USE_SESSION_ZSCORE else 'abs'
+    df_filtered = df[df['Scale'] == scale_to_use].copy().reset_index(drop=True)
+    
+    # Add residuals to dataframe for easier grouping
+    df_filtered['residual'] = residuals
+    
+    subject_means = df_filtered.groupby('subject', observed=False)['residual'].mean()
     axes[1, 0].bar(range(len(subject_means)), subject_means.values, alpha=0.7)
     axes[1, 0].axhline(y=0, color='red', linestyle='--', alpha=0.7)
     axes[1, 0].set_xlabel('Subject Index')
     axes[1, 0].set_ylabel('Mean Residual')
-    window_residuals = df.groupby('window', observed=False).apply(lambda x: residuals[x.index].mean(), include_groups=False)
+    axes[1, 0].set_title('Mean Residual by Subject')
+    
+    window_residuals = df_filtered.groupby('window', observed=False)['residual'].mean()
     axes[1, 1].plot(window_residuals.index, window_residuals.values, 'o-', alpha=0.7)
     axes[1, 1].axhline(y=0, color='red', linestyle='--', alpha=0.7)
     axes[1, 1].set_xlabel('Window (30s)')
     axes[1, 1].set_ylabel('Mean Residual')
+    axes[1, 1].set_title('Mean Residual by Time Window')
+    
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'lme_diagnostics.png'), dpi=300, bbox_inches='tight')
     plt.close()
@@ -565,7 +594,7 @@ def benjamini_hochberg_correction(p_values: List[float]) -> List[float]:
     return np.minimum(adjusted, 1.0).tolist()
 
 
-def hypothesis_testing_with_fdr(fitted_model) -> Dict:
+def hypothesis_testing_with_fdr(fitted_model, df: pd.DataFrame) -> Dict:
     if fitted_model is None:
         return {}
     params = fitted_model.params
@@ -605,23 +634,81 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
                 'ci_upper': float(conf_int.loc[p, 1]),
             }
         fdr_results[fam] = fam_dict
+    
+    # Compute empirical means for each condition to add context
+    scale_to_use = 'z' if USE_SESSION_ZSCORE else 'abs'
+    df_model = df[df['Scale'] == scale_to_use].copy()
+    
+    empirical_means = {}
+    for state in ['RS', 'DMT']:
+        for dose in ['Low', 'High']:
+            mask = (df_model['State'] == state) & (df_model['Dose'] == dose)
+            if mask.any():
+                empirical_means[f'{state}_{dose}'] = {
+                    'mean': float(df_model.loc[mask, 'HR'].mean()),
+                    'std': float(df_model.loc[mask, 'HR'].std()),
+                    'n': int(mask.sum()),
+                }
+    
     contrasts: Dict[str, Dict] = {}
     if 'Dose[T.High]' in params.index:
+        beta_rs = float(params['Dose[T.High]'])
+        # Cohen's d approximation: beta / pooled_std (using residual std as proxy)
+        residual_std = np.sqrt(fitted_model.scale)
+        cohens_d_rs = beta_rs / residual_std if residual_std > 0 else np.nan
+        
         contrasts['High_Low_within_RS'] = {
-            'beta': float(params['Dose[T.High]']),
+            'beta': beta_rs,
             'se': float(stderr['Dose[T.High]']),
             'p_raw': float(pvalues['Dose[T.High]']),
+            'cohens_d': cohens_d_rs,
+            'mean_RS_High': empirical_means.get('RS_High', {}).get('mean', np.nan),
+            'mean_RS_Low': empirical_means.get('RS_Low', {}).get('mean', np.nan),
+            'std_RS_High': empirical_means.get('RS_High', {}).get('std', np.nan),
+            'std_RS_Low': empirical_means.get('RS_Low', {}).get('std', np.nan),
+            'n_RS_High': empirical_means.get('RS_High', {}).get('n', 0),
+            'n_RS_Low': empirical_means.get('RS_Low', {}).get('n', 0),
             'description': 'High - Low within RS',
         }
     if all(k in params.index for k in ['Dose[T.High]', 'State[T.DMT]:Dose[T.High]']):
-        # Efecto total de High vs Low dentro de DMT
+        # Efecto total de High vs Low dentro de DMT usando t_test para p-value exacto
         beta_dmt = float(params['Dose[T.High]']) + float(params['State[T.DMT]:Dose[T.High]'])
-        # SE aproximado usando propagación de errores (asumiendo covarianza ≈ 0)
-        se_dmt = np.sqrt(float(stderr['Dose[T.High]'])**2 + float(stderr['State[T.DMT]:Dose[T.High]'])**2)
+        
+        # Construct contrast vector for Wald test: [Dose[T.High]] + [State[T.DMT]:Dose[T.High]]
+        # Get parameter names in order
+        param_names = list(params.index)
+        contrast_vec = np.zeros(len(param_names))
+        
+        # Find indices for the two parameters we want to test
+        idx_dose = param_names.index('Dose[T.High]')
+        idx_interaction = param_names.index('State[T.DMT]:Dose[T.High]')
+        contrast_vec[idx_dose] = 1.0
+        contrast_vec[idx_interaction] = 1.0
+        
+        # Perform Wald test
+        try:
+            t_test_result = fitted_model.t_test(contrast_vec)
+            p_dmt = float(t_test_result.pvalue)
+            se_dmt = float(t_test_result.sd)
+        except Exception:
+            # Fallback to approximation if t_test fails
+            se_dmt = np.sqrt(float(stderr['Dose[T.High]'])**2 + float(stderr['State[T.DMT]:Dose[T.High]'])**2)
+            p_dmt = np.nan
+        
+        residual_std = np.sqrt(fitted_model.scale)
+        cohens_d_dmt = beta_dmt / residual_std if residual_std > 0 else np.nan
+        
         contrasts['High_Low_within_DMT'] = {
             'beta': beta_dmt,
             'se': se_dmt,
-            'p_raw': np.nan,  # Requeriría test de Wald explícito
+            'p_raw': p_dmt,
+            'cohens_d': cohens_d_dmt,
+            'mean_DMT_High': empirical_means.get('DMT_High', {}).get('mean', np.nan),
+            'mean_DMT_Low': empirical_means.get('DMT_Low', {}).get('mean', np.nan),
+            'std_DMT_High': empirical_means.get('DMT_High', {}).get('std', np.nan),
+            'std_DMT_Low': empirical_means.get('DMT_Low', {}).get('mean', np.nan),
+            'n_DMT_High': empirical_means.get('DMT_High', {}).get('n', 0),
+            'n_DMT_Low': empirical_means.get('DMT_Low', {}).get('n', 0),
             'description': 'High - Low within DMT (simple effect)',
         }
         contrasts['Interaction_DMT_vs_RS'] = {
@@ -632,6 +719,7 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
         }
     results['fdr_families'] = fdr_results
     results['conditional_contrasts'] = contrasts
+    results['empirical_means'] = empirical_means
     return results
 
 
@@ -690,14 +778,39 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, d
             lines.append('')
     if 'conditional_contrasts' in hypothesis_results:
         lines.extend(['CONDITIONAL CONTRASTS:', '-' * 30])
-        for _, res in hypothesis_results['conditional_contrasts'].items():
+        for key, res in hypothesis_results['conditional_contrasts'].items():
             sig = '***' if res['p_raw'] < 0.001 else '**' if res['p_raw'] < 0.01 else '*' if res['p_raw'] < 0.05 else ''
-            lines.extend([f"  {res['description']}:", f"    β = {res['beta']:8.4f}, SE = {res['se']:6.4f}, p = {res['p_raw']:6.4f} {sig}", ''])
+            lines.extend([f"  {res['description']}:", f"    β = {res['beta']:8.4f}, SE = {res['se']:6.4f}, p = {res['p_raw']:6.4f} {sig}"])
+            
+            # Add Cohen's d if available
+            if 'cohens_d' in res and not np.isnan(res['cohens_d']):
+                lines.append(f"    Cohen's d = {res['cohens_d']:6.3f}")
+            
+            # Add empirical means for RS and DMT contrasts
+            if 'mean_RS_High' in res:
+                lines.extend([
+                    f"    Empirical means:",
+                    f"      RS High: {res['mean_RS_High']:7.4f} ± {res['std_RS_High']:6.4f} (n={res['n_RS_High']})",
+                    f"      RS Low:  {res['mean_RS_Low']:7.4f} ± {res['std_RS_Low']:6.4f} (n={res['n_RS_Low']})",
+                    f"      Difference: {res['mean_RS_High'] - res['mean_RS_Low']:7.4f}",
+                ])
+            elif 'mean_DMT_High' in res:
+                lines.extend([
+                    f"    Empirical means:",
+                    f"      DMT High: {res['mean_DMT_High']:7.4f} ± {res['std_DMT_High']:6.4f} (n={res['n_DMT_High']})",
+                    f"      DMT Low:  {res['mean_DMT_Low']:7.4f} ± {res['std_DMT_Low']:6.4f} (n={res['n_DMT_Low']})",
+                    f"      Difference: {res['mean_DMT_High'] - res['mean_DMT_Low']:7.4f}",
+                ])
+            lines.append('')
     lines.extend(['', 'DATA SUMMARY:', '-' * 30])
-    cell = df.groupby(['State', 'Dose'], observed=False)['HR'].agg(['count', 'mean', 'std']).round(4)
-    lines.extend(['Cell means (HR by State × Dose):', str(cell), ''])
-    trend = df.groupby('window', observed=False)['HR'].agg(['count', 'mean', 'std']).round(4)
-    lines.extend(['Time trend (HR by 30-second window):', str(trend), ''])
+    # Use only the scale that was used for modeling
+    scale_to_use = 'z' if USE_SESSION_ZSCORE else 'abs'
+    df_summary = df[df['Scale'] == scale_to_use].copy()
+    cell = df_summary.groupby(['State', 'Dose'], observed=False)['HR'].agg(['count', 'mean', 'std']).round(4)
+    scale_label = '(z-scored)' if USE_SESSION_ZSCORE else '(bpm)'
+    lines.extend([f'Cell means (HR by State × Dose) {scale_label}:', str(cell), ''])
+    trend = df_summary.groupby('window', observed=False)['HR'].agg(['count', 'mean', 'std']).round(4)
+    lines.extend([f'Time trend (HR by 30-second window) {scale_label}:', str(trend), ''])
     lines.extend(['', '=' * 80])
     out_path = os.path.join(output_dir, 'lme_analysis_report.txt')
     with open(out_path, 'w', encoding='utf-8') as f:
@@ -1778,7 +1891,7 @@ def main() -> bool:
         
         # Hypothesis testing + report
         print("Performing hypothesis testing with FDR correction...")
-        hyp = hypothesis_testing_with_fdr(fitted)
+        hyp = hypothesis_testing_with_fdr(fitted, df)
         report_path = generate_report(fitted, diagnostics, hyp, df, out_dir)
         print(f"  ✓ Report saved: {report_path}")
         

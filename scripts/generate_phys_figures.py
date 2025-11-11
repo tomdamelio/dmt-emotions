@@ -272,11 +272,35 @@ def create_figure_S1() -> str:
 
 
 def create_figure_S2() -> str:
-    """Create Figure S2: Stacked subjects for all modalities (1x3 horizontal layout)."""
+    """Create Figure S2: Stacked subjects for composite arousal index (single panel)."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    COMPOSITE_ROOT = PROJECT_ROOT / 'results' / 'composite' / 'plots'
+
+    source_path = str(COMPOSITE_ROOT / 'stacked_subs_composite.png')
+    img = _load_image(source_path)
+    
+    if img is None:
+        print(f"[ERROR] Could not load {source_path}")
+        return ""
+    
+    # Create a simple figure with the image
+    fig = plt.figure(figsize=(12, 28))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.axis('off')
+    ax.imshow(img)
+    
+    out_path = str(OUT_DIR / 'figure_S2.png')
+    plt.savefig(out_path, dpi=400, bbox_inches='tight')
+    plt.close()
+    return out_path
+
+
+def create_figure_S3() -> str:
+    """Create Figure S3: Stacked subjects for all modalities (1x3 horizontal layout)."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     A_path = str(ECG_ROOT / 'hr' / 'plots' / 'stacked_subs_ecg_hr.png')
-    B_path = str(EDA_ROOT / 'scl' / 'plots' / 'stacked_subs_eda_scl.png')
+    B_path = str(EDA_ROOT / 'smna' / 'plots' / 'stacked_subs_smna.png')
     C_path = str(RESP_ROOT / 'rvt' / 'plots' / 'stacked_subs_resp_rvt.png')
 
     A_img = _load_image(A_path)
@@ -328,7 +352,7 @@ def create_figure_S2() -> str:
         pos = ax.get_position()
         fig.text(pos.x0 - 0.005, pos.y1 + offset, label, fontsize=30, fontweight='bold', ha='left', va='top')
 
-    out_path = str(OUT_DIR / 'figure_S2.png')
+    out_path = str(OUT_DIR / 'figure_S3.png')
     plt.savefig(out_path, dpi=400, bbox_inches='tight')
     plt.close()
     return out_path
@@ -343,6 +367,8 @@ def main() -> None:
     print(f"Figure S1 saved to: {figS1}")
     figS2 = create_figure_S2()
     print(f"Figure S2 saved to: {figS2}")
+    figS3 = create_figure_S3()
+    print(f"Figure S3 saved to: {figS3}")
 
 
 if __name__ == '__main__':

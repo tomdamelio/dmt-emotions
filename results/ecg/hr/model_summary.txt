@@ -7,9 +7,9 @@ HR ~ State*Dose + window_c + State:window_c + Dose:window_c
 Random Effects: ~ 1 | subject
 
 Model Fit Statistics:
-AIC: nan
-BIC: nan
-Log-likelihood: -799.04
+AIC: -inf
+BIC: -inf
+Log-likelihood: inf
 N observations: 792
 N subjects: 11
 

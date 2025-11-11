@@ -2,7 +2,7 @@
 COMPOSITE AUTONOMIC AROUSAL INDEX (PCA-PC1) + LME ANALYSIS
 ================================================================================
 
-Analysis date: 2025-11-11 01:10:55
+Analysis date: 2025-11-11 19:13:24
 Dataset: 504 observations from 7 subjects
 Subjects: S04, S06, S07, S16, S18, S19, S20
 
@@ -18,8 +18,14 @@ PCA RESULTS:
     SMNA_AUC_z:   0.640
     RVT_z:       0.445
 
-  Interpretation: Higher ArousalIndex = greater autonomic activation
-  Sign convention: PC1 oriented so SMNA_AUC_z loading is positive
+  Sign convention:
+    - Sign flipped: False
+    - All raw loadings positive: True
+    - All final loadings positive: True
+
+  ✓ All loadings are POSITIVE - PC1 reflects coherent autonomic activation
+    Higher ArousalIndex = greater HR, SMNA, and RVT simultaneously
+
 
 CROSS-CORRELATIONS BETWEEN SIGNALS:
   Within-subject Pearson correlations (window-by-window):

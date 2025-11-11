@@ -4,6 +4,7 @@ COMPOSITE AROUSAL INDEX - MODEL SUMMARY
 PCA Results:
   PC1 explained variance: 0.5893 (58.93%)
   Loadings: HR_z=0.627, SMNA_AUC_z=0.640, RVT_z=0.445
+  ✓ All loadings POSITIVE - coherent autonomic activation
 
 LME Formula:
   ArousalIndex ~ State*Dose + window_c + State:window_c + Dose:window_c

@@ -164,14 +164,36 @@ def compute_pca_and_index(df: pd.DataFrame) -> Tuple[pd.DataFrame, float, np.nda
     print(f"  PC1 variance explained: {var_exp_pc1:.4f}")
     print(f"  Raw loadings: HR_z={loadings_pc1[0]:.3f}, SMNA_AUC_z={loadings_pc1[1]:.3f}, RVT_z={loadings_pc1[2]:.3f}")
     
+    # Check if all raw loadings are positive
+    all_positive_raw = np.all(loadings_pc1 > 0)
+    print(f"  Raw loadings all positive: {all_positive_raw}")
+    
     # Sign convention: ensure PC1 ↑ = greater activation
     # If SMNA_AUC_z loading is negative, flip sign
+    sign_flipped = False
     if loadings_pc1[1] < 0:
-        print("  Flipping PC1 sign to align with activation direction")
+        print("  ⚠ Flipping PC1 sign to align with activation direction")
         pc1_scores = -pc1_scores
         loadings_pc1 = -loadings_pc1
+        sign_flipped = True
     
     print(f"  Final loadings: HR_z={loadings_pc1[0]:.3f}, SMNA_AUC_z={loadings_pc1[1]:.3f}, RVT_z={loadings_pc1[2]:.3f}")
+    
+    # Verify all final loadings are positive
+    all_positive_final = np.all(loadings_pc1 > 0)
+    print(f"  Final loadings all positive: {all_positive_final}")
+    
+    if all_positive_final:
+        print("  ✓ All loadings are positive - PC1 reflects coherent autonomic activation")
+    else:
+        print("  ⚠ Warning: Not all loadings are positive - mixed interpretation")
+    
+    # Store sign flip information for reporting
+    sign_flip_info = {
+        'sign_flipped': sign_flipped,
+        'all_positive_raw': all_positive_raw,
+        'all_positive_final': all_positive_final,
+    }
     
     # Add ArousalIndex to dataframe
     df['ArousalIndex'] = pc1_scores
@@ -242,7 +264,30 @@ def compute_pca_and_index(df: pd.DataFrame) -> Tuple[pd.DataFrame, float, np.nda
     df.to_csv(os.path.join(OUT_DIR, 'arousal_index_long.csv'), index=False)
     print(f"  ✓ Saved: {os.path.join(OUT_DIR, 'arousal_index_long.csv')}")
     
-    return df, var_exp_pc1, loadings_pc1
+    # Save sign flip information
+    with open(os.path.join(OUT_DIR, 'pca_sign_convention.txt'), 'w', encoding='utf-8') as f:
+        f.write('PCA SIGN CONVENTION REPORT\n')
+        f.write('=' * 60 + '\n\n')
+        f.write(f"Sign flipped: {sign_flip_info['sign_flipped']}\n")
+        f.write(f"All raw loadings positive: {sign_flip_info['all_positive_raw']}\n")
+        f.write(f"All final loadings positive: {sign_flip_info['all_positive_final']}\n\n")
+        if sign_flip_info['sign_flipped']:
+            f.write("PC1 sign was FLIPPED to ensure SMNA_AUC_z loading is positive.\n")
+            f.write("This aligns PC1 with the activation direction.\n")
+        else:
+            f.write("PC1 sign was NOT flipped - raw loadings already aligned.\n")
+        f.write("\nInterpretation:\n")
+        if sign_flip_info['all_positive_final']:
+            f.write("✓ All final loadings are POSITIVE.\n")
+            f.write("  PC1 reflects coherent autonomic activation across all signals.\n")
+            f.write("  Higher PC1 = greater HR, SMNA, and RVT simultaneously.\n")
+        else:
+            f.write("⚠ Not all final loadings are positive.\n")
+            f.write("  PC1 reflects mixed autonomic patterns.\n")
+    
+    print(f"  ✓ Saved: {os.path.join(OUT_DIR, 'pca_sign_convention.txt')}")
+    
+    return df, var_exp_pc1, loadings_pc1, sign_flip_info
 
 
 def create_pca_3d_plot(df: pd.DataFrame, pca, loadings_pc1: np.ndarray) -> None:
@@ -961,7 +1006,8 @@ def hypothesis_testing_with_fdr(fitted_model) -> Dict:
 #############################
 
 def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, 
-                   df: pd.DataFrame, var_exp: float, loadings: np.ndarray) -> None:
+                   df: pd.DataFrame, var_exp: float, loadings: np.ndarray, 
+                   sign_flip_info: Dict) -> None:
     """Generate comprehensive text report."""
     print("Generating analysis report...")
     
@@ -986,10 +1032,24 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict,
         f"    SMNA_AUC_z: {loadings[1]:7.3f}",
         f"    RVT_z:     {loadings[2]:7.3f}",
         '',
-        '  Interpretation: Higher ArousalIndex = greater autonomic activation',
-        '  Sign convention: PC1 oriented so SMNA_AUC_z loading is positive',
+        '  Sign convention:',
+        f"    - Sign flipped: {sign_flip_info['sign_flipped']}",
+        f"    - All raw loadings positive: {sign_flip_info['all_positive_raw']}",
+        f"    - All final loadings positive: {sign_flip_info['all_positive_final']}",
         '',
     ]
+    
+    if sign_flip_info['all_positive_final']:
+        lines.extend([
+            '  ✓ All loadings are POSITIVE - PC1 reflects coherent autonomic activation',
+            '    Higher ArousalIndex = greater HR, SMNA, and RVT simultaneously',
+        ])
+    else:
+        lines.extend([
+            '  ⚠ Not all loadings are positive - PC1 reflects mixed autonomic patterns',
+        ])
+    
+    lines.extend(['', ''])
     
     # Add cross-correlation summary if available
     pearson_path = os.path.join(OUT_DIR, 'corr_within_subject_pearson.csv')
@@ -1115,28 +1175,35 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict,
 
 
 def create_model_summary_txt(diagnostics: Dict, hypothesis_results: Dict, 
-                             var_exp: float, loadings: np.ndarray) -> None:
+                             var_exp: float, loadings: np.ndarray, 
+                             sign_flip_info: Dict) -> None:
     """Create compact model summary."""
-    lines: List[str] = [
+    lines = [
         'COMPOSITE AROUSAL INDEX - MODEL SUMMARY',
         '=' * 60,
         '',
         'PCA Results:',
         f"  PC1 explained variance: {var_exp:.4f} ({var_exp*100:.2f}%)",
         f"  Loadings: HR_z={loadings[0]:.3f}, SMNA_AUC_z={loadings[1]:.3f}, RVT_z={loadings[2]:.3f}",
-        '',
-        'LME Formula:',
-        '  ArousalIndex ~ State*Dose + window_c + State:window_c + Dose:window_c',
-        '  Random: ~ 1 | subject',
-        '',
-        'Model Fit:',
-        f"  AIC: {diagnostics.get('aic', np.nan):.2f}",
-        f"  BIC: {diagnostics.get('bic', np.nan):.2f}",
-        f"  N obs: {diagnostics.get('n_obs', 'N/A')}",
-        f"  N subjects: {diagnostics.get('n_groups', 'N/A')}",
-        '',
-        'Significant Effects (p_FDR < 0.05):',
     ]
+    
+    if sign_flip_info['all_positive_final']:
+        lines.append("  ✓ All loadings POSITIVE - coherent autonomic activation")
+    else:
+        lines.append("  ⚠ Mixed loading signs")
+    
+    lines.append('')
+    lines.append('LME Formula:')
+    lines.append('  ArousalIndex ~ State*Dose + window_c + State:window_c + Dose:window_c')
+    lines.append('  Random: ~ 1 | subject')
+    lines.append('')
+    lines.append('Model Fit:')
+    lines.append(f"  AIC: {diagnostics.get('aic', np.nan):.2f}")
+    lines.append(f"  BIC: {diagnostics.get('bic', np.nan):.2f}")
+    lines.append(f"  N obs: {diagnostics.get('n_obs', 'N/A')}")
+    lines.append(f"  N subjects: {diagnostics.get('n_groups', 'N/A')}")
+    lines.append('')
+    lines.append('Significant Effects (p_FDR < 0.05):')
     
     sig_found = False
     if 'fdr_families' in hypothesis_results:
@@ -1866,7 +1933,7 @@ def main() -> bool:
         df = zscore_within_subject(df)
         
         # 3. Compute PCA and arousal index
-        df, var_exp, loadings = compute_pca_and_index(df)
+        df, var_exp, loadings, sign_flip_info = compute_pca_and_index(df)
         
         # 4. Compute cross-correlations between signals
         compute_and_plot_cross_correlations(df)
@@ -1885,8 +1952,8 @@ def main() -> bool:
         hypothesis_results = hypothesis_testing_with_fdr(fitted)
         
         # 8. Generate reports
-        generate_report(fitted, diagnostics, hypothesis_results, df, var_exp, loadings)
-        create_model_summary_txt(diagnostics, hypothesis_results, var_exp, loadings)
+        generate_report(fitted, diagnostics, hypothesis_results, df, var_exp, loadings, sign_flip_info)
+        create_model_summary_txt(diagnostics, hypothesis_results, var_exp, loadings, sign_flip_info)
         
         # 9. Create plots
         # Coefficient plot

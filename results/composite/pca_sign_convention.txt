@@ -1,0 +1,13 @@
+PCA SIGN CONVENTION REPORT
+============================================================
+
+Sign flipped: False
+All raw loadings positive: True
+All final loadings positive: True
+
+PC1 sign was NOT flipped - raw loadings already aligned.
+
+Interpretation:
+✓ All final loadings are POSITIVE.
+  PC1 reflects coherent autonomic activation across all signals.
+  Higher PC1 = greater HR, SMNA, and RVT simultaneously.
