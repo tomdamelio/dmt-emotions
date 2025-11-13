@@ -36,7 +36,16 @@ Cada carpeta contiene archivos `.mat` con el patrón de nomenclatura:
 - `sXX_RS_Session2_EC.mat` - Reposo sesión 2 (eyes closed)
 - `sXX_DMT_Session2_DMT.mat` - DMT sesión 2 
 
-**Contenido de archivos .mat**: Matriz `dimensions` de 15×300 (15 dimensiones fenomenológicas × 300 puntos temporales):
+**Contenido de archivos .mat**: Matriz `dimensions` de shape variable (15 dimensiones × n_puntos):
+
+> **⚠️ NOTAS CRÍTICAS**:
+> 1. **Orden de dimensiones**: Fundamental para la validez del análisis. Implementado en `config.TET_DIMENSION_COLUMNS`.
+> 2. **Resolución temporal**: Los archivos .mat contienen datos down-sampled uniformemente a **0.25 Hz** (1 punto cada 4s):
+>    - DMT: 300 puntos @ 0.25 Hz = 1200s = 20 minutos
+>    - RS: 150 puntos @ 0.25 Hz = 600s = 10 minutos
+> 3. **Columna `t_sec`**: Contiene el timing exacto en segundos (0, 4, 8, 12, ...) para análisis temporales precisos.
+> 4. **Paper original**: Especifica bins de 30s (N=40 DMT, N=20 RS), pero los datos se mantienen en resolución original (0.25 Hz). La agregación a 30s se realiza solo cuando es necesario para análisis estadísticos específicos usando `config.aggregate_tet_to_30s_bins()`.
+
 1. **Pleasantness** - Intensidad subjetiva de lo "bueno" de la experiencia
 2. **Unpleasantness** - Intensidad subjetiva de lo "malo" de la experiencia  
 3. **Emotional_Intensity** - Intensidad emocional independiente de valencia
@@ -48,7 +57,7 @@ Cada carpeta contiene archivos `.mat` con el patrón de nomenclatura:
 9. **Anxiety** - Experiencia de disforia o ansiedad
 10. **Entity** - Presencia percibida de "entidades autónomas" (guías, espíritus, aliens)
 11. **Selfhood** - Alteraciones en la experiencia del "yo" (disolución del ego)
-12. **Disembodiment** - Experiencia de no identificarse con el propio cuerpo
+12. **Disembodiment** - Experiencia de NO identificarse con el propio cuerpo (desencarnación)
 13. **Salience** - Sentido subjetivo de significado profundo e importancia del momento
 14. **Temporality** - Alteraciones en la experiencia subjetiva del tiempo
 15. **General_Intensity** - Intensidad general subjetiva de los efectos del DMT

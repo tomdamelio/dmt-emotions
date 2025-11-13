@@ -188,10 +188,3 @@ Ya hice todos los cambios necesarios en los plots, y analisis estadisticos de la
 [x] Cambiar la seccion de Metodos y Resultados, de acuerdo a esta nueva forma de tratar los datos
 [x] Replicar los analisis de Tomi de los datos de TET
 
-
-SEGUIR DESDE ACA
-
-Para despues
-------------
-
-[ ] Hacer una figura de la metodologia, usando al imagen de Evan para crear en chatgpt u boceto de la toma de datos. O si no hacerla usando otra app. Usar los colores que defini mas arriba para las 3 señales fisiologicas para marcar en esa figura las 3 señales registradas

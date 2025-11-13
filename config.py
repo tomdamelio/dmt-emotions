@@ -158,6 +158,142 @@ CANALES = {
 TOLERANCIA_DURACION = 0.1
 
 # =============================================================================
+# CONFIGURACIÓN DE TET (TEMPORAL EXPERIENCE TRACKING)
+# =============================================================================
+
+# Ruta de datos TET
+TET_DATA_PATH = os.path.join(DATA_ROOT, 'tet', 'tet_data.csv')
+
+# Directorio de resultados TET
+TET_RESULTS_DIR = os.path.join(PROJECT_ROOT, 'results', 'tet')
+
+# Columnas de dimensiones TET (15 dimensiones subjetivas)
+# Orden definido según archivos .mat originales (ver docs/PIPELINE.md)
+# Cada archivo .mat contiene matriz 'dimensions' de shape (n_bins, 15)
+# donde las columnas corresponden a las siguientes dimensiones en orden:
+TET_DIMENSION_COLUMNS = [
+    'pleasantness',        # 1. Intensidad subjetiva de lo "bueno" de la experiencia
+    'unpleasantness',      # 2. Intensidad subjetiva de lo "malo" de la experiencia
+    'emotional_intensity', # 3. Intensidad emocional independiente de valencia
+    'elementary_imagery',  # 4. Sensaciones visuales básicas (destellos, colores, patrones)
+    'complex_imagery',     # 5. Sensaciones visuales complejas (escenas vívidas, visiones)
+    'auditory',            # 6. Sensaciones auditivas (sonidos externos o alucinatorios)
+    'interoception',       # 7. Intensidad de sensaciones corporales internas ("body load")
+    'bliss',               # 8. Experiencia de éxtasis o paz profunda
+    'anxiety',             # 9. Experiencia de disforia o ansiedad
+    'entity',              # 10. Presencia percibida de "entidades autónomas"
+    'selfhood',            # 11. Alteraciones en la experiencia del "yo" (disolución del ego)
+    'disembodiment',       # 12. Experiencia de NO identificarse con el propio cuerpo (desencarnación)
+    'salience',            # 13. Sentido subjetivo de significado profundo e importancia
+    'temporality',         # 14. Alteraciones en la experiencia subjetiva del tiempo
+    'general_intensity'    # 15. Intensidad general subjetiva de los efectos del DMT
+]
+
+# Longitudes esperadas de sesión
+# Los archivos .mat contienen datos down-sampled uniformemente a 0.25 Hz (1 punto cada 4s)
+# - DMT: 20 min = 1200s → 300 puntos @ 0.25 Hz
+# - RS: 10 min = 600s → 150 puntos @ 0.25 Hz
+#
+# Paper original especifica bins de 30s (N=40 DMT, N=20 RS), pero mantenemos
+# la resolución original (0.25 Hz) para análisis. La agregación a 30s se hace
+# solo cuando es necesario para análisis estadísticos específicos (e.g., LME).
+EXPECTED_SESSION_LENGTHS = {
+    'RS': 150,   # 150 puntos @ 0.25 Hz = 600s = 10 min
+    'DMT': 300   # 300 puntos @ 0.25 Hz = 1200s = 20 min
+}
+
+# Resolución temporal de datos (frecuencia de muestreo)
+TET_SAMPLING_RATE_HZ = 0.25  # 0.25 Hz = 1 punto cada 4 segundos
+TET_SAMPLING_INTERVAL_SEC = 4  # 4 segundos entre puntos
+
+# Parámetros para agregación a bins de 30s (cuando sea necesario)
+TET_BIN_DURATION_SEC = 30  # Duración de bin según paper original
+TET_AGGREGATION_FACTOR = TET_BIN_DURATION_SEC / TET_SAMPLING_INTERVAL_SEC  # 7.5 puntos/bin
+
+# Rango válido para valores de dimensiones TET
+TET_VALUE_RANGE = (0, 10)
+
+# Columnas requeridas en datos TET
+TET_REQUIRED_COLUMNS = [
+    'subject',
+    'session_id',
+    'state',
+    'dose',
+    't_bin',
+    't_sec'
+] + TET_DIMENSION_COLUMNS
+
+# Definiciones de índices compuestos TET
+# Cada índice combina múltiples dimensiones para capturar constructos de alto nivel
+# Todas las fórmulas operan sobre valores z-scored (estandarizados dentro de sujeto)
+COMPOSITE_INDEX_DEFINITIONS = {
+    'affect_index_z': {
+        'formula': 'mean(pleasantness_z, bliss_z) - mean(anxiety_z, unpleasantness_z)',
+        'components': {
+            'positive': ['pleasantness_z', 'bliss_z'],
+            'negative': ['anxiety_z', 'unpleasantness_z']
+        },
+        'interpretation': (
+            'Índice de afecto neto. Valores positivos indican predominio de afecto positivo '
+            '(placer, éxtasis), valores negativos indican predominio de afecto negativo '
+            '(ansiedad, displacer). Rango típico: -3 a +3 (z-scores).'
+        ),
+        'directionality': 'higher = more positive affect'
+    },
+    'imagery_index_z': {
+        'formula': 'mean(elementary_imagery_z, complex_imagery_z)',
+        'components': {
+            'positive': ['elementary_imagery_z', 'complex_imagery_z'],
+            'negative': []
+        },
+        'interpretation': (
+            'Índice de intensidad de imaginería visual. Combina sensaciones visuales básicas '
+            '(destellos, patrones) y complejas (escenas vívidas). Valores más altos indican '
+            'mayor intensidad de experiencias visuales. Rango típico: -2 a +3 (z-scores).'
+        ),
+        'directionality': 'higher = more intense visual imagery'
+    },
+    'self_index_z': {
+        'formula': '-disembodiment_z + selfhood_z',
+        'components': {
+            'positive': ['selfhood_z'],
+            'negative': ['disembodiment_z']
+        },
+        'interpretation': (
+            'Índice de integración del yo. Valores positivos indican mayor sentido de identidad '
+            'y encarnación corporal. Valores negativos indican disolución del ego y desencarnación. '
+            'Nota: disembodiment se invierte para que valores altos = mayor integración del yo. '
+            'Rango típico: -3 a +2 (z-scores).'
+        ),
+        'directionality': 'higher = more self-integration (less ego dissolution)'
+    },
+    'valence_pos': {
+        'formula': 'pleasantness',
+        'components': {
+            'positive': ['pleasantness'],
+            'negative': []
+        },
+        'interpretation': (
+            'Valencia positiva. Copia directa de la dimensión pleasantness para análisis '
+            'de valencia bidimensional (positiva/negativa como dimensiones separadas).'
+        ),
+        'directionality': 'higher = more pleasant'
+    },
+    'valence_neg': {
+        'formula': 'unpleasantness',
+        'components': {
+            'positive': ['unpleasantness'],
+            'negative': []
+        },
+        'interpretation': (
+            'Valencia negativa. Copia directa de la dimensión unpleasantness para análisis '
+            'de valencia bidimensional (positiva/negativa como dimensiones separadas).'
+        ),
+        'directionality': 'higher = more unpleasant'
+    }
+}
+
+# =============================================================================
 # FUNCIONES DE UTILIDAD
 # =============================================================================
 
@@ -236,6 +372,73 @@ def sujeto_tiene_problema_eda(sujeto, experimento):
         bool: True si tiene problemas conocidos
     """
     return experimento in SUJETOS_EDA_PROBLEMATICA.get(sujeto, [])
+
+def aggregate_tet_to_30s_bins(data, method='mean'):
+    """
+    Agrega datos TET de resolución 4s a bins de 30s según paper original.
+    
+    Los archivos .mat contienen datos down-sampled uniformemente:
+    - DMT: 300 puntos @ 4s = 1200s (20 min)
+    - RS: 150 puntos @ 4s = 600s (10 min)
+    
+    Paper original especifica bins de 30s:
+    - DMT: N=40 bins × 30s = 1200s (20 min)
+    - RS: N=20 bins × 30s = 600s (10 min)
+    
+    Esta función agrupa cada 7.5 puntos (30s / 4s) en un bin y aplica
+    una función de agregación (por defecto, promedio).
+    
+    Args:
+        data (pd.DataFrame): DataFrame con datos TET cargados (formato largo)
+        method (str): Método de agregación ('mean', 'median')
+    
+    Returns:
+        pd.DataFrame: DataFrame agregado con bins de 30s
+        
+    Example:
+        >>> from tet.data_loader import TETDataLoader
+        >>> import config
+        >>> loader = TETDataLoader(mat_dir='../data/original/reports/resampled')
+        >>> data = loader.load_data()
+        >>> data_30s = config.aggregate_tet_to_30s_bins(data, method='mean')
+        >>> # DMT: 300 puntos → 40 bins
+        >>> # RS: 150 puntos → 20 bins
+    """
+    import pandas as pd
+    import numpy as np
+    
+    data = data.copy()
+    
+    # Calcular tiempo real en segundos (t_bin es índice, no tiempo)
+    # Cada punto representa 4 segundos
+    data['t_sec_real'] = data['t_bin'] * TET_RAW_RESOLUTION_SEC
+    
+    # Crear bins de 30 segundos
+    data['bin_30s'] = (data['t_sec_real'] // TET_BIN_DURATION_SEC).astype(int)
+    
+    # Columnas de agrupación
+    group_cols = ['subject', 'session_id', 'state', 'dose', 'bin_30s']
+    
+    # Columnas a agregar (dimensiones)
+    agg_cols = TET_DIMENSION_COLUMNS
+    
+    # Aplicar agregación
+    if method == 'mean':
+        aggregated = data.groupby(group_cols)[agg_cols].mean().reset_index()
+    elif method == 'median':
+        aggregated = data.groupby(group_cols)[agg_cols].median().reset_index()
+    else:
+        raise ValueError(f"Unknown aggregation method: {method}. Use 'mean' or 'median'.")
+    
+    # Renombrar bin_30s a t_bin y calcular t_sec
+    aggregated = aggregated.rename(columns={'bin_30s': 't_bin'})
+    aggregated['t_sec'] = aggregated['t_bin'] * TET_BIN_DURATION_SEC
+    
+    # Reordenar columnas
+    column_order = ['subject', 'session_id', 'state', 'dose', 't_bin', 't_sec'] + TET_DIMENSION_COLUMNS
+    aggregated = aggregated[column_order]
+    
+    return aggregated
 
 # =============================================================================
 # VALIDACIÓN DE CONFIGURACIÓN

@@ -1,0 +1,90 @@
+{
+  "preprocessing_version": "1.0.0",
+  "timestamp": "2025-11-12T15:20:47.492681",
+  "random_seed": 22,
+  "data_summary": {
+    "n_subjects": 18,
+    "n_sessions": 36,
+    "n_time_points_total": 16200,
+    "n_time_points_rs": 5400,
+    "n_time_points_dmt": 10800,
+    "n_dimensions": 15
+  },
+  "trimming": {
+    "method": "time-based",
+    "rs_window": "0-600 seconds (0-10 minutes)",
+    "dmt_window": "0-1200 seconds (0-20 minutes)",
+    "sampling_rate_hz": 0.25,
+    "sampling_interval_sec": 4,
+    "expected_points": {
+      "rs": 150,
+      "dmt": 300
+    }
+  },
+  "standardization": {
+    "method": "global_within_subject",
+    "description": "Z-scores computed using global mean and std across all 15 dimensions and all 4 sessions for each subject. This controls for individual differences in scale usage patterns.",
+    "formula": "(value - global_mean) / global_std",
+    "scope": "all_dimensions_all_sessions_per_subject"
+  },
+  "valence_variables": {
+    "valence_pos": "pleasantness",
+    "valence_neg": "unpleasantness"
+  },
+  "composite_indices": {
+    "affect_index_z": {
+      "formula": "mean(pleasantness_z, bliss_z) - mean(anxiety_z, unpleasantness_z)",
+      "components": {
+        "positive": [
+          "pleasantness",
+          "bliss"
+        ],
+        "negative": [
+          "anxiety",
+          "unpleasantness"
+        ]
+      },
+      "interpretation": "Higher values indicate more positive affect (pleasant, blissful). Lower values indicate more negative affect (anxious, unpleasant).",
+      "directionality": "positive - negative"
+    },
+    "imagery_index_z": {
+      "formula": "mean(elementary_imagery_z, complex_imagery_z)",
+      "components": [
+        "elementary_imagery",
+        "complex_imagery"
+      ],
+      "interpretation": "Higher values indicate more vivid imagery (both elementary and complex).",
+      "directionality": "positive"
+    },
+    "self_index_z": {
+      "formula": "-disembodiment_z + selfhood_z",
+      "components": {
+        "inverted": [
+          "disembodiment"
+        ],
+        "positive": [
+          "selfhood"
+        ]
+      },
+      "interpretation": "Higher values indicate greater self-integration (embodied, strong sense of self). Lower values indicate less self-integration (disembodied, ego dissolution).",
+      "directionality": "inverted disembodiment + selfhood"
+    }
+  },
+  "dimensions": [
+    "pleasantness",
+    "unpleasantness",
+    "emotional_intensity",
+    "elementary_imagery",
+    "complex_imagery",
+    "auditory",
+    "interoception",
+    "bliss",
+    "anxiety",
+    "entity",
+    "selfhood",
+    "disembodiment",
+    "salience",
+    "temporality",
+    "general_intensity"
+  ]
+}
