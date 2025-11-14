@@ -1,0 +1,11 @@
+Figure: Peak Intensity Comparison Between Dose Conditions
+
+Boxplots comparing peak z-scored intensity values between Low dose (20mg, blue) and 
+High dose (40mg, red) conditions within DMT sessions. Grey lines connect paired 
+observations from the same subject. Significance stars indicate FDR-corrected p-values 
+from Wilcoxon signed-rank tests: * p < .05, ** p < .01, *** p < .001. Effect sizes 
+(r) with 95% bootstrap confidence intervals are displayed for significant comparisons.
+
+Statistical Analysis: Wilcoxon signed-rank tests (paired, two-tailed).
+Effect size: Rank-biserial correlation (r) with 2000 bootstrap iterations.
+Multiple comparison correction: Benjamini-Hochberg FDR across 15 dimensions.

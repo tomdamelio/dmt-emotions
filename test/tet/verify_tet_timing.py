@@ -11,7 +11,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from tet.data_loader import TETDataLoader
+from scripts.tet.data_loader import TETDataLoader
 import config
 
 def main():

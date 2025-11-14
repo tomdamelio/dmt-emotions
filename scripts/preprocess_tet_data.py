@@ -19,6 +19,7 @@ import os
 import argparse
 import logging
 import json
+import pandas as pd
 
 # Add project root to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -253,7 +254,4 @@ def main():
 
 
 if __name__ == '__main__':
-    # Import pandas here to avoid import at module level
-    import pandas as pd
-    
     sys.exit(main())

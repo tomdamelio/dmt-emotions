@@ -6,9 +6,9 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from tet.data_loader import TETDataLoader
-from tet.validator import TETDataValidator
-from tet.preprocessor import TETPreprocessor
+from scripts.tet.data_loader import TETDataLoader
+from scripts.tet.validator import TETDataValidator
+from scripts.tet.preprocessor import TETPreprocessor
 import config
 
 # Load data

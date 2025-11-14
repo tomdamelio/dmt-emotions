@@ -25,9 +25,9 @@ import logging
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 # Import TET modules
-from tet.data_loader import TETDataLoader
-from tet.validator import TETDataValidator
-from tet.reporter import ValidationReporter
+from scripts.tet.data_loader import TETDataLoader
+from scripts.tet.validator import TETDataValidator
+from scripts.tet.reporter import ValidationReporter
 
 # Import configuration
 import config

@@ -139,7 +139,7 @@ def generate_time_series_figures(
     try:
         # Check required files
         required_files = [
-            os.path.join(input_dir, 'tet_preprocessed.csv'),
+            os.path.join(input_dir, 'preprocessed', 'tet_preprocessed.csv'),
             os.path.join(input_dir, 'lme', 'lme_results.csv'),
             os.path.join(input_dir, 'lme', 'lme_contrasts.csv'),
             os.path.join(input_dir, 'descriptive', 'time_course_all_dimensions.csv')
@@ -282,7 +282,8 @@ def generate_pca_figures(
         dpi: Resolution in DPI
         report: Report object to track status
     """
-    figure_type = "PCA Figures (Req 8.4, 8.5)"
+    figure_type_scree = "PCA Scree Plot (Req 8.4)"
+    figure_type_loadings = "PCA Loadings Heatmap (Req 8.5)"
     
     try:
         # Check required files
@@ -295,15 +296,44 @@ def generate_pca_figures(
         all_exist, missing = check_required_files(required_files)
         
         if not all_exist:
-            report.add_skipped(figure_type, f"Missing files: {', '.join([Path(f).name for f in missing])}")
+            report.add_skipped(figure_type_scree, f"Missing files: {', '.join([Path(f).name for f in missing])}")
+            report.add_skipped(figure_type_loadings, f"Missing files: {', '.join([Path(f).name for f in missing])}")
             return
         
-        # Note: PCA visualization functions would need to be implemented
-        # For now, we skip with informative message
-        report.add_skipped(figure_type, "PCA visualization functions not yet implemented")
+        # Run plot_pca_results.py script
+        import subprocess
+        
+        script_path = os.path.join(os.path.dirname(__file__), 'plot_pca_results.py')
+        cmd = [
+            sys.executable,
+            script_path,
+            '--input-dir', pca_dir,
+            '--output-dir', output_dir,
+            '--dpi', str(dpi)
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            # Check if output files were created
+            scree_output = os.path.join(output_dir, 'pca_scree_plot.png')
+            loadings_output = os.path.join(output_dir, 'pca_loadings_heatmap.png')
+            
+            if os.path.exists(scree_output):
+                report.add_generated(figure_type_scree, scree_output)
+            else:
+                report.add_failed(figure_type_scree, "Output file not created")
+            
+            if os.path.exists(loadings_output):
+                report.add_generated(figure_type_loadings, loadings_output)
+            else:
+                report.add_failed(figure_type_loadings, "Output file not created")
+        else:
+            error_msg = result.stderr if result.stderr else "Script execution failed"
+            report.add_failed("PCA Figures (Req 8.4, 8.5)", error_msg)
         
     except Exception as e:
-        report.add_failed(figure_type, str(e))
+        report.add_failed("PCA Figures (Req 8.4, 8.5)", str(e))
 
 
 def generate_clustering_figures(
@@ -326,7 +356,7 @@ def generate_clustering_figures(
     try:
         # Check required files
         clustering_dir = os.path.join(input_dir, 'clustering')
-        preprocessed_data = os.path.join(input_dir, 'tet_preprocessed.csv')
+        preprocessed_data = os.path.join(input_dir, 'preprocessed', 'tet_preprocessed.csv')
         
         required_files = [
             preprocessed_data,

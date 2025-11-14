@@ -1,0 +1,6 @@
+Figure: Clustering Kmeans Prob Timecourses Dmt Only
+
+[Caption to be added]
+
+Statistical details and interpretation should be added based on the specific 
+analysis and results shown in this figure.

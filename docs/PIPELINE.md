@@ -429,7 +429,38 @@ Los siguientes análisis están planificados pero aún no implementados:
 
 ---
 
-### 7) Generación de Figuras TET (Temporal Experience Tracking)
+### 7) Pipeline Completo de Análisis TET
+
+#### **Script Principal**: `pipelines/run_tet_analysis.py`
+- **Descripción**: Script orquestador que ejecuta el pipeline completo de análisis TET
+- **Uso**:
+  ```bash
+  # Ejecutar pipeline completo
+  python pipelines/run_tet_analysis.py
+  
+  # Ejecutar etapas específicas
+  python pipelines/run_tet_analysis.py --stages preprocessing descriptive lme
+  
+  # Omitir etapas
+  python pipelines/run_tet_analysis.py --skip-stages clustering
+  
+  # Validación sin ejecutar
+  python pipelines/run_tet_analysis.py --dry-run
+  ```
+
+- **Etapas del Pipeline**:
+  1. Preprocessing (`preprocess_tet_data.py`)
+  2. Descriptive Statistics (`compute_descriptive_stats.py`)
+  3. LME Models (`fit_lme_models.py`)
+  4. Peak/AUC Analysis (`compute_peak_auc.py`)
+  5. PCA Analysis (`compute_pca_analysis.py`)
+  6. Clustering Analysis (`compute_clustering_analysis.py`)
+  7. Figure Generation (`generate_all_figures.py`)
+  8. Report Generation (`generate_comprehensive_report.py`)
+
+- **Logs**: `results/tet/pipeline_execution.log`
+
+### 7.1) Generación de Figuras TET (Temporal Experience Tracking)
 
 #### **Script**: `scripts/generate_all_figures.py`
 - **Descripción**: Script maestro que orquesta la generación de todas las figuras de análisis TET para publicación

@@ -15,7 +15,7 @@ import numpy as np
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from tet.data_loader import TETDataLoader
+from scripts.tet.data_loader import TETDataLoader
 import config
 
 def main():

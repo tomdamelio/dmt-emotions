@@ -7,7 +7,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 import pandas as pd
-from tet.peak_auc_analyzer import TETPeakAUCAnalyzer
+from scripts.tet.peak_auc_analyzer import TETPeakAUCAnalyzer
 import config
 
 # Load preprocessed data

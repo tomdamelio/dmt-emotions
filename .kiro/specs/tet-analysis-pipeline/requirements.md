@@ -242,3 +242,48 @@ This document specifies the requirements for implementing a comprehensive analys
 14. THE TET_Analysis_System SHALL generate the comprehensive results document automatically after all analysis components complete, ensuring synchronization between reported findings and actual analysis outputs.
 
 15. THE TET_Analysis_System SHALL update the comprehensive results document when any analysis component is re-run, maintaining consistency between the synthesis document and underlying results files.
+
+
+### Requirement 10: Code Organization and Pipeline Orchestration
+
+**User Story:** As a researcher, I want the TET analysis codebase to be well-organized with a single entry point script, so that I can easily run the complete analysis pipeline and maintain a clean project structure.
+
+#### Acceptance Criteria
+
+1. THE TET_Analysis_System SHALL organize all core TET analysis modules in the scripts/tet/ directory, including preprocessing, statistical modeling, visualization, and reporting modules.
+
+2. THE TET_Analysis_System SHALL organize all TET testing and development scripts in the test/tet/ directory, separating experimental code from production pipeline components.
+
+3. THE TET_Analysis_System SHALL provide a single orchestration script at scripts/run_tet_analysis.py that executes the complete TET analysis pipeline in the correct sequence.
+
+4. WHEN THE orchestration script is executed, THE TET_Analysis_System SHALL call individual analysis scripts in the following order: preprocessing, descriptive statistics, LME modeling, peak/AUC analysis, PCA analysis, clustering analysis, figure generation, and comprehensive report generation.
+
+5. THE TET_Analysis_System SHALL save all analysis results exclusively in the results/tet/ directory with clear subdirectory organization for different analysis types (descriptive/, lme/, peak_auc/, pca/, clustering/, figures/).
+
+6. THE TET_Analysis_System SHALL save all CSV result files in their respective subdirectories within results/tet/ with descriptive filenames indicating content and analysis type.
+
+7. THE TET_Analysis_System SHALL save all figure files in results/tet/figures/ with descriptive filenames and consistent naming conventions.
+
+8. THE TET_Analysis_System SHALL save figure captions as text files in results/tet/figures/captions/ with filenames matching their corresponding figures.
+
+9. THE TET_Analysis_System SHALL generate a final comprehensive report at results/tet/tet_analysis_report.md formatted according to APA style guidelines and Nature Human Behaviour writing conventions.
+
+10. THE TET_Analysis_System SHALL include a Methods section in the final report describing all preprocessing steps, statistical models, dimensionality reduction approaches, clustering algorithms, and multiple comparison corrections applied.
+
+11. THE TET_Analysis_System SHALL include a Results section in the final report presenting main findings organized by analysis type, with statistical notation following APA format (e.g., β = X.XX, 95% CI [X.XX, X.XX], p < .001).
+
+12. THE TET_Analysis_System SHALL ensure the final report is clearly identifiable as the primary output document, distinct from intermediate analysis reports or documentation files.
+
+13. THE TET_Analysis_System SHALL provide command-line options in the orchestration script to run specific analysis stages independently (e.g., --preprocessing-only, --skip-clustering) for debugging and iterative development.
+
+14. THE TET_Analysis_System SHALL log all pipeline execution steps with timestamps and status messages to a log file at results/tet/pipeline_execution.log.
+
+15. THE TET_Analysis_System SHALL validate that required input data files exist before starting each analysis stage and provide clear error messages if dependencies are missing.
+
+16. THE TET_Analysis_System SHALL provide a single comprehensive documentation file at docs/TET_ANALYSIS_GUIDE.md that consolidates all TET analysis documentation, including data structure specifications, preprocessing procedures, statistical methods, interpretation guidelines, and usage instructions.
+
+17. THE TET_Analysis_System SHALL organize the comprehensive documentation with clear sections for: (a) Data Structure and Loading, (b) Preprocessing and Standardization, (c) Statistical Analysis Methods, (d) Dimensionality Reduction and Clustering, (e) Visualization and Reporting, (f) Usage Instructions, and (g) Troubleshooting.
+
+18. THE TET_Analysis_System SHALL archive or remove redundant documentation files (e.g., TET_DATA_LOADING_COMPARISON.md, TET_DIMENSIONS_TRACEABILITY.md, TET_TEMPORAL_RESOLUTION.md, tet_clustering_analysis.md) after consolidating their content into the single comprehensive guide.
+
+19. THE TET_Analysis_System SHALL maintain the comprehensive documentation file as the authoritative reference for all TET analysis procedures, ensuring consistency between documentation and implementation.

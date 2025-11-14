@@ -1,6 +1,6 @@
 # TET Analysis: Comprehensive Results
 
-**Generated:** 2025-11-14 11:26:02
+**Generated:** 2025-11-14 16:04:37
 
 **Analysis Pipeline:** TET (Temporal Experience Tracking) Analysis
 
@@ -171,10 +171,10 @@ PCA identified 5 principal components explaining 76.6% of total variance.
 
 The following dimensions showed consistent effects across multiple methods:
 
-- **Complex Imagery**: Significant across 1 methods
-- **Emotional Intensity**: Significant across 1 methods
 - **Temporality**: Significant across 1 methods
 - **Elementary Imagery**: Significant across 1 methods
+- **Emotional Intensity**: Significant across 1 methods
+- **Complex Imagery**: Significant across 1 methods
 - **General Intensity**: Significant across 1 methods
 
 ### 6.2 Method Correlations

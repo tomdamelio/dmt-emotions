@@ -8,7 +8,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from tet.lme_analyzer import TETLMEAnalyzer
+from scripts.tet.lme_analyzer import TETLMEAnalyzer
 import pandas as pd
 
 print("=" * 70)

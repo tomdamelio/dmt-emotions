@@ -21,7 +21,7 @@ DATA_ROOT = os.path.abspath(os.path.join(PROJECT_ROOT, '..', 'data'))
 # Rutas de datos siguiendo estándares BIDS
 PHYSIOLOGY_DATA = os.path.join(DATA_ROOT, 'original', 'physiology')
 DERIVATIVES_DATA = os.path.join(DATA_ROOT, 'derivatives', 'preprocessing')
-REPORTS_DATA = os.path.join(DATA_ROOT, 'resampled')
+REPORTS_DATA = os.path.join(DATA_ROOT, 'original', 'reports', 'resampled')
 
 # =============================================================================
 # CONFIGURACIÓN DE ANÁLISIS EDA

@@ -72,8 +72,8 @@ Examples:
     parser.add_argument(
         '--preprocessed-data',
         type=str,
-        default='results/tet/tet_preprocessed.csv',
-        help='Path to preprocessed TET data (default: results/tet/tet_preprocessed.csv)'
+        default='results/tet/preprocessed/tet_preprocessed.csv',
+        help='Path to preprocessed TET data (default: results/tet/preprocessed/tet_preprocessed.csv)'
     )
     
     parser.add_argument(

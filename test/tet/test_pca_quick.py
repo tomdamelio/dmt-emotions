@@ -12,7 +12,7 @@ import os
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from tet.pca_analyzer import TETPCAAnalyzer
+from scripts.tet.pca_analyzer import TETPCAAnalyzer
 import config
 
 def main():
@@ -110,7 +110,7 @@ def test_pca_lme():
     print("=" * 80)
     
     # Import here to avoid circular dependency
-    from tet.pca_lme_analyzer import TETPCALMEAnalyzer
+    from scripts.tet.pca_lme_analyzer import TETPCALMEAnalyzer
     
     # Load PC scores
     input_file = 'results/tet/pca/pca_scores.csv'

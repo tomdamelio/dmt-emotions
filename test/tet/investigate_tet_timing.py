@@ -6,7 +6,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from tet.data_loader import TETDataLoader
+from scripts.tet.data_loader import TETDataLoader
 
 loader = TETDataLoader(mat_dir='../data/original/reports/resampled')
 data = loader.load_data()

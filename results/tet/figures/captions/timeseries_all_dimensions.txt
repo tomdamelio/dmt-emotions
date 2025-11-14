@@ -1,0 +1,13 @@
+Figure: Temporal Dynamics of Subjective Experience Dimensions
+
+Time series plots showing mean trajectories (±SEM) for all 15 TET dimensions across 
+DMT sessions. Blue lines represent Low dose (20mg), red lines represent High dose (40mg).
+Grey dashed vertical line indicates DMT onset (end of resting state baseline). Grey 
+background shading indicates time bins where DMT significantly differs from resting 
+state baseline (p < .05, FDR-corrected). Black horizontal bars indicate time bins 
+with significant State×Dose interaction effects (p < .05, FDR-corrected). Dimensions 
+are ordered by strength of main State effect from linear mixed effects models.
+
+Statistical Analysis: Linear mixed effects models with random subject intercepts.
+Multiple comparison correction: Benjamini-Hochberg FDR.
+Time window: 0-20 minutes for DMT, 0-10 minutes for resting state.
