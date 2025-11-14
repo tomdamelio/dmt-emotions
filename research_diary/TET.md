@@ -217,3 +217,136 @@ Para despues
 ------------
 
 [ ] Hacer una figura de la metodologia, usando al imagen de Evan para crear en chatgpt u boceto de la toma de datos. O si no hacerla usando otra app. Usar los colores que defini mas arriba para las 3 señales fisiologicas para marcar en esa figura las 3 señales registradas
+
+--
+-
+
+## 5. State Clustering Visualization (Task 25 - Completed)
+
+### 5.1 Overview
+
+Implemented comprehensive visualization tools for clustering and state modelling results through the `TETStateVisualization` class and `plot_state_results.py` script.
+
+### 5.2 Visualization Capabilities
+
+#### 5.2.1 KMeans Centroid Profiles (Fig. 3.5-like)
+* Computes centroid coordinates in z-scored dimensions
+* Normalizes each centroid by maximum absolute value to [0, 1]
+* Generates horizontal bar plots showing relative dimension contributions per cluster
+* Allows comparison of characteristic profiles across clusters
+
+#### 5.2.2 Time-Course Cluster Probability Plots (Fig. 3.6-like)
+* Visualizes evolution of cluster probabilities over time
+* Computes mean ± SEM across subjects for High/Low dose in DMT
+* Optional inclusion of RS condition for comparison
+* Separate panels for each state × dose combination
+
+#### 5.2.3 GLHMM State Time-Course Plots
+* Plots GLHMM posterior probabilities (gamma) over time
+* Supports filtering by experimental state (RS vs DMT)
+* Allows subsetting to specific GLHMM states (e.g., S=2 solution)
+* Mean ± SEM curves with shaded error bands
+
+#### 5.2.4 KMeans-GLHMM Correspondence Analysis
+* Computes contingency table between KMeans clusters and GLHMM states
+* Normalizes to conditional probabilities: P(GLHMM state | KMeans cluster)
+* Generates heatmap visualization
+* Exports contingency table as CSV for further analysis
+
+### 5.3 Usage
+
+#### Basic Usage
+```bash
+# Generate all visualization figures with default settings
+python scripts/plot_state_results.py
+
+# Specify custom paths
+python scripts/plot_state_results.py \
+    --input-dir results/tet/clustering \
+    --output-dir results/tet/figures
+
+# Include RS condition and plot k=2 clusters
+python scripts/plot_state_results.py \
+    --k 2 \
+    --include-rs
+
+# Plot subset of GLHMM states (S=2 solution)
+python scripts/plot_state_results.py \
+    --subset-glhmm-states 0 1
+
+# High-resolution output
+python scripts/plot_state_results.py \
+    --dpi 600 \
+    --verbose
+```
+
+#### Programmatic Usage
+```python
+from tet.state_visualization import TETStateVisualization
+import pandas as pd
+
+# Load data
+data = pd.read_csv('results/tet/tet_preprocessed.csv')
+kmeans = pd.read_csv('results/tet/clustering/clustering_kmeans_assignments.csv')
+glhmm_viterbi = pd.read_csv('results/tet/clustering/clustering_glhmm_viterbi.csv')
+glhmm_probs = pd.read_csv('results/tet/clustering/clustering_glhmm_probabilities.csv')
+
+# Initialize visualizer
+viz = TETStateVisualization(
+    data=data,
+    kmeans_assignments=kmeans,
+    glhmm_viterbi=glhmm_viterbi,
+    glhmm_probabilities=glhmm_probs
+)
+
+# Generate individual plots
+viz.plot_kmeans_centroid_profiles(k=2, output_dir='results/tet/figures')
+viz.plot_kmeans_cluster_timecourses(k=2, include_rs=True, output_dir='results/tet/figures')
+viz.plot_glhmm_state_timecourses(output_dir='results/tet/figures')
+viz.plot_kmeans_glhmm_crosswalk(k=2, output_dir='results/tet/figures')
+```
+
+### 5.4 Output Files
+
+Generated figures are saved to `results/tet/figures/`:
+* `clustering_kmeans_centroids_k2.png` - Centroid profiles
+* `clustering_kmeans_prob_timecourses_with_rs.png` - Cluster time courses (with RS)
+* `clustering_kmeans_prob_timecourses_dmt_only.png` - Cluster time courses (DMT only)
+* `glhmm_state_prob_timecourses.png` - GLHMM state time courses
+* `kmeans_glhmm_crosswalk.png` - Correspondence heatmap
+* `kmeans_glhmm_crosswalk.csv` - Contingency table (counts and probabilities)
+
+### 5.5 Implementation Details
+
+#### Normalization Strategy
+Centroid profiles are normalized by maximum absolute value within each cluster to enable comparison of relative dimension importance independent of absolute intensity. This highlights which dimensions are most characteristic of each cluster.
+
+#### Soft Probability Computation
+KMeans soft probabilities are computed using normalized inverse distances to cluster centers:
+```
+prob_k = (1/dist_k) / sum(1/dist_j for all j)
+```
+
+This provides a probabilistic interpretation where observations closer to a cluster center have higher probability of belonging to that cluster.
+
+#### Correspondence Analysis
+The KMeans-GLHMM correspondence analysis helps understand whether the two methods identify similar experiential states or capture different aspects of the data. High correspondence (diagonal heatmap) suggests agreement, while off-diagonal patterns indicate complementary information.
+
+### 5.6 Integration with Analysis Pipeline
+
+The visualization tools integrate seamlessly with the clustering analysis pipeline:
+
+1. Run clustering analysis: `python scripts/compute_clustering_analysis.py`
+2. Generate visualizations: `python scripts/plot_state_results.py`
+3. Inspect results: `python scripts/inspect_clustering_results.py`
+
+All scripts use consistent file naming conventions and directory structures for easy workflow integration.
+
+### 5.7 Notes
+
+* All plots use publication-ready defaults (300 DPI, appropriate figure sizes)
+* Color schemes are consistent across plots (Set2 for clusters, Set1 for states)
+* Error bands represent standard error of the mean (SEM) across subjects
+* Time is displayed in minutes for easier interpretation
+* Missing data is handled gracefully with informative warnings
+

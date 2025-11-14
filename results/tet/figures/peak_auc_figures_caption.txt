@@ -1,0 +1,28 @@
+Figure: Dose Effects on Peak, Time-to-Peak, and AUC Metrics
+
+This set of three figures shows dose-dependent effects (High 40mg vs Low 20mg) on 
+temporal dynamics of subjective experience dimensions during DMT sessions.
+
+Panel A (peak_dose_comparison.png): Peak intensity values (z-scores) reached during 
+the first 9 minutes of DMT sessions. Higher peak values indicate stronger subjective 
+experiences on that dimension.
+
+Panel B (time_to_peak_dose_comparison.png): Time in minutes when peak intensity was 
+reached. Earlier peaks indicate faster onset of subjective effects.
+
+Panel C (auc_dose_comparison.png): Area under the curve (AUC) from 0-9 minutes, 
+representing the cumulative intensity of experience over time. Higher AUC indicates 
+sustained elevated experiences.
+
+Visual elements:
+- Blue boxes: Low dose (20mg)
+- Red boxes: High dose (40mg)
+- Gray lines: Paired observations connecting the same subject across doses
+- Stars above dimensions: Significant dose effects after FDR correction
+  * p < 0.05, ** p < 0.01, *** p < 0.001
+
+Dimensions are ordered by effect size (absolute value of Wilcoxon r statistic) from 
+left to right, with strongest dose effects shown first.
+
+Statistical test: Wilcoxon signed-rank test (paired, non-parametric) with 
+Benjamini-Hochberg FDR correction across 15 dimensions.

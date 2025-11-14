@@ -188,50 +188,57 @@ This document specifies the requirements for implementing a comprehensive analys
 
 #### Acceptance Criteria
 
-1. THE TET_Analysis_System SHALL generate time course plots showing mean ± SEM trajectories for each Dimension, separated by State and Dose, with shaded regions indicating time bins where paired t-tests show significant differences (p_fdr < 0.05).
+1. THE TET_Analysis_System SHALL generate annotated time series plots showing mean ± SEM trajectories for each Dimension with High_Dose and Low_Dose conditions, including RS_Baseline reference, grey shading for time bins where DMT differs significantly from baseline, and black bars indicating significant State:Dose interactions.
 
-2. THE TET_Analysis_System SHALL generate coefficient plots for LME fixed effects showing beta estimates with 95% confidence intervals and markers indicating p_fdr significance levels.
+2. THE TET_Analysis_System SHALL generate coefficient plots for LME fixed effects showing beta estimates with 95% confidence intervals for each Dimension, with markers indicating p_fdr significance levels and effects ordered by strength of State main effect.
 
-3. THE TET_Analysis_System SHALL generate boxplots comparing High vs Low Dose for peak values, time_to_peak, and AUC within DMT, with annotations showing Wilcoxon test p_fdr values.
+3. THE TET_Analysis_System SHALL generate boxplots comparing High vs Low Dose for peak values, time_to_peak, and AUC_0_9 within DMT sessions, with annotations showing Wilcoxon test p_fdr values and effect sizes with bootstrap confidence intervals.
 
-4. THE TET_Analysis_System SHALL generate PCA scree plots showing variance explained by each component with a cumulative variance line.
+4. THE TET_Analysis_System SHALL generate PCA scree plots showing variance explained by each component with cumulative variance line, indicating the threshold used for component retention.
 
-5. THE TET_Analysis_System SHALL generate PCA loading plots showing dimension contributions to PC1 and PC2 as bar charts.
+5. THE TET_Analysis_System SHALL generate PCA loading heatmaps or bar charts showing dimension contributions to retained components, with dimensions ordered by loading magnitude to facilitate interpretation.
 
-6. THE TET_Analysis_System SHALL generate cluster probability time course plots showing the probability of each Cluster_State over time, separated by State and Dose.
+6. THE TET_Analysis_System SHALL generate KMeans centroid profile plots showing normalized dimension contributions for each cluster, replicating the format of preliminary analysis figures (Fig. 3.5) to enable direct comparison.
 
-7. THE TET_Analysis_System SHALL save all figures as PNG files with resolution of at least 300 DPI in the results/tet/figures/ directory.
+7. THE TET_Analysis_System SHALL generate KMeans cluster probability time course plots showing mean ± SEM probability trajectories for each Cluster_State over time, separated by State and Dose, to visualize temporal dynamics of experiential states and replicate preliminary analysis (Fig. 3.6).
 
-### Requirement 9: Robustness and Sensitivity Analysis
+8. WHERE GLHMM temporal state modelling is implemented, THE TET_Analysis_System SHALL generate GLHMM state probability time course plots and KMeans-GLHMM correspondence heatmaps to compare static and temporal state identification approaches.
 
-**User Story:** As a researcher, I want the system to perform robustness checks, so that I can assess the stability of findings across analytical choices.
+9. THE TET_Analysis_System SHALL save all figures as PNG files with resolution of at least 300 DPI in the results/tet/figures/ directory with descriptive filenames indicating content.
 
-#### Acceptance Criteria
 
-1. THE TET_Analysis_System SHALL repeat LME_Model fitting with embodiment dimension not inverted and compare results to primary analysis.
+### Requirement 9: Comprehensive Results Synthesis and Reporting
 
-2. THE TET_Analysis_System SHALL identify subjects with incomplete TET_Data or high influence (DFBETAS > 1) and repeat primary analyses excluding these subjects.
-
-3. THE TET_Analysis_System SHALL repeat preprocessing and analysis using 60-second Time_Bins instead of 30-second bins.
-
-4. THE TET_Analysis_System SHALL export robustness analysis results as separate CSV files with naming indicating the analytical variation applied.
-
-5. THE TET_Analysis_System SHALL generate a summary report comparing primary and robustness analysis results, highlighting any substantial differences in significance or effect sizes.
-
-### Requirement 10: Results Organization and Metadata
-
-**User Story:** As a researcher, I want the system to organize outputs systematically with comprehensive metadata, so that I can reproduce analyses and understand provenance.
+**User Story:** As a researcher, I want the system to generate a comprehensive results document synthesizing all TET analysis findings, so that I can understand the main outcomes, identify patterns across analyses, and determine which areas require further investigation.
 
 #### Acceptance Criteria
 
-1. THE TET_Analysis_System SHALL create a results/tet/ directory structure with subdirectories for descriptives/, lme/, figures/, pca/, clustering/, and robustness/.
+1. THE TET_Analysis_System SHALL generate a comprehensive results document at docs/tet_comprehensive_results.md that synthesizes findings from all TET analysis components.
 
-2. THE TET_Analysis_System SHALL export all CSV tables with descriptive filenames indicating content (e.g., lme_coefficients_all_dimensions.csv).
+2. THE TET_Analysis_System SHALL include an Executive Summary section presenting the 3-5 most important findings across all analyses with effect sizes and statistical significance levels.
 
-3. THE TET_Analysis_System SHALL generate a JSON metadata file for each analysis run containing n_subjects, n_time_bins, variance_explained, random_seed, data_version, and timestamp.
+3. THE TET_Analysis_System SHALL include a Descriptive Statistics section summarizing temporal dynamics for each Dimension, including peak timing patterns, dose-dependent trajectories, and baseline comparisons.
 
-4. THE TET_Analysis_System SHALL log all subject exclusions with reasons in a JSON file named exclusions_log.json.
+4. THE TET_Analysis_System SHALL include an LME Results section reporting significant State, Dose, and interaction effects for each Dimension with standardized coefficients, confidence intervals, and FDR-corrected p-values organized by effect type.
 
-5. THE TET_Analysis_System SHALL set the global random seed to 22 for all stochastic procedures to ensure reproducibility.
+5. THE TET_Analysis_System SHALL include a Peak and AUC Analysis section reporting dose comparisons for intensity and duration metrics with effect sizes, confidence intervals, and identifying dimensions showing strongest dose sensitivity.
 
-6. THE TET_Analysis_System SHALL generate a summary HTML report linking to all output files and displaying key figures and tables.
+6. THE TET_Analysis_System SHALL include a Dimensionality Reduction section interpreting retained PCA_Components by describing dimension loadings, variance explained, and temporal dynamics of component scores across conditions.
+
+7. THE TET_Analysis_System SHALL include a Clustering Analysis section characterizing identified Cluster_States by their dimension profiles, temporal prevalence patterns, dose sensitivity, and stability metrics.
+
+8. THE TET_Analysis_System SHALL include a Cross-Analysis Integration section identifying convergent findings across multiple analysis approaches and highlighting dimensions or patterns that show consistent effects.
+
+9. THE TET_Analysis_System SHALL include a Methodological Notes section documenting any data quality issues, model assumptions, limitations, or analytical decisions that may affect interpretation.
+
+10. THE TET_Analysis_System SHALL include a Further Investigation section listing specific unresolved questions, ambiguous findings, contradictory results, or patterns requiring additional analysis with concrete suggestions for follow-up analyses.
+
+11. THE TET_Analysis_System SHALL format statistical results consistently using standardized notation (β for coefficients, r for effect sizes, p_fdr for corrected p-values) and include confidence intervals for all effect estimates.
+
+12. THE TET_Analysis_System SHALL reference specific figures and tables from the analysis pipeline using relative paths to enable navigation between the results document and supporting materials.
+
+13. THE TET_Analysis_System SHALL organize findings hierarchically with clear section headings, subsections for each dimension or analysis component, and bullet points for key findings to facilitate rapid comprehension.
+
+14. THE TET_Analysis_System SHALL generate the comprehensive results document automatically after all analysis components complete, ensuring synchronization between reported findings and actual analysis outputs.
+
+15. THE TET_Analysis_System SHALL update the comprehensive results document when any analysis component is re-run, maintaining consistency between the synthesis document and underlying results files.

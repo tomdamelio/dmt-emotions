@@ -429,7 +429,197 @@ Los siguientes análisis están planificados pero aún no implementados:
 
 ---
 
+### 7) Generación de Figuras TET (Temporal Experience Tracking)
+
+#### **Script**: `scripts/generate_all_figures.py`
+- **Descripción**: Script maestro que orquesta la generación de todas las figuras de análisis TET para publicación
+- **Input**:
+  - Directorio de resultados TET (default: `results/tet/`)
+  - Datos preprocesados: `tet_preprocessed.csv`
+  - Resultados LME: `lme/lme_results.csv`, `lme/lme_contrasts.csv`
+  - Datos descriptivos: `descriptive/time_course_all_dimensions.csv`
+  - Resultados Peak/AUC: `peak_auc/peak_auc_metrics.csv`, `peak_auc/peak_auc_tests.csv`
+  - Resultados PCA: `pca/pca_variance_explained.csv`, `pca/pca_loadings.csv`
+  - Resultados clustering: `clustering/clustering_kmeans_assignments.csv`
+
+- **Proceso**:
+  1. **Verificación de archivos**: Comprueba la existencia de archivos requeridos antes de generar cada tipo de figura
+  2. **Generación selectiva**: Permite generar todos los tipos de figuras o solo tipos específicos
+  3. **Manejo de errores**: Usa bloques try-except para cada tipo de figura, continúa con las disponibles si algunas fallan
+  4. **Reporte de estado**: Registra figuras generadas, omitidas y fallidas
+  5. **Índice HTML**: Crea un índice HTML con enlaces a todas las figuras generadas
+
+- **Tipos de figuras generadas**:
+  
+  **7.1) Series Temporales Anotadas (Req 8.1)**
+  - Script subyacente: `plot_time_series.py`
+  - Archivo: `timeseries_all_dimensions.png`
+  - Contenido:
+    - Trayectorias medias con sombreado SEM para dosis Low (20mg) y High (40mg)
+    - Línea base RS como punto de referencia
+    - Sombreado gris de fondo para bins temporales donde DMT difiere significativamente de RS
+    - Barras horizontales negras para bins con interacciones State:Dose significativas
+    - Dimensiones ordenadas por fuerza del efecto State principal
+  - Dimensiones: 12 × 10 pulgadas, 300 DPI
+  - Requisitos: Datos preprocesados, resultados LME, contrastes LME, cursos temporales
+  
+  **7.2) Gráficos de Bosque de Coeficientes LME (Req 8.2)**
+  - Script subyacente: `plot_lme_coefficients.py`
+  - Archivo: `lme_coefficients_forest.png`
+  - Contenido:
+    - Estimaciones β con intervalos de confianza del 95%
+    - Círculos rellenos para p_fdr < 0.05, círculos abiertos para p_fdr ≥ 0.05
+    - Codificación por colores según tipo de efecto (State, Dose, Interacción)
+    - Paneles separados para cada tipo de efecto fijo
+    - Dimensiones ordenadas por fuerza del efecto State
+  - Dimensiones: 10 × 8 pulgadas, 300 DPI
+  - Requisitos: Resultados LME
+  
+  **7.3) Boxplots de Comparación de Dosis Peak/AUC (Req 8.3)**
+  - Script subyacente: `plot_peak_auc.py`
+  - Archivos:
+    - `peak_dose_comparison.png`: Valores pico (z-scores)
+    - `time_to_peak_dose_comparison.png`: Tiempo hasta el pico (minutos)
+    - `auc_dose_comparison.png`: AUC 0-9 min (z-score × min)
+  - Contenido:
+    - Cajas azules para dosis Low, cajas rojas para dosis High
+    - Líneas grises conectando observaciones pareadas (mismo sujeto)
+    - Estrellas de significancia: * p < 0.05, ** p < 0.01, *** p < 0.001
+    - Tamaños de efecto (r) con IC 95% de bootstrap
+    - Solo anotaciones para p_fdr < 0.05
+  - Dimensiones: 10 × 6 pulgadas por figura, 300 DPI
+  - Requisitos: Métricas Peak/AUC, resultados de pruebas
+  
+  **7.4) Figuras PCA (Req 8.4, 8.5)**
+  - Estado: Pendiente de implementación
+  - Figuras planificadas:
+    - Gráfico de sedimentación mostrando varianza explicada
+    - Mapas de calor o gráficos de barras de cargas
+  - Requisitos: Varianza explicada PCA, cargas PCA
+  
+  **7.5) Figuras de Clustering (Req 8.6, 8.7)**
+  - Script subyacente: `plot_state_results.py`
+  - Nota: Usar directamente `plot_state_results.py` para figuras de clustering
+  - Figuras generadas:
+    - Perfiles de centroides KMeans (similar a Fig. 3.5)
+    - Gráficos de cursos temporales de probabilidad de cluster (similar a Fig. 3.6)
+    - Cursos temporales de estado GLHMM
+    - Mapas de calor de correspondencia KMeans-GLHMM
+  - Requisitos: Datos preprocesados, asignaciones KMeans, rutas Viterbi GLHMM, probabilidades GLHMM
+  
+  **7.6) Figuras GLHMM (Req 8.8)**
+  - Estado: Trabajo futuro opcional (no implementado aún)
+  - Razón: El análisis GLHMM es trabajo futuro opcional
+
+- **Output**:
+  - Figuras PNG en `results/tet/figures/` con resolución especificada (default: 300 DPI)
+  - `index.html`: Índice HTML con enlaces a todas las figuras generadas
+  - Reporte de resumen en consola con estado de cada tipo de figura
+  - Registro de figuras generadas, omitidas y fallidas
+
+- **Opciones de línea de comandos**:
+  ```bash
+  # Generar todas las figuras con configuración predeterminada
+  python scripts/generate_all_figures.py
+  
+  # Especificar directorios personalizados de entrada/salida
+  python scripts/generate_all_figures.py --input results/tet --output results/tet/figures
+  
+  # Generar solo tipos de figuras específicos
+  python scripts/generate_all_figures.py --figures time-series lme peak-auc
+  
+  # Salida de alta resolución
+  python scripts/generate_all_figures.py --dpi 600 --verbose
+  ```
+
+- **Manejo de errores**:
+  - Verifica archivos requeridos antes de cada generación de figura
+  - Registra advertencias para figuras omitidas (archivos faltantes)
+  - Registra errores para generaciones de figuras fallidas
+  - Continúa con figuras disponibles si algunas fallan
+  - Genera reporte de resumen de generadas vs omitidas
+
+- **Interpretación de figuras**:
+  
+  **Series Temporales (8.1)**:
+  - Eje X: Tiempo en minutos (0-20 para DMT)
+  - Eje Y: Intensidad en z-score
+  - Línea azul: Dosis Low (20mg) con sombreado SEM
+  - Línea roja: Dosis High (40mg) con sombreado SEM
+  - Línea vertical gris discontinua: Inicio de DMT (fin de línea base RS)
+  - Fondo gris: Bins temporales donde DMT difiere significativamente de RS (p < 0.05)
+  - Barras negras: Bins temporales con interacción State:Dose significativa (p < 0.05)
+  - Orden de dimensiones: Por fuerza del efecto State principal (más fuerte primero)
+  
+  **Coeficientes LME (8.2)**:
+  - Eje X: Valor del coeficiente β
+  - Eje Y: Dimensiones (ordenadas por efecto State)
+  - Puntos: Estimaciones β
+  - Barras de error: Intervalos de confianza del 95%
+  - Círculos rellenos: p_fdr < 0.05 (significativo)
+  - Círculos abiertos: p_fdr ≥ 0.05 (no significativo)
+  - Línea vertical en x=0: Referencia de efecto nulo
+  - Paneles separados: Por tipo de efecto (State, Dose, State:Dose, etc.)
+  
+  **Boxplots Peak/AUC (8.3)**:
+  - Eje X: Dimensiones (ordenadas por tamaño del efecto)
+  - Eje Y: Valor de métrica (pico, tiempo hasta el pico, o AUC)
+  - Cajas azules: Dosis Low (20mg)
+  - Cajas rojas: Dosis High (40mg)
+  - Líneas grises: Observaciones pareadas (mismo sujeto entre dosis)
+  - Estrellas: Significancia después de corrección FDR
+    - * p < 0.05
+    - ** p < 0.01
+    - *** p < 0.001
+  - Interpretación:
+    - Pico: Intensidad máxima alcanzada (z-scores más altos = experiencias más fuertes)
+    - Tiempo hasta el pico: Minutos hasta la intensidad máxima (valores más tempranos = inicio más rápido)
+    - AUC: Intensidad acumulada en el tiempo (AUC más alto = experiencias elevadas sostenidas)
+
+- **Solución de problemas**:
+  
+  **Problema**: Figuras omitidas debido a archivos faltantes
+  - **Solución**: Ejecutar los scripts de análisis requeridos primero:
+    1. `python scripts/preprocess_tet_data.py` (para datos preprocesados)
+    2. `python scripts/compute_descriptive_stats.py` (para cursos temporales)
+    3. `python scripts/fit_lme_models.py` (para resultados LME)
+    4. `python scripts/compute_peak_auc.py` (para análisis Peak/AUC)
+    5. `python scripts/compute_pca_analysis.py` (para análisis PCA)
+    6. `python scripts/compute_clustering_analysis.py` (para análisis de clustering)
+  
+  **Problema**: Generación de figuras fallida con error
+  - **Solución**: Verificar el registro de errores en la salida de consola
+  - Verificar que los archivos de entrada tengan el formato correcto
+  - Verificar que todas las dependencias estén instaladas
+  - Ejecutar con `--verbose` para salida de depuración detallada
+  
+  **Problema**: Figuras PCA o clustering omitidas
+  - **Solución**: Estas figuras requieren scripts de análisis específicos
+  - Para PCA: Ejecutar `python scripts/compute_pca_analysis.py` primero
+  - Para clustering: Usar `python scripts/plot_state_results.py` directamente
+  
+  **Problema**: Figuras de baja calidad o pixeladas
+  - **Solución**: Aumentar la resolución DPI:
+    ```bash
+    python scripts/generate_all_figures.py --dpi 600
+    ```
+  
+  **Problema**: Índice HTML no muestra imágenes
+  - **Solución**: Verificar que las figuras se generaron exitosamente
+  - Verificar que el directorio de salida sea correcto
+  - Abrir `index.html` desde el directorio de salida
+
+- **Personalización de figuras**:
+  - Resolución: Usar flag `--dpi` (default: 300, recomendado para publicación: 300-600)
+  - Tipos de figuras: Usar flag `--figures` para generar solo tipos específicos
+  - Directorios: Usar flags `--input` y `--output` para rutas personalizadas
+  - Estilo: Modificar scripts individuales de graficación para personalización detallada
+
+---
+
 ## Resumen del orden de ejecución
+
+### Pipeline de Fisiología
 
 ```bash
 # 1. Preprocesamiento de señales fisiológicas
@@ -450,6 +640,37 @@ python scripts/run_ecg_hr_analysis.py    # Heart Rate (HR)
 python scripts/run_ecg_hrv_analysis.py   # Heart Rate Variability (HRV)
 
 # 6. Análisis de RESP (pendiente)
+```
+
+### Pipeline de TET (Temporal Experience Tracking)
+
+```bash
+# 1. Preprocesamiento de datos TET
+python scripts/preprocess_tet_data.py
+
+# 2. Estadísticas descriptivas y cursos temporales
+python scripts/compute_descriptive_stats.py
+
+# 3. Modelos de efectos mixtos lineales (LME)
+python scripts/fit_lme_models.py
+
+# 4. Análisis de pico y AUC
+python scripts/compute_peak_auc.py
+
+# 5. Análisis de componentes principales (PCA)
+python scripts/compute_pca_analysis.py
+
+# 6. Análisis de clustering y modelado de estados
+python scripts/compute_clustering_analysis.py
+
+# 7. Generación de todas las figuras TET
+python scripts/generate_all_figures.py
+
+# Alternativamente, generar solo tipos específicos de figuras:
+python scripts/generate_all_figures.py --figures time-series lme peak-auc
+
+# O generar figuras de clustering directamente:
+python scripts/plot_state_results.py
 ```
 
 ---
@@ -480,3 +701,341 @@ python scripts/run_ecg_hrv_analysis.py   # Heart Rate Variability (HRV)
 3. **Estructura de directorios**: Los scripts crean automáticamente los directorios de output necesarios.
 
 
+
+    - Usar `--dpi 600` para mayor resolución
+    - Verificar que matplotlib esté actualizado
+
+---
+
+### 8) Generación de Reporte Integral de Resultados TET
+
+#### **Script**: `scripts/generate_comprehensive_report.py`
+- **Descripción**: Genera un documento markdown integral que sintetiza todos los hallazgos del análisis TET
+- **Input**:
+  - Directorio de resultados TET (default: `results/tet/`)
+  - Todos los archivos CSV de análisis:
+    - Estadísticas descriptivas: `descriptive/time_course_all_dimensions.csv`, `descriptive/session_summaries.csv`
+    - Resultados LME: `lme/lme_results.csv`, `lme/lme_contrasts.csv`
+    - Análisis Peak/AUC: `peak_auc/peak_auc_metrics.csv`, `peak_auc/peak_auc_tests.csv`
+    - Resultados PCA: `pca/pca_loadings.csv`, `pca/pca_variance_explained.csv`, `pca/pca_lme_results.csv`
+    - Resultados clustering: `clustering/clustering_evaluation.csv`, `clustering/clustering_state_metrics.csv`, etc.
+
+- **Proceso**:
+  1. **Carga de resultados**: Lee todos los archivos CSV de análisis disponibles
+  2. **Detección de actualizaciones**: Compara timestamps de archivos de resultados vs reporte existente
+  3. **Síntesis de hallazgos**: Extrae y organiza hallazgos clave de cada análisis
+  4. **Ranking de efectos**: Ordena dimensiones por tamaño de efecto y significancia
+  5. **Integración cruzada**: Identifica patrones convergentes entre métodos de análisis
+  6. **Generación de documento**: Crea documento markdown estructurado con todas las secciones
+
+- **Secciones del reporte**:
+  
+  **8.1) Executive Summary**
+  - 3-5 hallazgos más importantes del análisis completo
+  - Tamaños de efecto y niveles de significancia
+  - Contexto del estudio (n sujetos, condiciones)
+  
+  **8.2) Descriptive Statistics**
+  - Dinámicas temporales para cada dimensión
+  - Patrones de timing de picos (onset, plateau, offset)
+  - Comparaciones de intensidad por dosis
+  - Métricas de variabilidad inter-sujeto
+  
+  **8.3) LME Results**
+  - Efectos significativos de State, Dose, e interacciones
+  - Coeficientes estandarizados con intervalos de confianza
+  - P-valores corregidos por FDR
+  - Organizado por tipo de efecto y magnitud
+  
+  **8.4) Peak and AUC Analysis**
+  - Comparaciones de dosis para métricas de intensidad y duración
+  - Tamaños de efecto con intervalos de confianza bootstrap
+  - Ranking de sensibilidad a dosis por dimensión
+  - Identificación de dimensiones con mayor/menor respuesta
+  
+  **8.5) Dimensionality Reduction (PCA)**
+  - Interpretación de componentes principales retenidos
+  - Cargas de dimensiones y patrones de agrupamiento
+  - Varianza explicada por cada componente
+  - Dinámicas temporales de scores de componentes
+  
+  **8.6) Clustering Analysis**
+  - Caracterización de estados experienciales discretos
+  - Perfiles de dimensiones para cada cluster
+  - Patrones de prevalencia temporal por condición
+  - Efectos de dosis en métricas de ocupación
+  - Métricas de estabilidad (bootstrap ARI)
+  
+  **8.7) Cross-Analysis Integration**
+  - Hallazgos convergentes entre múltiples métodos
+  - Rankings de dimensiones por método
+  - Correlaciones de rango entre métodos
+  - Patrones temporales concordantes
+  
+  **8.8) Methodological Notes**
+  - Problemas de calidad de datos documentados
+  - Supuestos de modelos y limitaciones
+  - Decisiones analíticas que afectan interpretación
+  
+  **8.9) Further Investigation**
+  - Preguntas sin resolver priorizadas
+  - Hallazgos ambiguos o contradictorios
+  - Sugerencias de análisis de seguimiento
+  - Estimaciones de esfuerzo de implementación
+
+- **Output**:
+  - `docs/tet_comprehensive_results.md`: Documento markdown integral
+  - Formato consistente con notación estadística estandarizada
+  - Referencias a figuras específicas con rutas relativas
+  - Organización jerárquica con encabezados claros
+
+- **Opciones de línea de comandos**:
+  ```bash
+  # Generar reporte con configuración predeterminada
+  python scripts/generate_comprehensive_report.py
+  
+  # Especificar directorios personalizados
+  python scripts/generate_comprehensive_report.py \\
+      --results-dir results/tet \\
+      --output docs/tet_comprehensive_results.md
+  
+  # Forzar regeneración incluso si está actualizado
+  python scripts/generate_comprehensive_report.py --force
+  
+  # Solo verificar si necesita actualización (no regenerar)
+  python scripts/generate_comprehensive_report.py --check-only
+  
+  # Salida detallada para depuración
+  python scripts/generate_comprehensive_report.py --verbose
+  ```
+
+- **Generación automática**:
+  
+  El reporte se genera automáticamente al final de:
+  - `scripts/generate_all_figures.py` (después de generar figuras)
+  - `scripts/compute_clustering_analysis.py` (después de análisis de clustering)
+  
+  Para omitir la generación automática (útil para depuración rápida):
+  ```bash
+  # Omitir reporte en generate_all_figures.py
+  python scripts/generate_all_figures.py --skip-report
+  
+  # Omitir reporte en compute_clustering_analysis.py
+  python scripts/compute_clustering_analysis.py --skip-report
+  ```
+
+- **Detección de actualizaciones**:
+  
+  El script detecta automáticamente si los archivos de resultados son más recientes que el reporte:
+  - Si el reporte no existe → se genera
+  - Si hay archivos de resultados más nuevos → se regenera
+  - Si el reporte está actualizado → se omite (usar `--force` para regenerar)
+  
+  Verificar estado de actualización sin regenerar:
+  ```bash
+  python scripts/generate_comprehensive_report.py --check-only
+  ```
+  
+  Esto mostrará:
+  - Si el reporte necesita actualización
+  - Lista de archivos más nuevos que el reporte
+  - No regenerará el reporte
+
+- **Estructura del reporte**:
+  
+  El documento generado sigue esta estructura:
+  ```markdown
+  # TET Comprehensive Results Report
+  
+  ## Executive Summary
+  - Top 3-5 findings with effect sizes
+  
+  ## Descriptive Statistics
+  ### Dimension 1
+  - Peak timing, intensity, variability
+  ### Dimension 2
+  ...
+  
+  ## LME Results
+  ### State Effects
+  - Significant dimensions ranked by |β|
+  ### Dose Effects
+  ...
+  ### Interaction Effects
+  ...
+  
+  ## Peak and AUC Analysis
+  ### Peak Values
+  - Dose comparisons with effect sizes
+  ### Time to Peak
+  ...
+  ### AUC (0-9 min)
+  ...
+  
+  ## Dimensionality Reduction
+  ### PC1
+  - Loadings, interpretation, temporal dynamics
+  ### PC2
+  ...
+  
+  ## Clustering Analysis
+  ### Cluster 1
+  - Profile, prevalence, dose effects
+  ### Cluster 2
+  ...
+  
+  ## Cross-Analysis Integration
+  - Convergent findings
+  - Method comparisons
+  
+  ## Methodological Notes
+  - Data quality, assumptions, limitations
+  
+  ## Further Investigation
+  - Unresolved questions
+  - Suggested follow-up analyses
+  
+  ## Appendix
+  - Statistical notation guide
+  - Figure index
+  ```
+
+- **Interpretación del reporte**:
+  
+  **Notación estadística**:
+  - `β`: Coeficiente de regresión (LME)
+  - `r`: Tamaño de efecto (Wilcoxon)
+  - `p_fdr`: P-valor corregido por FDR
+  - `CI [X, Y]`: Intervalo de confianza del 95%
+  
+  **Niveles de significancia**:
+  - `p_fdr < 0.001`: Altamente significativo (***)
+  - `p_fdr < 0.01`: Muy significativo (**)
+  - `p_fdr < 0.05`: Significativo (*)
+  - `p_fdr ≥ 0.05`: No significativo (ns)
+  
+  **Magnitud de efectos**:
+  - LME β: |β| > 1.5 (fuerte), 0.8-1.5 (moderado), < 0.8 (débil)
+  - Wilcoxon r: |r| > 0.5 (grande), 0.3-0.5 (mediano), < 0.3 (pequeño)
+  
+  **Referencias a figuras**:
+  - Rutas relativas desde `docs/` a `results/tet/figures/`
+  - Ejemplo: `../results/tet/figures/timeseries_all_dimensions.png`
+
+- **Solución de problemas**:
+  
+  **Problema**: Reporte vacío o con secciones faltantes
+  - **Solución**: Verificar que los análisis requeridos se hayan ejecutado
+  - Ejecutar scripts de análisis en orden:
+    1. `python scripts/preprocess_tet_data.py`
+    2. `python scripts/compute_descriptive_stats.py`
+    3. `python scripts/fit_lme_models.py`
+    4. `python scripts/compute_peak_auc.py`
+    5. `python scripts/compute_pca_analysis.py`
+    6. `python scripts/compute_clustering_analysis.py`
+  - Luego regenerar reporte: `python scripts/generate_comprehensive_report.py --force`
+  
+  **Problema**: Reporte no se actualiza automáticamente
+  - **Solución**: Verificar timestamps de archivos
+  - Usar `--check-only` para ver estado de actualización
+  - Usar `--force` para forzar regeneración
+  - Verificar que los archivos de resultados existan en `results/tet/`
+  
+  **Problema**: Errores al cargar datos
+  - **Solución**: Verificar formato de archivos CSV
+  - Verificar que las columnas requeridas estén presentes
+  - Ejecutar con `--verbose` para ver detalles de errores
+  - Revisar logs de scripts de análisis para errores upstream
+  
+  **Problema**: Hallazgos faltantes en Executive Summary
+  - **Solución**: El ranking automático requiere efectos significativos
+  - Verificar que haya efectos con p_fdr < 0.05 en los análisis
+  - Si no hay efectos significativos, el Executive Summary estará vacío
+  - Revisar resultados de análisis individuales para confirmar
+
+- **Uso en manuscritos**:
+  
+  El reporte está diseñado para facilitar la escritura de manuscritos:
+  - **Executive Summary** → Abstract/Highlights
+  - **LME Results** → Results section (main effects)
+  - **Peak/AUC Analysis** → Results section (dose-response)
+  - **PCA** → Results section (dimensionality)
+  - **Clustering** → Results section (experiential states)
+  - **Cross-Analysis Integration** → Discussion (convergent evidence)
+  - **Methodological Notes** → Methods/Limitations
+  - **Further Investigation** → Discussion/Future directions
+  
+  Copiar secciones relevantes directamente al manuscrito y ajustar formato según revista.
+
+---
+
+## Orden de ejecución recomendado (Pipeline completo TET)
+
+Para reproducir el análisis completo de TET desde cero:
+
+```bash
+# 1. Preprocesamiento de datos TET
+python scripts/preprocess_tet_data.py
+
+# 2. Estadísticas descriptivas
+python scripts/compute_descriptive_stats.py
+
+# 3. Modelos LME
+python scripts/fit_lme_models.py
+
+# 4. Análisis Peak/AUC
+python scripts/compute_peak_auc.py
+
+# 5. Análisis PCA
+python scripts/compute_pca_analysis.py
+
+# 6. Análisis de clustering (incluye generación de reporte)
+python scripts/compute_clustering_analysis.py
+
+# 7. Generación de figuras (incluye generación de reporte)
+python scripts/generate_all_figures.py
+
+# 8. (Opcional) Regenerar solo el reporte
+python scripts/generate_comprehensive_report.py --force
+```
+
+**Nota**: Los pasos 6 y 7 generan automáticamente el reporte integral al finalizar. Si se ejecutan ambos, el reporte se regenerará dos veces (una vez después del clustering y otra después de las figuras). Para evitar regeneración duplicada, usar `--skip-report` en uno de los scripts.
+
+**Ejecución rápida para depuración**:
+```bash
+# Omitir reporte en clustering (más rápido)
+python scripts/compute_clustering_analysis.py --skip-report --n-bootstrap 100 --n-permutations 100
+
+# Omitir reporte en figuras
+python scripts/generate_all_figures.py --skip-report
+
+# Regenerar solo reporte al final
+python scripts/generate_comprehensive_report.py --force
+```
+
+---
+
+## Verificación de resultados
+
+Para verificar que el pipeline se ejecutó correctamente:
+
+```bash
+# Verificar existencia de archivos de resultados
+ls results/tet/tet_preprocessed.csv
+ls results/tet/descriptive/
+ls results/tet/lme/
+ls results/tet/peak_auc/
+ls results/tet/pca/
+ls results/tet/clustering/
+
+# Verificar figuras generadas
+ls results/tet/figures/
+
+# Verificar reporte integral
+ls docs/tet_comprehensive_results.md
+
+# Verificar estado de actualización del reporte
+python scripts/generate_comprehensive_report.py --check-only
+```
+
+Si algún archivo falta, ejecutar el script correspondiente del pipeline.
