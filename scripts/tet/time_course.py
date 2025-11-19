@@ -56,14 +56,14 @@ class TETTimeCourseAnalyzer:
         Args:
             data (pd.DataFrame): Preprocessed TET data
             dimensions (Optional[List[str]]): List of dimensions to analyze.
-                If None, uses all z-scored dimensions and composite indices.
+                If None, uses all z-scored dimensions and composite index.
         """
         self.data = data
         
-        # Default: all z-scored dimensions + composite indices
+        # Default: all z-scored dimensions + composite index
         if dimensions is None:
             z_dims = [f"{dim}_z" for dim in config.TET_DIMENSION_COLUMNS]
-            composite_dims = ['affect_index_z', 'imagery_index_z', 'self_index_z']
+            composite_dims = ['valence_index_z']
             self.dimensions = z_dims + composite_dims
         else:
             self.dimensions = dimensions

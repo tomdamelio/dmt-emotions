@@ -15,8 +15,9 @@ Pipeline scripts (`run_*.py`) orchestrate complete analysis workflows by:
 
 ### TET (Temporal Experience Tracking) Analysis
 - **`run_tet_analysis.py`** - Complete TET analysis pipeline
-  - Preprocessing → Descriptive Stats → LME → Peak/AUC → PCA → Clustering → Figures → Report
+  - Preprocessing → Descriptive Stats → LME → PCA → ICA → Physio Correlation → Clustering → Figures → Report
   - Single entry point for all TET analyses
+  - Includes physiological-affective integration analysis
   - See: `docs/TET_ANALYSIS_GUIDE.md` for details
 
 ### Physiological Signal Analysis
@@ -84,6 +85,65 @@ python pipelines/run_tet_analysis.py --from-stage pca
 
 # Dry run (validation only)
 python pipelines/run_tet_analysis.py --dry-run
+```
+
+### TET Pipeline Stages
+
+The TET pipeline consists of the following stages (in execution order):
+
+1. **preprocessing** - Load and preprocess raw TET data
+   - Dependencies: Raw TET data files
+   - Outputs: `results/tet/preprocessed/tet_preprocessed.csv`
+
+2. **descriptive** - Compute descriptive statistics
+   - Dependencies: Preprocessed TET data
+   - Outputs: Time course data, summary metrics
+
+3. **lme** - Fit Linear Mixed Effects models
+   - Dependencies: Preprocessed TET data
+   - Outputs: `results/tet/lme/lme_results.csv`
+
+4. **pca** - Principal Component Analysis
+   - Dependencies: Preprocessed TET data
+   - Outputs: PCA loadings, scores, variance explained
+
+5. **ica** - Independent Component Analysis
+   - Dependencies: Preprocessed TET data, PCA results
+   - Outputs: ICA mixing matrix, scores, PCA correlations
+
+6. **physio_correlation** - Physiological-TET correlation analysis
+   - Dependencies: 
+     - Preprocessed TET data (`results/tet/preprocessed/tet_preprocessed.csv`)
+     - Composite physiological data (`results/composite/arousal_index_long.csv`)
+     - PCA loadings (`results/composite/pca_loadings_pc1.csv`)
+   - Outputs: Correlation matrices, regression results, CCA results, visualizations
+   - Note: Requires running `run_composite_arousal_index.py` first to generate physiological data
+
+7. **clustering** - Cluster analysis and state modeling
+   - Dependencies: Preprocessed TET data
+   - Outputs: Cluster assignments, state metrics, dose tests
+
+8. **figures** - Generate publication-ready figures
+   - Dependencies: LME results, other analysis outputs
+   - Outputs: PNG figures in `results/tet/figures/`
+
+9. **report** - Generate comprehensive results report
+   - Dependencies: All analysis outputs
+   - Outputs: `docs/tet_comprehensive_results.md`
+
+### Running Physiological-TET Integration
+
+To run the physiological-TET correlation analysis, you must first generate the composite physiological data:
+
+```bash
+# Step 1: Generate composite arousal index (includes HR, EDA, Resp PCA)
+python pipelines/run_composite_arousal_index.py
+
+# Step 2: Run TET pipeline including physio_correlation stage
+python pipelines/run_tet_analysis.py --stages physio_correlation
+
+# Or run complete pipeline (will include physio_correlation)
+python pipelines/run_tet_analysis.py
 ```
 
 ## Directory Structure

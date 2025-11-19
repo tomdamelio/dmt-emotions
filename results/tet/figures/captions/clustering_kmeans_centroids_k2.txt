@@ -1,6 +1,0 @@
-Figure: Clustering Kmeans Centroids K2
-
-[Caption to be added]
-
-Statistical details and interpretation should be added based on the specific 
-analysis and results shown in this figure.

@@ -160,6 +160,32 @@ This document specifies the requirements for implementing a comprehensive analys
 
 6. THE TET_Analysis_System SHALL export PC1 and PC2 LME results following the same format as Requirement 4.
 
+### Requirement 6b: Independent Component Analysis (ICA)
+
+**User Story:** As a researcher, I want the system to perform ICA on standardized TET data in addition to PCA, so that I can identify statistically independent sources of experiential variation that may not be captured by the variance-based principal components, particularly beyond the first two components that explain most variance in PCA.
+
+#### Acceptance Criteria
+
+1. THE TET_Analysis_System SHALL perform ICA on z-scored Dimension values across all Time_Bins within each Subject using the FastICA algorithm.
+
+2. THE TET_Analysis_System SHALL extract the same number of independent components as retained PCA_Components to enable direct comparison between variance-based and independence-based decompositions.
+
+3. THE TET_Analysis_System SHALL compute mixing matrix coefficients showing how each original Dimension contributes to each independent component.
+
+4. THE TET_Analysis_System SHALL fit LME_Models for IC1 and IC2 scores with fixed effects for State, Dose, Time_c, and their interactions, and random Subject intercepts, following the same model specification as PCA components.
+
+5. THE TET_Analysis_System SHALL compute correlation coefficients between ICA component scores and PCA component scores to assess the degree of overlap or complementarity between the two decomposition methods.
+
+6. THE TET_Analysis_System SHALL export ICA mixing matrix as CSV files with columns for dimension and mixing coefficients for each independent component.
+
+7. THE TET_Analysis_System SHALL export ICA component scores as CSV files with columns for subject, session, t_bin, state, dose, and scores for each independent component.
+
+8. THE TET_Analysis_System SHALL export IC1 and IC2 LME results following the same format as Requirement 4 and Requirement 6.
+
+9. THE TET_Analysis_System SHALL generate comparison visualizations showing ICA mixing patterns alongside PCA loadings to facilitate interpretation of whether ICA reveals experiential structure beyond the variance explained by the first two principal components.
+
+10. THE TET_Analysis_System SHALL document in the analysis report whether ICA components beyond IC1 and IC2 reveal meaningful experiential patterns not captured by PC1 and PC2, particularly focusing on whether independence-based decomposition uncovers latent sources masked by the dominant variance structure.
+
 ### Requirement 7: Clustering of Experiential States
 
 **User Story:** As a researcher, I want the system to identify discrete experiential states using clustering algorithms, so that I can characterize qualitatively distinct experience patterns.
@@ -287,3 +313,54 @@ This document specifies the requirements for implementing a comprehensive analys
 18. THE TET_Analysis_System SHALL archive or remove redundant documentation files (e.g., TET_DATA_LOADING_COMPARISON.md, TET_DIMENSIONS_TRACEABILITY.md, TET_TEMPORAL_RESOLUTION.md, tet_clustering_analysis.md) after consolidating their content into the single comprehensive guide.
 
 19. THE TET_Analysis_System SHALL maintain the comprehensive documentation file as the authoritative reference for all TET analysis procedures, ensuring consistency between documentation and implementation.
+
+
+### Requirement 11: Physiological-Affective Integration Analysis
+
+**User Story:** As a researcher, I want the system to analyze relationships between physiological signals (ECG, EDA, Resp) and affective TET dimensions, so that I can test hypotheses about autonomic correlates of subjective emotional experiences during psychedelic states.
+
+#### Acceptance Criteria
+
+1. THE TET_Analysis_System SHALL load preprocessed physiological data for Heart Rate (HR), Skin Conductance (SMNA AUC), and Respiratory Volume per Time (RVT) from results/ecg/, results/eda/, and results/resp/ directories respectively.
+
+2. THE TET_Analysis_System SHALL temporally align physiological signals with TET_Data by aggregating TET to 30-second bins to match the resolution of preprocessed physiological data (N=18 bins for first 9 minutes of both RS and DMT).
+
+3. THE TET_Analysis_System SHALL compute Pearson correlation coefficients between emotional_intensity (arousal proxy) and each physiological measure (HR, SMNA AUC, RVT) separately for RS and DMT states.
+
+4. THE TET_Analysis_System SHALL compute Pearson correlation coefficients between valence_index_z (pleasantness_z - unpleasantness_z) and each physiological measure (HR, SMNA AUC, RVT) separately for RS and DMT states.
+
+5. THE TET_Analysis_System SHALL compute Pearson correlation coefficients between each dimension in TET_AFFECTIVE_COLUMNS (pleasantness, unpleasantness, emotional_intensity, interoception, bliss, anxiety) and each physiological measure (HR, SMNA AUC, RVT) separately for RS and DMT states.
+
+6. THE TET_Analysis_System SHALL apply BH_FDR correction across all correlation tests within each analysis family (arousal-physiology, valence-physiology, affective dimensions-physiology).
+
+7. THE TET_Analysis_System SHALL compute linear regression models predicting emotional_intensity from PC1 scores of physiological signals (first principal component of HR, SMNA AUC, RVT), reporting standardized beta coefficients, R², and p-values separately for RS and DMT states.
+
+8. THE TET_Analysis_System SHALL compute linear regression models predicting valence_index_z from PC1 scores of physiological signals, reporting standardized beta coefficients, R², and p-values separately for RS and DMT states.
+
+9. THE TET_Analysis_System SHALL test the hypothesis that arousal-PC1 correlation magnitude is significantly larger than valence-PC1 correlation magnitude using Steiger's Z-test for comparing dependent correlations.
+
+10. THE TET_Analysis_System SHALL perform Canonical Correlation Analysis (CCA) between the physiological signal matrix (HR, SMNA AUC, RVT) and the affective TET matrix (TET_AFFECTIVE_COLUMNS dimensions) to identify shared latent dimensions.
+
+11. THE TET_Analysis_System SHALL extract the first two canonical variates from CCA, reporting canonical correlations, Wilks' Lambda, and statistical significance for each variate pair.
+
+12. THE TET_Analysis_System SHALL compute canonical loadings showing how each physiological measure and each affective TET dimension contributes to the first two canonical variates.
+
+13. THE TET_Analysis_System SHALL perform CCA separately for RS and DMT states to assess whether physiological-affective coupling differs between baseline and psychedelic conditions.
+
+14. THE TET_Analysis_System SHALL generate scatter plots showing the relationship between emotional_intensity and PC1 of physiological signals, with separate panels for RS and DMT states, including regression lines and 95% confidence bands.
+
+15. THE TET_Analysis_System SHALL generate scatter plots showing the relationship between valence_index_z and PC1 of physiological signals, with separate panels for RS and DMT states, including regression lines and 95% confidence bands.
+
+16. THE TET_Analysis_System SHALL generate heatmaps showing correlation matrices between all affective TET dimensions and all physiological measures, with separate panels for RS and DMT states, annotated with significance markers for FDR-corrected p-values.
+
+17. THE TET_Analysis_System SHALL generate CCA visualization plots showing canonical loadings as bar charts or biplots for the first two canonical variate pairs, with separate panels for RS and DMT states.
+
+18. THE TET_Analysis_System SHALL export all correlation coefficients, p-values, and FDR-corrected p-values as CSV files at results/tet/physio_correlation/correlation_results.csv with columns for tet_dimension, physio_measure, state, r, p_value, and p_fdr.
+
+19. THE TET_Analysis_System SHALL export regression results as CSV files at results/tet/physio_correlation/regression_results.csv with columns for outcome_variable, predictor, state, beta, r_squared, p_value, and confidence intervals.
+
+20. THE TET_Analysis_System SHALL export CCA results as CSV files at results/tet/physio_correlation/cca_results.csv with columns for state, canonical_variate, canonical_correlation, wilks_lambda, p_value, and separate files for canonical loadings.
+
+21. THE TET_Analysis_System SHALL include a Physiological-Affective Integration section in the comprehensive results document summarizing key findings, including whether arousal shows stronger physiological coupling than valence, which specific affective dimensions correlate most strongly with autonomic measures, and whether CCA reveals meaningful shared latent dimensions.
+
+22. THE TET_Analysis_System SHALL document in the Methods section the temporal alignment procedure, correlation analysis approach, regression model specifications, CCA algorithm parameters, and multiple comparison correction strategy used for physiological-affective integration analyses.

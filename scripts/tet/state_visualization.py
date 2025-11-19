@@ -152,7 +152,7 @@ class TETStateVisualization:
         
         # Identify z-scored dimensions
         self.dimensions = [col for col in data.columns if col.endswith('_z') and 
-                          col not in ['affect_index_z', 'imagery_index_z', 'self_index_z']]
+                          col not in ['valence_index_z']]
         
         logger.info(f"Initialized TETStateVisualization with {len(data)} rows")
         logger.info(f"  Z-scored dimensions: {len(self.dimensions)}")

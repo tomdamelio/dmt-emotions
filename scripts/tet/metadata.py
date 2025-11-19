@@ -3,7 +3,7 @@
 TET Preprocessing Metadata Module
 
 This module provides functionality for generating and documenting preprocessing
-metadata including parameters, composite index definitions, and summary statistics.
+metadata including parameters, composite index definition, and summary statistics.
 """
 
 from typing import Dict, Any
@@ -22,7 +22,7 @@ class PreprocessingMetadata:
     Generates metadata documentation for TET preprocessing.
     
     This class creates comprehensive metadata documenting all preprocessing
-    steps, parameters, and composite index definitions for reproducibility
+    steps, parameters, and composite index definition for reproducibility
     and traceability.
     
     Example:
@@ -46,7 +46,7 @@ class PreprocessingMetadata:
         Creates metadata documenting:
         - Trimming windows and sampling rate
         - Standardization method
-        - Composite index formulas and directionality
+        - Composite index formula and directionality
         - Summary statistics
         - Timestamp
         
@@ -66,33 +66,17 @@ class PreprocessingMetadata:
         n_rs_points = len(data[data['state'] == 'RS'])
         n_dmt_points = len(data[data['state'] == 'DMT'])
         
-        # Composite index definitions
+        # Composite index definition
         composite_indices = {
-            'affect_index_z': {
-                'formula': 'mean(pleasantness_z, bliss_z) - mean(anxiety_z, unpleasantness_z)',
+            'valence_index_z': {
+                'formula': 'pleasantness_z - unpleasantness_z',
                 'components': {
-                    'positive': ['pleasantness', 'bliss'],
-                    'negative': ['anxiety', 'unpleasantness']
+                    'positive': ['pleasantness'],
+                    'negative': ['unpleasantness']
                 },
-                'interpretation': 'Higher values indicate more positive affect (pleasant, blissful). '
-                                 'Lower values indicate more negative affect (anxious, unpleasant).',
-                'directionality': 'positive - negative'
-            },
-            'imagery_index_z': {
-                'formula': 'mean(elementary_imagery_z, complex_imagery_z)',
-                'components': ['elementary_imagery', 'complex_imagery'],
-                'interpretation': 'Higher values indicate more vivid imagery (both elementary and complex).',
-                'directionality': 'positive'
-            },
-            'self_index_z': {
-                'formula': '-disembodiment_z + selfhood_z',
-                'components': {
-                    'inverted': ['disembodiment'],
-                    'positive': ['selfhood']
-                },
-                'interpretation': 'Higher values indicate greater self-integration (embodied, strong sense of self). '
-                                 'Lower values indicate less self-integration (disembodied, ego dissolution).',
-                'directionality': 'inverted disembodiment + selfhood'
+                'interpretation': 'Higher values indicate more positive affective valence (pleasant). '
+                                 'Lower values indicate more negative affective valence (unpleasant).',
+                'directionality': 'pleasantness - unpleasantness'
             }
         }
         

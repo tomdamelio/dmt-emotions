@@ -198,8 +198,10 @@ Examples:
         
         # Generate figure
         print(f"\n[2/3] Generating annotated time series figure...")
-        print(f"      - Multi-panel layout: 5 rows × 3 columns (15 dimensions)")
-        print(f"      - Resolution: {args.dpi} DPI (12 × 10 inches)")
+        print(f"      - Custom layout: 2 large panels (Arousal, Valence) + 5 small panels")
+        print(f"      - Row 1: Arousal (Emotional Intensity), Valence (Pleasantness-Unpleasantness)")
+        print(f"      - Row 2: Interoception, Anxiety, Unpleasantness, Pleasantness, Bliss")
+        print(f"      - Resolution: {args.dpi} DPI")
         print(f"      - Blue line: Low dose (20mg)")
         print(f"      - Red line: High dose (40mg)")
         print(f"      - Grey shading: SEM around mean trajectories")
@@ -232,7 +234,9 @@ Examples:
         print(f"  Size: {file_size_mb:.2f} MB")
         
         print(f"\nFigure Components:")
-        print(f"  ✓ 15 dimension panels ordered by State effect strength")
+        print(f"  ✓ Custom 2-row layout:")
+        print(f"    - Row 1: Arousal (Emotional Intensity), Valence (Pleasantness-Unpleasantness)")
+        print(f"    - Row 2: Interoception, Anxiety, Unpleasantness, Pleasantness, Bliss")
         print(f"  ✓ Low dose (20mg) in blue, High dose (40mg) in red")
         print(f"  ✓ SEM shading around mean trajectories")
         print(f"  ✓ Grey dashed line at DMT onset (t=0)")

@@ -185,7 +185,7 @@ def main():
     
     # Identify z-scored dimensions
     z_dimensions = [col for col in data.columns if col.endswith('_z') and 
-                   col not in ['affect_index_z', 'imagery_index_z', 'self_index_z']]
+                   col not in ['valence_index_z']]
     
     logger.info(f"  Z-scored dimensions: {len(z_dimensions)}")
     logger.info(f"    {', '.join(z_dimensions[:5])}...")

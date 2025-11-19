@@ -189,6 +189,17 @@ TET_DIMENSION_COLUMNS = [
     'general_intensity'    # 15. Intensidad general subjetiva de los efectos del DMT
 ]
 
+# Subconjunto de dimensiones afectivas/autonómicas para análisis estadísticos
+# Estas dimensiones capturan aspectos emocionales y corporales de la experiencia
+TET_AFFECTIVE_COLUMNS = [
+    'pleasantness',        # 1. Intensidad subjetiva de lo "bueno" de la experiencia
+    'unpleasantness',      # 2. Intensidad subjetiva de lo "malo" de la experiencia
+    'emotional_intensity', # 3. Intensidad emocional independiente de valencia (arousal proxy)
+    'interoception',       # 7. Intensidad de sensaciones corporales internas ("body load")
+    'bliss',               # 8. Experiencia de éxtasis o paz profunda
+    'anxiety',             # 9. Experiencia de disforia o ansiedad
+]
+
 # Longitudes esperadas de sesión
 # Los archivos .mat contienen datos down-sampled uniformemente a 0.25 Hz (1 punto cada 4s)
 # - DMT: 20 min = 1200s → 300 puntos @ 0.25 Hz
@@ -227,45 +238,18 @@ TET_REQUIRED_COLUMNS = [
 # Cada índice combina múltiples dimensiones para capturar constructos de alto nivel
 # Todas las fórmulas operan sobre valores z-scored (estandarizados dentro de sujeto)
 COMPOSITE_INDEX_DEFINITIONS = {
-    'affect_index_z': {
-        'formula': 'mean(pleasantness_z, bliss_z) - mean(anxiety_z, unpleasantness_z)',
+    'valence_index_z': {
+        'formula': 'pleasantness_z - unpleasantness_z',
         'components': {
-            'positive': ['pleasantness_z', 'bliss_z'],
-            'negative': ['anxiety_z', 'unpleasantness_z']
+            'positive': ['pleasantness_z'],
+            'negative': ['unpleasantness_z']
         },
         'interpretation': (
-            'Índice de afecto neto. Valores positivos indican predominio de afecto positivo '
-            '(placer, éxtasis), valores negativos indican predominio de afecto negativo '
-            '(ansiedad, displacer). Rango típico: -3 a +3 (z-scores).'
+            'Índice de valencia afectiva. Valores positivos indican predominio de experiencias '
+            'placenteras, valores negativos indican predominio de experiencias displacenteras. '
+            'Rango típico: -3 a +3 (z-scores).'
         ),
-        'directionality': 'higher = more positive affect'
-    },
-    'imagery_index_z': {
-        'formula': 'mean(elementary_imagery_z, complex_imagery_z)',
-        'components': {
-            'positive': ['elementary_imagery_z', 'complex_imagery_z'],
-            'negative': []
-        },
-        'interpretation': (
-            'Índice de intensidad de imaginería visual. Combina sensaciones visuales básicas '
-            '(destellos, patrones) y complejas (escenas vívidas). Valores más altos indican '
-            'mayor intensidad de experiencias visuales. Rango típico: -2 a +3 (z-scores).'
-        ),
-        'directionality': 'higher = more intense visual imagery'
-    },
-    'self_index_z': {
-        'formula': '-disembodiment_z + selfhood_z',
-        'components': {
-            'positive': ['selfhood_z'],
-            'negative': ['disembodiment_z']
-        },
-        'interpretation': (
-            'Índice de integración del yo. Valores positivos indican mayor sentido de identidad '
-            'y encarnación corporal. Valores negativos indican disolución del ego y desencarnación. '
-            'Nota: disembodiment se invierte para que valores altos = mayor integración del yo. '
-            'Rango típico: -3 a +2 (z-scores).'
-        ),
-        'directionality': 'higher = more self-integration (less ego dissolution)'
+        'directionality': 'higher = more positive affective valence'
     },
     'valence_pos': {
         'formula': 'pleasantness',

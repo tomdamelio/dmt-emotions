@@ -17,7 +17,6 @@ from .results_analyzer import (
     rank_findings,
     extract_descriptive_stats,
     extract_lme_effects,
-    extract_peak_auc_effects,
     interpret_pca_components,
     extract_clustering_results,
     compute_cross_method_rankings,
@@ -53,8 +52,6 @@ class TETResultsSynthesizer:
         Loaded descriptive statistics
     lme_results : pd.DataFrame or None
         Loaded LME coefficients
-    peak_auc_results : dict or None
-        Loaded peak and AUC comparison results
     pca_results : dict or None
         Loaded PCA results (loadings, variance, LME)
     clustering_results : dict or None
@@ -79,7 +76,6 @@ class TETResultsSynthesizer:
         # Data containers
         self.descriptive_data = None
         self.lme_results = None
-        self.peak_auc_results = None
         self.pca_results = None
         self.clustering_results = None
         
@@ -166,49 +162,6 @@ class TETResultsSynthesizer:
             
         except Exception as e:
             logger.error(f"Error loading LME results: {e}")
-            return None
-    
-    def _load_peak_auc(self) -> Optional[Dict]:
-        """
-        Load peak and AUC comparison results.
-        
-        Returns
-        -------
-        dict or None
-            Dictionary with 'peak', 'auc' keys, or None if not found
-        """
-        peak_auc_dir = self.results_dir / 'peak_auc'
-        
-        if not peak_auc_dir.exists():
-            logger.warning(f"Peak/AUC directory not found: {peak_auc_dir}")
-            return None
-        
-        try:
-            results = {}
-            
-            # Load peak comparison results
-            peak_path = peak_auc_dir / 'peak_comparison_results.csv'
-            if peak_path.exists():
-                results['peak'] = pd.read_csv(peak_path)
-            else:
-                logger.warning(f"Peak comparison results not found: {peak_path}")
-            
-            # Load AUC comparison results
-            auc_path = peak_auc_dir / 'auc_comparison_results.csv'
-            if auc_path.exists():
-                results['auc'] = pd.read_csv(auc_path)
-            else:
-                logger.warning(f"AUC comparison results not found: {auc_path}")
-            
-            if not results:
-                return None
-            
-            logger.info(f"Loaded peak/AUC results: {list(results.keys())}")
-            
-            return results
-            
-        except Exception as e:
-            logger.error(f"Error loading peak/AUC results: {e}")
             return None
     
     def _load_pca(self) -> Optional[Dict]:
@@ -328,7 +281,6 @@ class TETResultsSynthesizer:
         
         self.descriptive_data = self._load_descriptive()
         self.lme_results = self._load_lme()
-        self.peak_auc_results = self._load_peak_auc()
         self.pca_results = self._load_pca()
         self.clustering_results = self._load_clustering()
         
@@ -336,12 +288,11 @@ class TETResultsSynthesizer:
         loaded = sum([
             self.descriptive_data is not None,
             self.lme_results is not None,
-            self.peak_auc_results is not None,
             self.pca_results is not None,
             self.clustering_results is not None
         ])
         
-        logger.info(f"Loaded {loaded}/5 analysis components")
+        logger.info(f"Loaded {loaded}/4 analysis components")
 
     
     def _generate_header(self) -> str:
@@ -381,7 +332,7 @@ class TETResultsSynthesizer:
         # Rank findings across all methods
         top_findings = rank_findings(
             self.lme_results,
-            self.peak_auc_results,
+            None,  # peak_auc_results removed
             self.clustering_results,
             top_n=5
         )
@@ -626,145 +577,7 @@ Across all dimensions, DMT sessions showed characteristic temporal profiles with
         
         return section
     
-    def generate_peak_auc_section(self) -> str:
-        """
-        Generate Peak and AUC analysis section.
-        
-        Returns
-        -------
-        str
-            Formatted markdown section
-        """
-        logger.info("Generating Peak/AUC section...")
-        
-        if self.peak_auc_results is None:
-            return """## 3. Peak and AUC Analysis
 
-**Note:** Peak/AUC results not available. Please run peak/AUC analysis first.
-"""
-        
-        # Extract peak/AUC effects
-        effects_dict = extract_peak_auc_effects(self.peak_auc_results)
-        
-        if not effects_dict:
-            return """## 3. Peak and AUC Analysis
-
-**Note:** No significant peak/AUC effects found.
-"""
-        
-        section = """## 3. Peak and AUC Analysis
-
-"""
-        
-        # Peak value comparisons
-        if 'peak' in effects_dict:
-            section += "### 3.1 Peak Value Comparisons (High vs Low Dose)\n\n"
-            section += "Wilcoxon signed-rank tests comparing peak values within DMT sessions:\n\n"
-            
-            peak_data = effects_dict['peak']
-            
-            if not peak_data['increased'].empty:
-                section += "**Increased at High Dose**:\n\n"
-                for _, row in peak_data['increased'].iterrows():
-                    dim_name = StatisticalFormatter.format_dimension_name(row['dimension'])
-                    effect_str = StatisticalFormatter.format_effect_size(
-                        row['effect_r'],
-                        row['ci_lower'],
-                        row['ci_upper'],
-                        row['p_fdr']
-                    )
-                    section += f"- **{dim_name}**: {effect_str}\n"
-                section += "\n"
-            
-            if not peak_data['decreased'].empty:
-                section += "**Decreased at High Dose**:\n\n"
-                for _, row in peak_data['decreased'].iterrows():
-                    dim_name = StatisticalFormatter.format_dimension_name(row['dimension'])
-                    effect_str = StatisticalFormatter.format_effect_size(
-                        row['effect_r'],
-                        row['ci_lower'],
-                        row['ci_upper'],
-                        row['p_fdr']
-                    )
-                    section += f"- **{dim_name}**: {effect_str}\n"
-                section += "\n"
-        
-        # Time to peak
-        if 'time_to_peak' in effects_dict:
-            section += "### 3.2 Time to Peak Analysis\n\n"
-            ttp_data = effects_dict['time_to_peak']
-            
-            if ttp_data['increased'].empty and ttp_data['decreased'].empty:
-                section += "No significant dose effects on time_to_peak were observed (all p_fdr > 0.05).\n\n"
-            else:
-                section += "Significant dose effects on time_to_peak:\n\n"
-                for _, row in pd.concat([ttp_data['increased'], ttp_data['decreased']]).iterrows():
-                    dim_name = StatisticalFormatter.format_dimension_name(row['dimension'])
-                    effect_str = StatisticalFormatter.format_effect_size(
-                        row['effect_r'],
-                        row['ci_lower'],
-                        row['ci_upper'],
-                        row['p_fdr']
-                    )
-                    section += f"- **{dim_name}**: {effect_str}\n"
-                section += "\n"
-        else:
-            section += "### 3.2 Time to Peak Analysis\n\n"
-            section += "No significant dose effects on time_to_peak were observed.\n\n"
-        
-        # AUC analysis
-        if 'auc' in effects_dict:
-            section += "### 3.3 Area Under Curve Analysis (0-9 minutes)\n\n"
-            section += "Significant dose effects on AUC:\n\n"
-            
-            auc_data = effects_dict['auc']
-            
-            if not auc_data['increased'].empty:
-                for _, row in auc_data['increased'].iterrows():
-                    dim_name = StatisticalFormatter.format_dimension_name(row['dimension'])
-                    effect_str = StatisticalFormatter.format_effect_size(
-                        row['effect_r'],
-                        row['ci_lower'],
-                        row['ci_upper'],
-                        row['p_fdr']
-                    )
-                    section += f"- **{dim_name}**: {effect_str}\n"
-            
-            if not auc_data['decreased'].empty:
-                for _, row in auc_data['decreased'].iterrows():
-                    dim_name = StatisticalFormatter.format_dimension_name(row['dimension'])
-                    effect_str = StatisticalFormatter.format_effect_size(
-                        row['effect_r'],
-                        row['ci_lower'],
-                        row['ci_upper'],
-                        row['p_fdr']
-                    )
-                    section += f"- **{dim_name}**: {effect_str} (lower AUC at high dose)\n"
-            
-            section += "\n"
-        
-        # Dose sensitivity ranking
-        section += "### 3.4 Dose Sensitivity Rankings\n\n"
-        section += "Dimensions ranked by peak value effect size (|r|):\n\n"
-        
-        if 'peak' in effects_dict:
-            all_peak = pd.concat([effects_dict['peak']['increased'], effects_dict['peak']['decreased']])
-            all_peak['abs_r'] = all_peak['effect_r'].abs()
-            all_peak = all_peak.sort_values('abs_r', ascending=False)
-            
-            for i, (_, row) in enumerate(all_peak.head(5).iterrows(), 1):
-                dim_name = StatisticalFormatter.format_dimension_name(row['dimension'])
-                direction = "increased" if row['effect_r'] > 0 else "decreased"
-                section += f"{i}. {dim_name} (r = {row['effect_r']:.2f}, {direction})\n"
-            section += "\n"
-        
-        # Add figure reference
-        section += "[See Figure: ../results/tet/figures/peak_auc_dose_comparison.png]\n\n"
-        
-        logger.info(f"Generated Peak/AUC section")
-        
-        return section
-    
     def generate_pca_section(self) -> str:
         """Generate PCA section."""
         logger.info("Generating PCA section...")
@@ -897,7 +710,7 @@ Across all dimensions, DMT sessions showed characteristic temporal profiles with
         
         cross_results = compute_cross_method_rankings(
             self.lme_results,
-            self.peak_auc_results,
+            None,  # peak_auc_results removed
             self.pca_results,
             self.clustering_results
         )
@@ -976,7 +789,7 @@ Across all dimensions, DMT sessions showed characteristic temporal profiles with
         
         ambiguities = detect_ambiguous_findings(
             self.lme_results,
-            self.peak_auc_results,
+            None,  # peak_auc_results removed
             self.pca_results,
             self.clustering_results
         )
@@ -1059,21 +872,13 @@ Across all dimensions, DMT sessions showed characteristic temporal profiles with
             errors.append(('LME Results', str(e)))
             sections.append("## 2. Linear Mixed Effects Results\n\n**Error generating section**\n")
         
-        # Peak and AUC Analysis
-        try:
-            sections.append(self.generate_peak_auc_section())
-        except Exception as e:
-            logger.error(f"Error generating Peak/AUC section: {e}")
-            errors.append(('Peak and AUC Analysis', str(e)))
-            sections.append("## 3. Peak and AUC Analysis\n\n**Error generating section**\n")
-        
         # PCA / Dimensionality Reduction
         try:
             sections.append(self.generate_pca_section())
         except Exception as e:
             logger.error(f"Error generating PCA section: {e}")
             errors.append(('Dimensionality Reduction', str(e)))
-            sections.append("## 4. Dimensionality Reduction\n\n**Error generating section**\n")
+            sections.append("## 3. Dimensionality Reduction\n\n**Error generating section**\n")
         
         # Clustering Analysis
         try:
@@ -1081,7 +886,7 @@ Across all dimensions, DMT sessions showed characteristic temporal profiles with
         except Exception as e:
             logger.error(f"Error generating clustering section: {e}")
             errors.append(('Clustering Analysis', str(e)))
-            sections.append("## 5. Clustering Analysis\n\n**Error generating section**\n")
+            sections.append("## 4. Clustering Analysis\n\n**Error generating section**\n")
         
         # Cross-Analysis Integration
         try:
@@ -1089,7 +894,7 @@ Across all dimensions, DMT sessions showed characteristic temporal profiles with
         except Exception as e:
             logger.error(f"Error generating integration section: {e}")
             errors.append(('Cross-Analysis Integration', str(e)))
-            sections.append("## 6. Cross-Analysis Integration\n\n**Error generating section**\n")
+            sections.append("## 5. Cross-Analysis Integration\n\n**Error generating section**\n")
         
         # Methodological Notes
         try:

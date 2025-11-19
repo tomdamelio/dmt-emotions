@@ -217,54 +217,7 @@ def generate_lme_coefficient_figures(
         report.add_failed(figure_type, str(e))
 
 
-def generate_peak_auc_figures(
-    input_dir: str,
-    output_dir: str,
-    dpi: int,
-    report: FigureGenerationReport
-) -> None:
-    """
-    Generate peak and AUC boxplots (Requirement 8.3).
-    
-    Args:
-        input_dir: Directory containing input data
-        output_dir: Directory for output figures
-        dpi: Resolution in DPI
-        report: Report object to track status
-    """
-    figure_type = "Peak/AUC Boxplots (Req 8.3)"
-    
-    try:
-        # Check required files
-        metrics_path = os.path.join(input_dir, 'peak_auc', 'peak_auc_metrics.csv')
-        tests_path = os.path.join(input_dir, 'peak_auc', 'peak_auc_tests.csv')
-        
-        required_files = [metrics_path, tests_path]
-        all_exist, missing = check_required_files(required_files)
-        
-        if not all_exist:
-            report.add_skipped(figure_type, f"Missing files: {', '.join([Path(f).name for f in missing])}")
-            return
-        
-        # Import and run
-        from plot_peak_auc import load_data, plot_dose_comparison_boxplots
-        
-        # Load data
-        metrics_df, tests_df = load_data(Path(metrics_path), Path(tests_path))
-        
-        # Generate plots
-        output_paths = plot_dose_comparison_boxplots(
-            metrics_df=metrics_df,
-            tests_df=tests_df,
-            output_dir=Path(output_dir),
-            dpi=dpi
-        )
-        
-        for metric_type, path in output_paths.items():
-            report.add_generated(f"{figure_type} - {metric_type}", str(path))
-        
-    except Exception as e:
-        report.add_failed(figure_type, str(e))
+
 
 
 def generate_pca_figures(
@@ -527,7 +480,7 @@ Examples:
         '--figures',
         type=str,
         nargs='+',
-        choices=['time-series', 'lme', 'peak-auc', 'pca', 'clustering', 'glhmm', 'all'],
+        choices=['time-series', 'lme', 'pca', 'clustering', 'glhmm', 'all'],
         default=['all'],
         help='Figure types to generate (default: all)'
     )
@@ -586,10 +539,7 @@ Examples:
         logger.info("Generating LME coefficient figures...")
         generate_lme_coefficient_figures(args.input, args.output, args.dpi, report)
     
-    if generate_all or 'peak-auc' in args.figures:
-        logger.info("Generating peak/AUC figures...")
-        generate_peak_auc_figures(args.input, args.output, args.dpi, report)
-    
+
     if generate_all or 'pca' in args.figures:
         logger.info("Generating PCA figures...")
         generate_pca_figures(args.input, args.output, args.dpi, report)

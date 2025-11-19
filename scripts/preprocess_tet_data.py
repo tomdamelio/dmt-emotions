@@ -99,7 +99,7 @@ def main():
     3. Apply clamping to out-of-range values if needed
     4. Trim sessions to analysis windows
     5. Standardize within subjects (global z-scores)
-    6. Create composite indices
+    6. Create composite index
     7. Generate metadata
     8. Save preprocessed data and metadata
     
@@ -161,7 +161,7 @@ def main():
         print("      - Trimming sessions to analysis windows")
         print("      - Creating valence variables")
         print("      - Standardizing within subjects (global z-scores)")
-        print("      - Creating composite indices")
+        print("      - Creating composite index")
         
         preprocessor = TETPreprocessor(data, config.TET_DIMENSION_COLUMNS)
         data_preprocessed = preprocessor.preprocess_all()
@@ -218,7 +218,7 @@ def main():
         print("New columns created:")
         print(f"  - Z-scored dimensions: {summary['n_dimensions']} columns (suffix _z)")
         print(f"  - Valence variables: 2 columns (valence_pos, valence_neg)")
-        print(f"  - Composite indices: 3 columns (affect_index_z, imagery_index_z, self_index_z)")
+        print(f"  - Composite index: 1 column (valence_index_z)")
         print()
         
         print(f"Output files:")

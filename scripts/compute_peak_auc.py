@@ -130,9 +130,10 @@ def main():
         logger.info("Initializing TETPeakAUCAnalyzer...")
         print("[2/4] Initializing analyzer...")
         
-        # Get z-scored dimension columns
-        z_dimensions = [col for col in data.columns if col.endswith('_z') 
-                       and col.replace('_z', '') in config.TET_DIMENSION_COLUMNS]
+        # Get z-scored affective dimension columns + valence index
+        affective_z_dims = [f"{dim}_z" for dim in config.TET_AFFECTIVE_COLUMNS 
+                           if f"{dim}_z" in data.columns]
+        z_dimensions = affective_z_dims + ['valence_index_z']
         
         print(f"      ✓ Found {len(z_dimensions)} z-scored dimensions")
         

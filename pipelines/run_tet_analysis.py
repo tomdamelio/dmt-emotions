@@ -67,8 +67,9 @@ class PipelineValidator:
             'preprocessing': self._validate_raw_data,
             'descriptive': self._validate_preprocessed_data,
             'lme': self._validate_preprocessed_data,
-            'peak_auc': self._validate_preprocessed_data,
             'pca': self._validate_preprocessed_data,
+            'ica': self._validate_ica_inputs,
+            'physio_correlation': self._validate_physio_correlation_inputs,
             'clustering': self._validate_preprocessed_data,
             'figures': self._validate_analysis_results,
             'report': self._validate_all_results
@@ -115,11 +116,66 @@ class PipelineValidator:
         self.logger.debug(f"Preprocessed data found: {required}")
         return True, ""
     
+    def _validate_ica_inputs(self) -> Tuple[bool, str]:
+        """Validate PCA results exist for ICA analysis."""
+        required = [
+            'results/tet/preprocessed/tet_preprocessed.csv',
+            'results/tet/pca/pca_scores.csv',
+            'results/tet/pca/pca_loadings.csv',
+            'results/tet/pca/pca_lme_results.csv'
+        ]
+        
+        missing = [f for f in required if not Path(f).exists()]
+        
+        if missing:
+            return False, (
+                f"Missing required files for ICA:\n" +
+                "\n".join(f"  - {f}" for f in missing) +
+                "\n\nRun PCA analysis first:\n"
+                "  python pipelines/run_tet_analysis.py --stages pca"
+            )
+        
+        self.logger.debug("ICA inputs validated")
+        return True, ""
+    
+    def _validate_physio_correlation_inputs(self) -> Tuple[bool, str]:
+        """Validate inputs for physiological-TET correlation analysis."""
+        required = [
+            'results/tet/preprocessed/tet_preprocessed.csv',
+            'results/composite/arousal_index_long.csv',
+            'results/composite/pca_loadings_pc1.csv'
+        ]
+        
+        missing = [f for f in required if not Path(f).exists()]
+        
+        if missing:
+            # Check if TET preprocessing is missing
+            if 'results/tet/preprocessed/tet_preprocessed.csv' in missing:
+                return False, (
+                    "Missing TET preprocessed data:\n"
+                    "  - results/tet/preprocessed/tet_preprocessed.csv\n\n"
+                    "Run TET preprocessing first:\n"
+                    "  python pipelines/run_tet_analysis.py --stages preprocessing"
+                )
+            
+            # Check if composite physiological files are missing
+            composite_missing = [f for f in missing if 'composite' in f]
+            if composite_missing:
+                return False, (
+                    f"Missing composite physiological data files:\n" +
+                    "\n".join(f"  - {f}" for f in composite_missing) +
+                    "\n\nRun physiological preprocessing and composite arousal index pipeline:\n"
+                    "  python pipelines/run_composite_arousal_index.py\n\n"
+                    "This will generate the required composite physiological data with PC1 (ArousalIndex)."
+                )
+        
+        self.logger.debug("Physiological-TET correlation inputs validated")
+        return True, ""
+    
     def _validate_analysis_results(self) -> Tuple[bool, str]:
         """Validate analysis results exist for figure generation."""
         required = [
             'results/tet/lme/lme_results.csv',
-            'results/tet/peak_auc/peak_auc_metrics.csv',
         ]
         
         missing = [f for f in required if not Path(f).exists()]
@@ -129,7 +185,7 @@ class PipelineValidator:
                 f"Missing analysis results:\n" +
                 "\n".join(f"  - {f}" for f in missing) +
                 "\n\nRun analysis stages first:\n"
-                "  python scripts/run_tet_analysis.py --stages lme peak_auc"
+                "  python scripts/run_tet_analysis.py --stages lme"
             )
         
         self.logger.debug("Analysis results validated")
@@ -140,7 +196,6 @@ class PipelineValidator:
         required_dirs = [
             'results/tet/descriptive',
             'results/tet/lme',
-            'results/tet/peak_auc',
         ]
         
         missing = [d for d in required_dirs if not Path(d).exists()]
@@ -243,8 +298,9 @@ class TETAnalysisPipeline:
             ('preprocessing', self._run_preprocessing),
             ('descriptive', self._run_descriptive_stats),
             ('lme', self._run_lme_models),
-            ('peak_auc', self._run_peak_auc_analysis),
             ('pca', self._run_pca_analysis),
+            ('ica', self._run_ica_analysis),
+            ('physio_correlation', self._run_physio_correlation),
             ('clustering', self._run_clustering_analysis),
             ('figures', self._run_figure_generation),
             ('report', self._run_report_generation)
@@ -404,19 +460,7 @@ class TETAnalysisPipeline:
         finally:
             sys.argv = original_argv
     
-    def _run_peak_auc_analysis(self):
-        """Execute peak and AUC analysis stage."""
-        self.logger.info("Computing peak and AUC analysis...")
-        from compute_peak_auc import main as peak_auc_main
-        
-        original_argv = sys.argv.copy()
-        sys.argv = ['compute_peak_auc.py']
-        
-        try:
-            peak_auc_main()
-        finally:
-            sys.argv = original_argv
-    
+
     def _run_pca_analysis(self):
         """Execute PCA analysis stage."""
         self.logger.info("Computing PCA analysis...")
@@ -427,6 +471,32 @@ class TETAnalysisPipeline:
         
         try:
             pca_main()
+        finally:
+            sys.argv = original_argv
+    
+    def _run_ica_analysis(self):
+        """Execute ICA analysis stage."""
+        self.logger.info("Computing ICA analysis...")
+        from compute_ica_analysis import main as ica_main
+        
+        original_argv = sys.argv.copy()
+        sys.argv = ['compute_ica_analysis.py']
+        
+        try:
+            ica_main()
+        finally:
+            sys.argv = original_argv
+    
+    def _run_physio_correlation(self):
+        """Execute physiological-TET correlation analysis stage."""
+        self.logger.info("Computing physiological-TET correlation analysis...")
+        from compute_physio_correlation import main as physio_corr_main
+        
+        original_argv = sys.argv.copy()
+        sys.argv = ['compute_physio_correlation.py']
+        
+        try:
+            physio_corr_main()
         finally:
             sys.argv = original_argv
     
@@ -529,23 +599,23 @@ Examples:
     parser.add_argument(
         '--stages',
         nargs='+',
-        choices=['preprocessing', 'descriptive', 'lme', 'peak_auc', 
-                 'pca', 'clustering', 'figures', 'report'],
+        choices=['preprocessing', 'descriptive', 'lme', 
+                 'pca', 'ica', 'physio_correlation', 'clustering', 'figures', 'report'],
         help='Specific stages to run'
     )
     
     parser.add_argument(
         '--skip-stages',
         nargs='+',
-        choices=['preprocessing', 'descriptive', 'lme', 'peak_auc', 
-                 'pca', 'clustering', 'figures', 'report'],
+        choices=['preprocessing', 'descriptive', 'lme', 
+                 'pca', 'ica', 'physio_correlation', 'clustering', 'figures', 'report'],
         help='Stages to skip'
     )
     
     parser.add_argument(
         '--from-stage',
-        choices=['preprocessing', 'descriptive', 'lme', 'peak_auc', 
-                 'pca', 'clustering', 'figures', 'report'],
+        choices=['preprocessing', 'descriptive', 'lme', 
+                 'pca', 'ica', 'physio_correlation', 'clustering', 'figures', 'report'],
         help='Start from this stage onward'
     )
     

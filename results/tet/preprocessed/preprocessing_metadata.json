@@ -1,6 +1,6 @@
 {
   "preprocessing_version": "1.0.0",
-  "timestamp": "2025-11-14T15:49:08.922465",
+  "timestamp": "2025-11-18T19:32:19.810999",
   "random_seed": 22,
   "data_summary": {
     "n_subjects": 18,
@@ -32,42 +32,18 @@
     "valence_neg": "unpleasantness"
   },
   "composite_indices": {
-    "affect_index_z": {
-      "formula": "mean(pleasantness_z, bliss_z) - mean(anxiety_z, unpleasantness_z)",
+    "valence_index_z": {
+      "formula": "pleasantness_z - unpleasantness_z",
       "components": {
         "positive": [
-          "pleasantness",
-          "bliss"
+          "pleasantness"
         ],
         "negative": [
-          "anxiety",
           "unpleasantness"
         ]
       },
-      "interpretation": "Higher values indicate more positive affect (pleasant, blissful). Lower values indicate more negative affect (anxious, unpleasant).",
-      "directionality": "positive - negative"
-    },
-    "imagery_index_z": {
-      "formula": "mean(elementary_imagery_z, complex_imagery_z)",
-      "components": [
-        "elementary_imagery",
-        "complex_imagery"
-      ],
-      "interpretation": "Higher values indicate more vivid imagery (both elementary and complex).",
-      "directionality": "positive"
-    },
-    "self_index_z": {
-      "formula": "-disembodiment_z + selfhood_z",
-      "components": {
-        "inverted": [
-          "disembodiment"
-        ],
-        "positive": [
-          "selfhood"
-        ]
-      },
-      "interpretation": "Higher values indicate greater self-integration (embodied, strong sense of self). Lower values indicate less self-integration (disembodied, ego dissolution).",
-      "directionality": "inverted disembodiment + selfhood"
+      "interpretation": "Higher values indicate more positive affective valence (pleasant). Lower values indicate more negative affective valence (unpleasant).",
+      "directionality": "pleasantness - unpleasantness"
     }
   },
   "dimensions": [

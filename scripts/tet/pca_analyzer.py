@@ -49,7 +49,7 @@ class TETPCAAnalyzer:
         >>> 
         >>> # Get z-scored dimension columns
         >>> z_dims = [col for col in data.columns if col.endswith('_z') 
-        ...           and col not in ['affect_index_z', 'imagery_index_z', 'self_index_z']]
+        ...           and col not in ['valence_index_z']]
         >>> 
         >>> # Initialize and fit PCA
         >>> analyzer = TETPCAAnalyzer(data, z_dims, variance_threshold=0.75)
@@ -80,6 +80,8 @@ class TETPCAAnalyzer:
         self.pc_scores = None  # DataFrame with PC scores
         self.loadings_df = None
         self.variance_df = None
+        self.group_mean = None  # Group-level mean for standardization
+        self.group_std = None  # Group-level std for standardization
         
         logger.info(f"Initialized TETPCAAnalyzer with {len(data)} observations, "
                    f"{len(dimensions)} dimensions, variance_threshold={variance_threshold}")
@@ -103,7 +105,7 @@ class TETPCAAnalyzer:
         """
         logger.info("Fitting group-level PCA...")
         
-        # Extract z-scored dimension matrix
+        # Extract z-scored dimension matrix (already z-scored within subjects)
         X = self.data[self.dimensions].values
         logger.info(f"Input matrix shape: {X.shape}")
         
@@ -114,6 +116,17 @@ class TETPCAAnalyzer:
             valid_mask = ~np.any(np.isnan(X), axis=1)
             X = X[valid_mask]
             logger.info(f"Matrix shape after dropping NaN: {X.shape}")
+        
+        # Apply second z-scoring at group level (across all subjects)
+        # This ensures each dimension has mean=0 and std=1 across the entire dataset
+        # Making loadings more interpretable across dimensions
+        logger.info("Applying group-level z-scoring (across subjects)...")
+        self.group_mean = np.mean(X, axis=0)
+        self.group_std = np.std(X, axis=0, ddof=1)
+        X = (X - self.group_mean) / self.group_std
+        logger.info(f"  Group-level standardization complete")
+        logger.info(f"  Mean per dimension after standardization: {np.mean(X, axis=0).round(6)}")  # Should be ~0
+        logger.info(f"  Std per dimension after standardization: {np.std(X, axis=0, ddof=1).round(6)}")  # Should be ~1
         
         # Fit initial PCA with all components to determine variance structure
         pca_full = PCA(n_components=None)
@@ -166,6 +179,9 @@ class TETPCAAnalyzer:
         
         # Handle missing values (use same mask as fit)
         valid_mask = ~np.any(np.isnan(X), axis=1)
+        
+        # Apply group-level standardization using saved parameters
+        X[valid_mask] = (X[valid_mask] - self.group_mean) / self.group_std
         
         # Transform using fitted PCA model
         pc_scores_array = self.pca_model.transform(X[valid_mask])

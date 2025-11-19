@@ -96,8 +96,11 @@ def prepare_plotting_data(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """
     logger.info("Preparing data for forest plots...")
     
-    # Filter out Intercept and Group Var
-    df_filtered = df[~df['effect'].isin(['Intercept', 'Group Var'])].copy()
+    # Filter to only Arousal and Valence dimensions
+    df_filtered = df[df['dimension'].isin(['emotional_intensity_z', 'valence_index_z'])].copy()
+    
+    # Filter out Intercept, Group Var, and triple interaction
+    df_filtered = df_filtered[~df_filtered['effect'].isin(['Intercept', 'Group Var', 'state[T.DMT]:dose[T.Alta]:time_c'])].copy()
     
     # Add significance marker
     df_filtered['significant'] = df_filtered['p_fdr'] < 0.05
@@ -141,7 +144,7 @@ def prepare_plotting_data(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 def plot_coefficient_forest(
     plot_data: Dict[str, pd.DataFrame],
     output_path: str,
-    figsize: tuple = (10, 8)
+    figsize: tuple = (14, 2.5)
 ) -> None:
     """
     Create forest plot showing LME coefficients with 95% CIs.

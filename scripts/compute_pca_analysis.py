@@ -125,15 +125,17 @@ def load_preprocessed_data(input_path: str) -> pd.DataFrame:
     if missing_cols:
         raise ValueError(f"Missing required columns: {missing_cols}")
     
-    # Get z-scored dimension columns (exclude composite indices)
-    z_dims = [col for col in data.columns 
-              if col.endswith('_z') 
-              and col not in ['affect_index_z', 'imagery_index_z', 'self_index_z']]
+    # Get z-scored affective dimension columns only (from TET_AFFECTIVE_COLUMNS)
+    # This focuses PCA on affective/autonomic aspects of the experience
+    z_dims = [f"{dim}_z" for dim in config.TET_AFFECTIVE_COLUMNS]
     
-    if len(z_dims) == 0:
-        raise ValueError("No z-scored dimension columns found in data")
+    # Verify all affective dimensions exist in data
+    missing_dims = [dim for dim in z_dims if dim not in data.columns]
+    if missing_dims:
+        raise ValueError(f"Missing affective dimensions in data: {missing_dims}")
     
-    logger.info(f"  Found {len(z_dims)} z-scored dimensions")
+    logger.info(f"  Using {len(z_dims)} affective dimensions for PCA")
+    logger.info(f"  Dimensions: {', '.join([d.replace('_z', '') for d in z_dims])}")
     
     return data
 
@@ -175,12 +177,10 @@ def main():
         # =====================================================================
         data = load_preprocessed_data(args.input)
         
-        # Get z-scored dimension columns
-        z_dims = [col for col in data.columns 
-                  if col.endswith('_z') 
-                  and col not in ['affect_index_z', 'imagery_index_z', 'self_index_z']]
+        # Get z-scored affective dimension columns (from TET_AFFECTIVE_COLUMNS)
+        z_dims = [f"{dim}_z" for dim in config.TET_AFFECTIVE_COLUMNS]
         
-        logger.info(f"Z-scored dimensions: {', '.join(z_dims)}")
+        logger.info(f"Affective dimensions for PCA: {', '.join([d.replace('_z', '') for d in z_dims])}")
         
         # =====================================================================
         # STEP 2: Initialize TETPCAAnalyzer

@@ -19,35 +19,27 @@ logger = logging.getLogger(__name__)
 
 
 def plot_scree(variance_df, output_path, dpi=300):
-    """Plot scree plot showing variance explained."""
+    """Plot scree plot showing variance explained (single panel with PC1-PC2 highlighted)."""
     logger.info("Creating scree plot...")
     
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+    fig, ax = plt.subplots(figsize=(8, 6))
+    
+    # Create color array: first 2 components in dark blue, rest in light gray
+    colors = ['#2E5090' if i < 2 else '#B0B0B0' for i in range(len(variance_df))]
     
     # Individual variance
-    ax1.bar(variance_df['component'], variance_df['variance_explained'] * 100, 
-            color='steelblue', alpha=0.8, edgecolor='black')
-    ax1.set_xlabel('Principal Component', fontsize=12, fontweight='bold')
-    ax1.set_ylabel('Variance Explained (%)', fontsize=12, fontweight='bold')
-    ax1.set_title('Variance Explained by Each Component', fontsize=14, fontweight='bold')
-    ax1.grid(axis='y', alpha=0.3)
+    bars = ax.bar(variance_df['component'], variance_df['variance_explained'] * 100, 
+                  color=colors, alpha=0.8, edgecolor='black', linewidth=1.5)
     
+    ax.set_xlabel('Principal Component', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Variance Explained (%)', fontsize=12, fontweight='bold')
+    ax.set_title('Variance Explained by Each Component', fontsize=14, fontweight='bold')
+    ax.grid(axis='y', alpha=0.3)
+    
+    # Add percentage labels on top of bars
     for i, var in enumerate(variance_df['variance_explained']):
-        ax1.text(i, var * 100 + 1, f'{var*100:.1f}%', ha='center', va='bottom', fontsize=10)
-    
-    # Cumulative variance
-    ax2.plot(range(len(variance_df)), variance_df['cumulative_variance'] * 100, 
-            marker='o', linewidth=2, markersize=8, color='darkred')
-    ax2.axhline(y=75, color='gray', linestyle='--', linewidth=1.5, label='75% threshold')
-    ax2.fill_between(range(len(variance_df)), 0, variance_df['cumulative_variance'] * 100, 
-                     alpha=0.2, color='darkred')
-    ax2.set_xlabel('Number of Components', fontsize=12, fontweight='bold')
-    ax2.set_ylabel('Cumulative Variance (%)', fontsize=12, fontweight='bold')
-    ax2.set_title('Cumulative Variance Explained', fontsize=14, fontweight='bold')
-    ax2.set_xticks(range(len(variance_df)))
-    ax2.set_xticklabels(variance_df['component'])
-    ax2.grid(alpha=0.3)
-    ax2.legend()
+        ax.text(i, var * 100 + 1, f'{var*100:.1f}%', ha='center', va='bottom', 
+                fontsize=10, fontweight='bold' if i < 2 else 'normal')
     
     plt.tight_layout()
     plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
@@ -55,21 +47,22 @@ def plot_scree(variance_df, output_path, dpi=300):
     logger.info(f"Saved: {output_path}")
 
 
-def plot_loadings_heatmap(loadings_df, n_components=5, output_path=None, dpi=300):
-    """Plot heatmap of PCA loadings."""
-    logger.info(f"Creating loadings heatmap...")
+def plot_loadings_heatmap(loadings_df, n_components=2, output_path=None, dpi=300):
+    """Plot heatmap of PCA loadings (PC1 and PC2 only)."""
+    logger.info(f"Creating loadings heatmap (PC1 and PC2)...")
     
     loadings_wide = loadings_df.pivot(index='dimension', columns='component', values='loading')
-    components = [f'PC{i+1}' for i in range(min(n_components, len(loadings_wide.columns)))]
+    # Only show PC1 and PC2
+    components = ['PC1', 'PC2']
     loadings_wide = loadings_wide[components]
     loadings_wide.index = [d.replace('_z', '').replace('_', ' ').title() for d in loadings_wide.index]
     
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(7, 8))
     sns.heatmap(loadings_wide, cmap='RdBu_r', center=0, annot=True, fmt='.2f', 
                 cbar_kws={'label': 'Loading'}, linewidths=0.5, vmin=-1, vmax=1, ax=ax)
     ax.set_xlabel('Principal Component', fontsize=12, fontweight='bold')
     ax.set_ylabel('TET Dimension', fontsize=12, fontweight='bold')
-    ax.set_title('PCA Loadings Heatmap', fontsize=14, fontweight='bold')
+    ax.set_title('PCA Loadings Heatmap (Affective Dimensions)', fontsize=14, fontweight='bold')
     
     plt.tight_layout()
     plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
@@ -101,7 +94,7 @@ def main():
         
         # Generate figures
         plot_scree(variance_df, os.path.join(args.output_dir, 'pca_scree_plot.png'), args.dpi)
-        plot_loadings_heatmap(loadings_df, 5, os.path.join(args.output_dir, 'pca_loadings_heatmap.png'), args.dpi)
+        plot_loadings_heatmap(loadings_df, 2, os.path.join(args.output_dir, 'pca_loadings_heatmap.png'), args.dpi)
         
         logger.info("="*80)
         logger.info("PCA VISUALIZATION COMPLETE")

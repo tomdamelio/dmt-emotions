@@ -67,13 +67,15 @@ class TETLMEAnalyzer:
         Args:
             data (pd.DataFrame): Preprocessed TET data
             dimensions (Optional[List[str]]): List of dimensions to analyze.
-                If None, uses all z-scored dimensions (not composite indices).
+                If None, uses affective dimensions + valence_index_z.
         """
         self.data_raw = data
         
-        # Default: z-scored dimensions only (not composite indices)
+        # Default: z-scored affective dimensions + composite index (not all dimensions)
         if dimensions is None:
-            self.dimensions = [f"{dim}_z" for dim in config.TET_DIMENSION_COLUMNS]
+            # Use only affective dimensions + valence index
+            affective_dims = [f"{dim}_z" for dim in config.TET_AFFECTIVE_COLUMNS]
+            self.dimensions = affective_dims + ['valence_index_z']
         else:
             self.dimensions = dimensions
         

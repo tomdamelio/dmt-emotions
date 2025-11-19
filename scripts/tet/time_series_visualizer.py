@@ -77,16 +77,17 @@ class TETTimeSeriesVisualizer:
             lme_contrasts (pd.DataFrame): LME dose contrasts
             time_courses (pd.DataFrame): Time course data
             dimensions (Optional[List[str]]): List of dimensions to plot.
-                If None, uses all z-scored dimensions.
+                If None, uses affective dimensions + valence_index_z.
         """
         self.data = data
         self.lme_results = lme_results
         self.lme_contrasts = lme_contrasts
         self.time_courses = time_courses
         
-        # Default: z-scored dimensions only
+        # Default: z-scored affective dimensions + valence index
         if dimensions is None:
-            self.dimensions = [f"{dim}_z" for dim in config.TET_DIMENSION_COLUMNS]
+            affective_dims = [f"{dim}_z" for dim in config.TET_AFFECTIVE_COLUMNS]
+            self.dimensions = affective_dims + ['valence_index_z']
         else:
             self.dimensions = dimensions
         
@@ -363,33 +364,69 @@ class TETTimeSeriesVisualizer:
     
     def generate_figure(self) -> plt.Figure:
         """
-        Generate complete multi-panel figure.
+        Generate complete multi-panel figure with custom layout.
+        
+        Layout:
+        - Row 1: 2 large panels (Arousal, Valence) - each spanning 5 columns
+        - Row 2: 5 small panels (Interoception, Anxiety, Unpleasantness, Pleasantness, Bliss) - each spanning 2 columns
         
         Returns:
             plt.Figure: Matplotlib figure object
         """
-        logger.info("Generating time series figure...")
+        logger.info("Generating time series figure with custom layout...")
         
-        # Create figure with subplots (5 rows × 3 columns)
-        # Adjusted figsize to make subplots wider than tall
-        fig, axes = plt.subplots(5, 3, figsize=(15, 10), dpi=300)
+        # Define dimensions to plot in specific order
+        # Row 1: Main dimensions (large panels)
+        main_dimensions = ['emotional_intensity_z', 'valence_index_z']
+        
+        # Row 2: Secondary dimensions (small panels)
+        secondary_dimensions = [
+            'interoception_z',
+            'anxiety_z', 
+            'unpleasantness_z',
+            'pleasantness_z',
+            'bliss_z'
+        ]
+        
+        # Create figure with GridSpec for custom layout
+        fig = plt.figure(figsize=(20, 8), dpi=300)
+        import matplotlib.gridspec as gridspec
+        gs = gridspec.GridSpec(2, 10, figure=fig, hspace=0.35, wspace=0.4)
+        
         fig.suptitle('TET Time Series: Dose Effects with Statistical Annotations', 
-                    fontsize=14, fontweight='bold', y=0.995)
+                    fontsize=16, fontweight='bold', y=0.98)
         
-        # Plot each dimension
-        for idx, dimension in enumerate(self.ordered_dimensions):
-            if idx >= 15:  # Only plot first 15 dimensions
-                break
-            
-            ax = axes.flatten()[idx]
-            self._plot_dimension(ax, dimension)
-            
-            # Add legend only to first plot
-            if idx == 0:
-                ax.legend(loc='upper right', fontsize=8, framealpha=0.9)
+        # Row 1: Large panels (Arousal and Valence)
+        # Arousal: columns 0-4
+        ax_arousal = fig.add_subplot(gs[0, 0:5])
+        if 'emotional_intensity_z' in self.dimensions:
+            self._plot_dimension(ax_arousal, 'emotional_intensity_z')
+            ax_arousal.set_title('Arousal (Emotional Intensity)', fontsize=14, fontweight='bold')
+            ax_arousal.legend(loc='upper right', fontsize=10, framealpha=0.9)
         
-        # Adjust layout with more horizontal spacing
-        plt.tight_layout(rect=[0, 0, 1, 0.99], h_pad=2.0, w_pad=2.0)
+        # Valence: columns 5-9
+        ax_valence = fig.add_subplot(gs[0, 5:10])
+        if 'valence_index_z' in self.dimensions:
+            self._plot_dimension(ax_valence, 'valence_index_z')
+            ax_valence.set_title('Valence (Pleasantness-Unpleasantness)', fontsize=14, fontweight='bold')
+        
+        # Row 2: Small panels (5 dimensions, 2 columns each)
+        secondary_positions = [
+            (1, 0, 2),   # Interoception: columns 0-1
+            (1, 2, 4),   # Anxiety: columns 2-3
+            (1, 4, 6),   # Unpleasantness: columns 4-5
+            (1, 6, 8),   # Pleasantness: columns 6-7
+            (1, 8, 10),  # Bliss: columns 8-9
+        ]
+        
+        for idx, (dimension, (row, col_start, col_end)) in enumerate(zip(secondary_dimensions, secondary_positions)):
+            if dimension in self.dimensions:
+                ax = fig.add_subplot(gs[row, col_start:col_end])
+                self._plot_dimension(ax, dimension)
+                
+                # Format title
+                dim_name = dimension.replace('_z', '').replace('_', ' ').title()
+                ax.set_title(dim_name, fontsize=11, fontweight='bold')
         
         logger.info("Figure generation complete")
         

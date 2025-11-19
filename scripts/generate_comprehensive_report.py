@@ -129,19 +129,17 @@ def main():
             loaded_components.append("Descriptive Statistics")
         if synthesizer.lme_results is not None:
             loaded_components.append("LME Results")
-        if synthesizer.peak_auc_results is not None:
-            loaded_components.append("Peak/AUC Analysis")
         if synthesizer.pca_results is not None:
             loaded_components.append("PCA Results")
         if synthesizer.clustering_results is not None:
             loaded_components.append("Clustering Results")
         
-        logger.info(f"\nLoaded components ({len(loaded_components)}/5):")
+        logger.info(f"\nLoaded components ({len(loaded_components)}/4):")
         for component in loaded_components:
             logger.info(f"  ✓ {component}")
         
         missing_components = set([
-            "Descriptive Statistics", "LME Results", "Peak/AUC Analysis",
+            "Descriptive Statistics", "LME Results",
             "PCA Results", "Clustering Results"
         ]) - set(loaded_components)
         

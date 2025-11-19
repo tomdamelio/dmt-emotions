@@ -7,7 +7,7 @@ This script verifies that all preprocessing steps work correctly:
 1. Session trimming
 2. Valence variables
 3. Global within-subject standardization
-4. Composite indices
+4. Composite index
 5. Metadata generation
 """
 
@@ -153,43 +153,30 @@ else:
 
 # Verification 4: Composite Indices
 print("\n" + "=" * 70)
-print("VERIFICATION 4: COMPOSITE INDICES")
+print("VERIFICATION 4: COMPOSITE INDEX")
 print("=" * 70)
 
-composite_indices = ['affect_index_z', 'imagery_index_z', 'self_index_z']
+composite_indices = ['valence_index_z']
 
-# Check that all composite indices exist
+# Check that composite index exists
 missing_composites = [col for col in composite_indices if col not in data.columns]
 if missing_composites:
-    print(f"❌ ERROR: Missing composite indices: {missing_composites}")
+    print(f"❌ ERROR: Missing composite index: {missing_composites}")
 else:
-    print(f"✓ All {len(composite_indices)} composite indices present")
+    print(f"✓ Composite index present: valence_index_z")
 
-# Verify formulas
-print("\nVerifying composite index formulas:")
+# Verify formula
+print("\nVerifying composite index formula:")
 
-# affect_index_z = mean(pleasantness_z, bliss_z) - mean(anxiety_z, unpleasantness_z)
-affect_computed = (
-    (data['pleasantness_z'] + data['bliss_z']) / 2 - 
-    (data['anxiety_z'] + data['unpleasantness_z']) / 2
-)
-affect_match = np.allclose(data['affect_index_z'], affect_computed, rtol=1e-5)
-print(f"  affect_index_z formula: {'✓' if affect_match else '❌'}")
+# valence_index_z = pleasantness_z - unpleasantness_z
+valence_computed = data['pleasantness_z'] - data['unpleasantness_z']
+valence_match = np.allclose(data['valence_index_z'], valence_computed, rtol=1e-5)
+print(f"  valence_index_z formula: {'✓' if valence_match else '❌'}")
 
-# imagery_index_z = mean(elementary_imagery_z, complex_imagery_z)
-imagery_computed = (data['elementary_imagery_z'] + data['complex_imagery_z']) / 2
-imagery_match = np.allclose(data['imagery_index_z'], imagery_computed, rtol=1e-5)
-print(f"  imagery_index_z formula: {'✓' if imagery_match else '❌'}")
-
-# self_index_z = -disembodiment_z + selfhood_z
-self_computed = -data['disembodiment_z'] + data['selfhood_z']
-self_match = np.allclose(data['self_index_z'], self_computed, rtol=1e-5)
-print(f"  self_index_z formula: {'✓' if self_match else '❌'}")
-
-if affect_match and imagery_match and self_match:
-    print("\n✓ All composite index formulas correct")
+if valence_match:
+    print("\n✓ Composite index formula correct")
 else:
-    print("\n❌ ERROR: Some composite index formulas incorrect")
+    print("\n❌ ERROR: Composite index formula incorrect")
 
 # Show sample values
 print("\nSample composite index values (first 5 rows):")
@@ -217,8 +204,8 @@ if missing_keys:
 else:
     print(f"✓ All required metadata keys present")
 
-# Check composite definitions
-print("\nComposite index definitions in metadata:")
+# Check composite definition
+print("\nComposite index definition in metadata:")
 for idx_name, idx_def in metadata['composite_indices'].items():
     print(f"  {idx_name}:")
     print(f"    Formula: {idx_def['formula']}")
@@ -240,7 +227,7 @@ checks = {
     "Session trimming": rs_max_time < 600 and dmt_max_time < 1200,
     "Valence variables": valence_pos_match and valence_neg_match,
     "Z-score standardization": all_good,
-    "Composite indices": affect_match and imagery_match and self_match,
+    "Composite index": valence_match,
     "Metadata": len(missing_keys) == 0
 }
 

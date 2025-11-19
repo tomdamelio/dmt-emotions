@@ -32,7 +32,7 @@ class TETPreprocessor:
     This class handles preprocessing of TET data including:
     - Session trimming to analysis windows (0-10 min RS, 0-20 min DMT)
     - Global within-subject standardization (z-scores)
-    - Creation of composite indices (affect, imagery, self)
+    - Creation of composite index (valence)
     
     Attributes:
         data (pd.DataFrame): TET data to preprocess
@@ -166,36 +166,26 @@ class TETPreprocessor:
     
     def create_composite_indices(self, data: pd.DataFrame) -> pd.DataFrame:
         """
-        Create composite indices from z-scored dimensions.
+        Create composite index from z-scored dimensions.
         
-        Creates three composite indices:
-        - affect_index_z: mean(pleasantness_z, bliss_z) - mean(anxiety_z, unpleasantness_z)
-        - imagery_index_z: mean(elementary_imagery_z, complex_imagery_z)
-        - self_index_z: -disembodiment_z + selfhood_z
+        Creates valence index:
+        - valence_index_z: pleasantness_z - unpleasantness_z
+        
+        Higher values indicate more positive affective valence.
         
         Args:
             data (pd.DataFrame): Data with z-scored dimensions
             
         Returns:
-            pd.DataFrame: Data with composite index columns added
+            pd.DataFrame: Data with composite index column added
         """
         data = data.copy()
         
-        # Affect index: positive affect - negative affect
-        positive_affect = (data['pleasantness_z'] + data['bliss_z']) / 2
-        negative_affect = (data['anxiety_z'] + data['unpleasantness_z']) / 2
-        data['affect_index_z'] = positive_affect - negative_affect
+        # Valence index: pleasantness minus unpleasantness
+        # Higher values = more positive affective valence
+        data['valence_index_z'] = data['pleasantness_z'] - data['unpleasantness_z']
         
-        # Imagery index: mean of elementary and complex imagery
-        data['imagery_index_z'] = (
-            (data['elementary_imagery_z'] + data['complex_imagery_z']) / 2
-        )
-        
-        # Self index: inverted disembodiment + selfhood
-        # Higher values = more self-integration (embodied, strong sense of self)
-        data['self_index_z'] = -data['disembodiment_z'] + data['selfhood_z']
-        
-        logger.info("Created composite indices: affect_index_z, imagery_index_z, self_index_z")
+        logger.info("Created composite index: valence_index_z")
         
         return data
     
@@ -207,14 +197,14 @@ class TETPreprocessor:
         1. Trim sessions to analysis windows
         2. Create valence variables
         3. Standardize within subject (global z-scores)
-        4. Create composite indices
+        4. Create composite index
         
         Returns:
             pd.DataFrame: Fully preprocessed data with:
                 - Original dimension columns
                 - Z-scored dimension columns (suffix _z)
                 - Valence variables (valence_pos, valence_neg)
-                - Composite indices (affect_index_z, imagery_index_z, self_index_z)
+                - Composite index (valence_index_z)
         """
         logger.info("Starting preprocessing pipeline...")
         
@@ -227,7 +217,7 @@ class TETPreprocessor:
         # Step 3: Standardize within subject
         data = self.standardize_within_subject(data)
         
-        # Step 4: Create composite indices
+        # Step 4: Create composite index
         data = self.create_composite_indices(data)
         
         # Log final statistics

@@ -1,6 +1,6 @@
 # TET Analysis: Comprehensive Results
 
-**Generated:** 2025-11-14 16:04:37
+**Generated:** 2025-11-18 21:11:06
 
 **Analysis Pipeline:** TET (Temporal Experience Tracking) Analysis
 
@@ -34,111 +34,101 @@ experiencing DMT at two doses (20mg Low, 40mg High) compared to Resting State:
 **Note:** LME results not available. Please run LME analysis first.
 
 
-## 3. Peak and AUC Analysis
-
-**Note:** Peak/AUC results not available. Please run peak/AUC analysis first.
-
-
 ## 4. Dimensionality Reduction
 
 ### 4.1 Principal Components Interpretation
 
-PCA identified 5 principal components explaining 76.6% of total variance.
+PCA identified 6 principal components explaining 100.0% of total variance.
 
-#### PC1: Imagery intensity factor
+#### PC1: Mixed experiential factor
 
 **Top Positive Loadings**:
 
-- Elementary Imagery: 0.39
-- General Intensity: 0.38
-- Temporality: 0.33
-- Complex Imagery: 0.32
-- Emotional Intensity: 0.31
+- Interoception: 0.60
+- Emotional Intensity: 0.57
+- Anxiety: 0.47
+- Unpleasantness: 0.27
+- Bliss: 0.11
 
 **Temporal Dynamics**:
 
-- Intercept: β = -2.42, 95% CI [-2.92, -1.93], p_fdr < 0.001
-- C(state, Treatment('RS'))[T.DMT]: β = 3.70, 95% CI [3.49, 3.91], p_fdr < 0.001
-- C(state, Treatment('RS'))[T.DMT]:C(dose, Treatment('Baja'))[T.Alta]: β = 1.80, 95% CI [1.51, 2.10], p_fdr < 0.001
-- Group Var: β = 0.54, 95% CI [0.17, 0.92], p_fdr = 0.005
+- C(state, Treatment('RS'))[T.DMT]: β = 2.19, 95% CI [2.05, 2.33], p_fdr < 0.001
+- C(dose, Treatment('Baja'))[T.Alta]: β = 0.15, 95% CI [0.01, 0.29], p_fdr = 0.036
+- C(state, Treatment('RS'))[T.DMT]:C(dose, Treatment('Baja'))[T.Alta]: β = 0.57, 95% CI [0.38, 0.77], p_fdr < 0.001
 
 #### PC2: Affective valence factor: positive vs negative emotional experience
 
 **Top Positive Loadings**:
 
-- Bliss: 0.61
-- Pleasantness: 0.57
-- Salience: 0.22
-- Emotional Intensity: 0.19
-- Auditory: 0.09
+- Bliss: 0.63
+- Pleasantness: 0.60
+- Emotional Intensity: 0.18
+- Interoception: 0.03
 
 **Top Negative Loadings**:
 
-- Anxiety: -0.30
-- Unpleasantness: -0.29
-- Temporality: -0.15
-- General Intensity: -0.06
-- Disembodiment: -0.04
+- Anxiety: -0.34
+- Unpleasantness: -0.31
 
 **Temporal Dynamics**:
 
-- Intercept: β = -0.56, 95% CI [-0.85, -0.27], p_fdr < 0.001
-- C(state, Treatment('RS'))[T.DMT]: β = -0.32, 95% CI [-0.44, -0.20], p_fdr < 0.001
-- Group Var: β = 0.57, 95% CI [0.18, 0.96], p_fdr = 0.005
+- C(state, Treatment('RS'))[T.DMT]: β = -0.29, 95% CI [-0.40, -0.17], p_fdr < 0.001
 
-#### PC3: Imagery intensity factor
+#### PC3: Affective valence factor: positive vs negative emotional experience
 
 **Top Positive Loadings**:
 
-- Auditory: 0.53
-- Elementary Imagery: 0.41
-- Complex Imagery: 0.29
-- Bliss: 0.15
-- Anxiety: 0.12
+- Interoception: 0.73
+- Pleasantness: 0.09
 
 **Top Negative Loadings**:
 
-- Salience: -0.51
-- Interoception: -0.21
-- General Intensity: -0.18
-- Entity: -0.17
-- Selfhood: -0.15
+- Bliss: -0.40
+- Unpleasantness: -0.36
+- Anxiety: -0.34
+- Emotional Intensity: -0.25
 
-#### PC4: Imagery intensity factor
+#### PC4: Affective valence factor: positive vs negative emotional experience
 
 **Top Positive Loadings**:
 
-- Temporality: 0.48
-- Interoception: 0.30
-- General Intensity: 0.28
-- Pleasantness: 0.18
-- Elementary Imagery: 0.13
+- Anxiety: 0.72
+- Pleasantness: 0.28
+- Bliss: 0.12
+- Interoception: 0.03
 
 **Top Negative Loadings**:
 
-- Disembodiment: -0.38
-- Salience: -0.36
-- Entity: -0.33
-- Selfhood: -0.29
-- Complex Imagery: -0.26
+- Emotional Intensity: -0.53
+- Unpleasantness: -0.32
 
-#### PC5: Mixed experiential factor
+#### PC5: Affective valence factor: positive vs negative emotional experience
 
 **Top Positive Loadings**:
 
-- Anxiety: 0.49
-- Interoception: 0.48
-- Selfhood: 0.33
-- Emotional Intensity: 0.15
-- Pleasantness: 0.14
+- Pleasantness: 0.68
+- Unpleasantness: 0.62
 
 **Top Negative Loadings**:
 
-- Temporality: -0.41
-- Complex Imagery: -0.28
-- Entity: -0.26
-- General Intensity: -0.15
-- Disembodiment: -0.08
+- Bliss: -0.32
+- Emotional Intensity: -0.20
+- Anxiety: -0.08
+- Interoception: -0.07
+
+#### PC6: Affective valence factor: positive vs negative emotional experience
+
+**Top Positive Loadings**:
+
+- Bliss: 0.56
+- Unpleasantness: 0.47
+- Interoception: 0.33
+
+**Top Negative Loadings**:
+
+- Emotional Intensity: -0.50
+- Pleasantness: -0.29
+- Anxiety: -0.15
 
 [See Figures: ../results/tet/figures/pca_scree_plot.png, ../results/tet/figures/pca_loadings_heatmap.png]
 
@@ -171,11 +161,11 @@ PCA identified 5 principal components explaining 76.6% of total variance.
 
 The following dimensions showed consistent effects across multiple methods:
 
-- **Temporality**: Significant across 1 methods
-- **Elementary Imagery**: Significant across 1 methods
 - **Emotional Intensity**: Significant across 1 methods
-- **Complex Imagery**: Significant across 1 methods
-- **General Intensity**: Significant across 1 methods
+- **Anxiety**: Significant across 1 methods
+- **Interoception**: Significant across 1 methods
+- **Unpleasantness**: Significant across 1 methods
+- **Bliss**: Significant across 1 methods
 
 ### 6.2 Method Correlations
 
@@ -194,7 +184,7 @@ The following dimensions showed consistent effects across multiple methods:
 
 ### 7.3 Model Specifications
 
-- **PCA**: 5 components retained, 76.6% variance explained
+- **PCA**: 6 components retained, 100.0% variance explained
 
 ### 7.4 Analytical Decisions
 
