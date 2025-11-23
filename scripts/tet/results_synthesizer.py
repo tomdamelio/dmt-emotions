@@ -78,6 +78,7 @@ class TETResultsSynthesizer:
         self.lme_results = None
         self.pca_results = None
         self.clustering_results = None
+        self.physio_correlation_results = None
         
         logger.info(f"Initialized TETResultsSynthesizer")
         logger.info(f"  Results directory: {self.results_dir}")
@@ -269,6 +270,66 @@ class TETResultsSynthesizer:
             logger.error(f"Error loading clustering results: {e}")
             return None
     
+    def _load_physio_correlation(self) -> Optional[Dict]:
+        """
+        Load physiological-TET correlation results.
+        
+        Returns
+        -------
+        dict or None
+            Dictionary with CCA results, validation, permutation tests, CV, redundancy
+        """
+        physio_dir = self.results_dir / 'physio_correlation'
+        
+        if not physio_dir.exists():
+            logger.warning(f"Physiological correlation directory not found: {physio_dir}")
+            return None
+        
+        results = {}
+        
+        try:
+            # Load CCA results
+            cca_results_path = physio_dir / 'cca_results.csv'
+            if cca_results_path.exists():
+                results['cca_results'] = pd.read_csv(cca_results_path)
+                logger.info(f"  Loaded CCA results: {len(results['cca_results'])} canonical variates")
+            
+            # Load CCA loadings
+            cca_loadings_path = physio_dir / 'cca_loadings.csv'
+            if cca_loadings_path.exists():
+                results['cca_loadings'] = pd.read_csv(cca_loadings_path)
+                logger.info(f"  Loaded CCA loadings: {len(results['cca_loadings'])} loadings")
+            
+            # Load permutation test results
+            perm_path = physio_dir / 'cca_permutation_pvalues.csv'
+            if perm_path.exists():
+                results['permutation_tests'] = pd.read_csv(perm_path)
+                logger.info(f"  Loaded permutation test results")
+            
+            # Load cross-validation results
+            cv_summary_path = physio_dir / 'cca_cross_validation_summary.csv'
+            if cv_summary_path.exists():
+                results['cv_summary'] = pd.read_csv(cv_summary_path)
+                logger.info(f"  Loaded cross-validation summary")
+            
+            # Load redundancy indices
+            redundancy_path = physio_dir / 'cca_redundancy_indices.csv'
+            if redundancy_path.exists():
+                results['redundancy'] = pd.read_csv(redundancy_path)
+                logger.info(f"  Loaded redundancy indices")
+            
+            # Load correlation results
+            corr_path = physio_dir / 'correlation_results.csv'
+            if corr_path.exists():
+                results['correlations'] = pd.read_csv(corr_path)
+                logger.info(f"  Loaded correlation results: {len(results['correlations'])} correlations")
+            
+            return results if results else None
+            
+        except Exception as e:
+            logger.error(f"Error loading physiological correlation results: {e}")
+            return None
+    
     def load_all_results(self):
         """
         Load all analysis results.
@@ -283,16 +344,18 @@ class TETResultsSynthesizer:
         self.lme_results = self._load_lme()
         self.pca_results = self._load_pca()
         self.clustering_results = self._load_clustering()
+        self.physio_correlation_results = self._load_physio_correlation()
         
         # Count loaded components
         loaded = sum([
             self.descriptive_data is not None,
             self.lme_results is not None,
             self.pca_results is not None,
-            self.clustering_results is not None
+            self.clustering_results is not None,
+            self.physio_correlation_results is not None
         ])
         
-        logger.info(f"Loaded {loaded}/4 analysis components")
+        logger.info(f"Loaded {loaded}/5 analysis components")
 
     
     def _generate_header(self) -> str:
@@ -704,6 +767,196 @@ Across all dimensions, DMT sessions showed characteristic temporal profiles with
         logger.info(f"Generated clustering section for {len(cluster_info['clusters'])} clusters")
         return section
     
+    def generate_physio_correlation_section(self) -> str:
+        """
+        Generate physiological-affective integration section with CCA validation.
+        
+        Returns
+        -------
+        str
+            Formatted markdown section
+        """
+        logger.info("Generating physiological correlation section...")
+        
+        if self.physio_correlation_results is None:
+            return """## 6. Physiological-Affective Integration
+
+**Note:** Physiological correlation results not available. Please run physiological correlation analysis first.
+"""
+        
+        section = """## 6. Physiological-Affective Integration
+
+### 6.1 Canonical Correlation Analysis (CCA)
+
+"""
+        
+        # Report CCA results
+        if 'cca_results' in self.physio_correlation_results:
+            cca_df = self.physio_correlation_results['cca_results']
+            
+            section += "**Canonical Correlations:**\n\n"
+            
+            for _, row in cca_df.iterrows():
+                state = row['state']
+                cv = row['canonical_variate']
+                r = row['canonical_correlation']
+                p = row.get('p_value', np.nan)
+                
+                sig_marker = '*' if p < 0.05 else ''
+                p_str = StatisticalFormatter.format_p_value(p) if not pd.isna(p) else 'N/A'
+                
+                section += f"- **{state} State, CV{cv}**: r = {r:.3f}{sig_marker}, p = {p_str}\n"
+            
+            section += "\n"
+        
+        # Report permutation test results
+        if 'permutation_tests' in self.physio_correlation_results:
+            section += "### 6.2 CCA Validation: Permutation Testing\n\n"
+            
+            perm_df = self.physio_correlation_results['permutation_tests']
+            
+            section += "**Subject-level permutation test results** (1000 iterations):\n\n"
+            
+            for _, row in perm_df.iterrows():
+                state = row['state']
+                cv = row['canonical_variate']
+                r_obs = row['observed_r']
+                p_perm = row['permutation_p_value']
+                
+                sig_marker = '*' if p_perm < 0.05 else ''
+                p_str = StatisticalFormatter.format_p_value(p_perm)
+                
+                section += f"- **{state} State, CV{cv}**: r_obs = {r_obs:.3f}, p_perm = {p_str}{sig_marker}\n"
+            
+            section += "\n"
+            
+            # Interpretation
+            sig_count = (perm_df['permutation_p_value'] < 0.05).sum()
+            if sig_count > 0:
+                section += f"**Interpretation:** {sig_count} canonical correlation(s) survived permutation testing, "
+                section += "indicating robust physiological-affective coupling beyond chance.\n\n"
+            else:
+                section += "**Interpretation:** No canonical correlations survived permutation testing, "
+                section += "suggesting potential overfitting or weak coupling.\n\n"
+        
+        # Report cross-validation results
+        if 'cv_summary' in self.physio_correlation_results:
+            section += "### 6.3 CCA Validation: Cross-Validation\n\n"
+            
+            cv_df = self.physio_correlation_results['cv_summary']
+            
+            section += "**Leave-One-Subject-Out (LOSO) cross-validation:**\n\n"
+            
+            for _, row in cv_df.iterrows():
+                state = row['state']
+                cv = row['canonical_variate']
+                mean_r_oos = row['mean_r_oos']
+                sd_r_oos = row['sd_r_oos']
+                in_sample_r = row['in_sample_r']
+                overfitting = row['overfitting_index']
+                
+                section += f"- **{state} State, CV{cv}**:\n"
+                section += f"  - Out-of-sample r: {mean_r_oos:.3f} ± {sd_r_oos:.3f}\n"
+                section += f"  - In-sample r: {in_sample_r:.3f}\n"
+                section += f"  - Overfitting index: {overfitting:.3f}\n"
+            
+            section += "\n"
+            
+            # Interpretation
+            avg_overfitting = cv_df['overfitting_index'].mean()
+            if avg_overfitting < 0.2:
+                section += f"**Interpretation:** Low overfitting (mean index = {avg_overfitting:.3f}), "
+                section += "indicating good generalization to held-out subjects.\n\n"
+            elif avg_overfitting < 0.4:
+                section += f"**Interpretation:** Moderate overfitting (mean index = {avg_overfitting:.3f}), "
+                section += "suggesting some model instability across subjects.\n\n"
+            else:
+                section += f"**Interpretation:** High overfitting (mean index = {avg_overfitting:.3f}), "
+                section += "indicating poor generalization and potential model instability.\n\n"
+        
+        # Report redundancy indices
+        if 'redundancy' in self.physio_correlation_results:
+            section += "### 6.4 CCA Validation: Redundancy Analysis\n\n"
+            
+            red_df = self.physio_correlation_results['redundancy']
+            
+            section += "**Redundancy indices** (percentage of variance explained):\n\n"
+            
+            for _, row in red_df.iterrows():
+                if row['canonical_variate'] == 'Total':
+                    continue
+                    
+                state = row['state']
+                cv = row['canonical_variate']
+                red_y_x = row['redundancy_Y_given_X']
+                red_x_y = row['redundancy_X_given_Y']
+                interp = row.get('interpretation', 'N/A')
+                
+                section += f"- **{state} State, CV{cv}**:\n"
+                section += f"  - TET variance explained by physio: {red_y_x:.1%}\n"
+                section += f"  - Physio variance explained by TET: {red_x_y:.1%}\n"
+                section += f"  - Interpretation: {interp}\n"
+            
+            section += "\n"
+            
+            # Overall interpretation
+            avg_redundancy = red_df[red_df['canonical_variate'] != 'Total'][
+                ['redundancy_Y_given_X', 'redundancy_X_given_Y']
+            ].mean().mean()
+            
+            if avg_redundancy > 0.10:
+                section += f"**Interpretation:** Meaningful shared variance (mean redundancy = {avg_redundancy:.1%}), "
+                section += "indicating that CCA captures substantive physiological-affective coupling.\n\n"
+            elif avg_redundancy > 0.05:
+                section += f"**Interpretation:** Moderate shared variance (mean redundancy = {avg_redundancy:.1%}), "
+                section += "suggesting weak but potentially meaningful coupling.\n\n"
+            else:
+                section += f"**Interpretation:** Low shared variance (mean redundancy = {avg_redundancy:.1%}), "
+                section += "indicating that CCA may be capturing noise rather than meaningful coupling.\n\n"
+        
+        # Overall CCA validation summary
+        section += "### 6.5 CCA Validation Summary\n\n"
+        
+        # Determine if CCA results are robust
+        is_robust = True
+        concerns = []
+        
+        if 'permutation_tests' in self.physio_correlation_results:
+            perm_df = self.physio_correlation_results['permutation_tests']
+            sig_count = (perm_df['permutation_p_value'] < 0.05).sum()
+            if sig_count == 0:
+                is_robust = False
+                concerns.append("No canonical correlations survived permutation testing")
+        
+        if 'cv_summary' in self.physio_correlation_results:
+            cv_df = self.physio_correlation_results['cv_summary']
+            avg_overfitting = cv_df['overfitting_index'].mean()
+            if avg_overfitting > 0.4:
+                is_robust = False
+                concerns.append(f"High overfitting in cross-validation (index = {avg_overfitting:.3f})")
+        
+        if 'redundancy' in self.physio_correlation_results:
+            red_df = self.physio_correlation_results['redundancy']
+            avg_redundancy = red_df[red_df['canonical_variate'] != 'Total'][
+                ['redundancy_Y_given_X', 'redundancy_X_given_Y']
+            ].mean().mean()
+            if avg_redundancy < 0.05:
+                is_robust = False
+                concerns.append(f"Low redundancy indices (mean = {avg_redundancy:.1%})")
+        
+        if is_robust:
+            section += "**Conclusion:** CCA results appear **robust** and represent meaningful physiological-affective coupling:\n\n"
+            section += "- Canonical correlations survived permutation testing\n"
+            section += "- Good generalization in cross-validation\n"
+            section += "- Meaningful shared variance (redundancy indices)\n\n"
+        else:
+            section += "**Conclusion:** CCA results show signs of **potential overfitting** or weak coupling:\n\n"
+            for concern in concerns:
+                section += f"- {concern}\n"
+            section += "\n**Recommendation:** Interpret CCA results with caution. Consider alternative approaches or larger sample sizes.\n\n"
+        
+        return section
+    
     def generate_integration_section(self) -> str:
         """Generate cross-analysis integration section."""
         logger.info("Generating integration section...")
@@ -716,14 +969,14 @@ Across all dimensions, DMT sessions showed characteristic temporal profiles with
         )
         
         if not cross_results['rankings']:
-            return """## 6. Cross-Analysis Integration
+            return """## 7. Cross-Analysis Integration
 
 **Note:** Insufficient data for cross-method comparison.
 """
         
-        section = """## 6. Cross-Analysis Integration
+        section = """## 7. Cross-Analysis Integration
 
-### 6.1 Convergent Findings
+### 7.1 Convergent Findings
 
 """
         
@@ -734,7 +987,7 @@ Across all dimensions, DMT sessions showed characteristic temporal profiles with
                 section += f"- **{dim_name}**: Significant across {len([r for r in cross_results['rankings'].values() if dim in r[:5]])} methods\n"
             section += "\n"
         
-        section += "### 6.2 Method Correlations\n\n"
+        section += "### 7.2 Method Correlations\n\n"
         
         if cross_results['correlations']:
             for comparison, stats in cross_results['correlations'].items():
@@ -755,9 +1008,9 @@ Across all dimensions, DMT sessions showed characteristic temporal profiles with
             self.clustering_results
         )
         
-        section = """## 7. Methodological Notes
+        section = """## 8. Methodological Notes
 
-### 7.1 Data Quality
+### 8.1 Data Quality
 
 """
         
@@ -765,17 +1018,17 @@ Across all dimensions, DMT sessions showed characteristic temporal profiles with
             section += f"- **{key.replace('_', ' ').title()}**: {value}\n"
         section += "\n"
         
-        section += "### 7.2 Preprocessing\n\n"
+        section += "### 8.2 Preprocessing\n\n"
         for key, value in metadata['preprocessing'].items():
             section += f"- **{key.replace('_', ' ').title()}**: {value}\n"
         section += "\n"
         
-        section += "### 7.3 Model Specifications\n\n"
+        section += "### 8.3 Model Specifications\n\n"
         for model_name, spec in metadata['models'].items():
             section += f"- **{model_name}**: {spec}\n"
         section += "\n"
         
-        section += "### 7.4 Analytical Decisions\n\n"
+        section += "### 8.4 Analytical Decisions\n\n"
         for key, value in metadata['decisions'].items():
             section += f"- **{key.replace('_', ' ').title()}**: {value}\n"
         section += "\n"
@@ -794,9 +1047,9 @@ Across all dimensions, DMT sessions showed characteristic temporal profiles with
             self.clustering_results
         )
         
-        section = """## 8. Further Investigation
+        section = """## 9. Further Investigation
 
-### 8.1 Unresolved Questions and Ambiguous Findings
+### 9.1 Unresolved Questions and Ambiguous Findings
 
 """
         
@@ -807,7 +1060,7 @@ Across all dimensions, DMT sessions showed characteristic temporal profiles with
                 section += f"{i}. **{ambiguity['type']}**: {ambiguity['description']}\n"
                 section += f"   - *Suggested analysis*: {ambiguity['suggestion']}\n\n"
         
-        section += """### 8.2 Suggested Follow-up Analyses
+        section += """### 9.2 Suggested Follow-up Analyses
 
 **High Priority**:
 
@@ -888,13 +1141,21 @@ Across all dimensions, DMT sessions showed characteristic temporal profiles with
             errors.append(('Clustering Analysis', str(e)))
             sections.append("## 4. Clustering Analysis\n\n**Error generating section**\n")
         
+        # Physiological-Affective Integration
+        try:
+            sections.append(self.generate_physio_correlation_section())
+        except Exception as e:
+            logger.error(f"Error generating physiological correlation section: {e}")
+            errors.append(('Physiological-Affective Integration', str(e)))
+            sections.append("## 6. Physiological-Affective Integration\n\n**Error generating section**\n")
+        
         # Cross-Analysis Integration
         try:
             sections.append(self.generate_integration_section())
         except Exception as e:
             logger.error(f"Error generating integration section: {e}")
             errors.append(('Cross-Analysis Integration', str(e)))
-            sections.append("## 5. Cross-Analysis Integration\n\n**Error generating section**\n")
+            sections.append("## 7. Cross-Analysis Integration\n\n**Error generating section**\n")
         
         # Methodological Notes
         try:
@@ -902,7 +1163,7 @@ Across all dimensions, DMT sessions showed characteristic temporal profiles with
         except Exception as e:
             logger.error(f"Error generating methodological notes: {e}")
             errors.append(('Methodological Notes', str(e)))
-            sections.append("## 7. Methodological Notes\n\n**Error generating section**\n")
+            sections.append("## 8. Methodological Notes\n\n**Error generating section**\n")
         
         # Further Investigation
         try:
@@ -910,7 +1171,7 @@ Across all dimensions, DMT sessions showed characteristic temporal profiles with
         except Exception as e:
             logger.error(f"Error generating further investigation section: {e}")
             errors.append(('Further Investigation', str(e)))
-            sections.append("## 8. Further Investigation\n\n**Error generating section**\n")
+            sections.append("## 9. Further Investigation\n\n**Error generating section**\n")
         
         # Add error report if any failures
         if errors:

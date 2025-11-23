@@ -1374,3 +1374,952 @@ parser.add_argument('--verbose', action='store_true')
 5. **Mediation Analysis**:
    - Test whether physio mediates dose effects on TET
    - Identify causal pathways
+
+
+---
+
+## CCA Statistical Validation Extension
+
+### Overview
+
+This extension adds rigorous statistical validation to the Canonical Correlation Analysis (CCA) to address concerns about:
+1. **Artificially inflated sample sizes** from temporal autocorrelation
+2. **False positives** from subject-level dependencies
+3. **Overfitting** to the training sample
+4. **Noise vs signal** in canonical correlations
+
+The validation framework includes:
+- Data structure audit (temporal resolution, sample size)
+- Subject-level permutation testing (1000 iterations)
+- Leave-One-Subject-Out (LOSO) cross-validation
+- Redundancy index computation (shared variance quantification)
+
+### Requirements Reference
+
+**New Acceptance Criteria (11.23-11.32)**:
+- 11.23-11.24: Data validation and audit
+- 11.25-11.26: Subject-level permutation testing
+- 11.27-11.28: LOSO cross-validation
+- 11.29: Redundancy index computation
+- 11.30-11.32: Export results and reporting
+
+### Architecture Extension
+
+```
+CCADataValidator
+├── validate_temporal_resolution()    # Check 30s bins vs raw data
+├── validate_sample_size()            # Verify sufficient N
+├── audit_data_structure()            # Check alignment and completeness
+└── generate_validation_report()      # Compile validation results
+
+TETPhysioCCAAnalyzer (Extended)
+├── permutation_test()                # Subject-level permutation
+│   ├── _subject_level_shuffle()      # Preserve temporal structure
+│   ├── _fit_permuted_cca()           # Fit CCA on permuted data
+│   └── _compute_permutation_pvalues() # Empirical p-values
+├── loso_cross_validation()           # Leave-One-Subject-Out CV
+│   ├── _generate_loso_folds()        # Create train/test splits
+│   ├── _compute_oos_correlation()    # Out-of-sample correlations
+│   └── _summarize_cv_results()       # CV statistics
+└── compute_redundancy_index()        # Shared variance quantification
+    ├── _compute_variance_explained()  # R² for each variate
+    └── _compute_redundancy()          # Redundancy indices
+```
+
+
+
+### 1. CCADataValidator Class
+
+**Purpose**: Validate data structure and temporal resolution before CCA analysis.
+
+**Rationale**:
+- Temporal autocorrelation inflates effective sample size
+- Raw 0.25 Hz data (~1350 points/subject) vs 30s bins (~126 points/subject)
+- Must verify proper aggregation to avoid false positives
+- Document actual sample size for power analysis
+
+#### 1.1 Temporal Resolution Validation
+
+```python
+def validate_temporal_resolution(self) -> Dict[str, Any]:
+    """
+    Validate that data are aggregated to 30-second bins.
+    
+    Critical Issue:
+    - Raw TET data: 0.25 Hz (4-second bins) → ~1350 points/subject
+    - Aggregated data: 30-second bins → ~126 points/subject
+    - Using raw data inflates N by 7.5× and violates independence
+    
+    Process:
+    1. Compute actual time differences between consecutive observations
+    2. Check modal time difference (should be 30 seconds)
+    3. Count observations per session (should be ~18 for 9 minutes)
+    4. Flag if resolution appears to be raw data
+    
+    Returns:
+        Dict with:
+        - resolution_seconds: Actual temporal resolution
+        - bins_per_session: Observed bins per 9-minute session
+        - is_valid: Boolean (True if 30s bins)
+        - warning_message: Description if invalid
+    """
+```
+
+**Implementation Details**:
+- Compute time differences: `df.groupby(['subject', 'session'])['t_sec'].diff()`
+- Modal difference should be 30 seconds (tolerance: ±2 seconds)
+- Expected bins: RS=20, DMT=40 (first 9 min = 18 bins)
+- If modal diff ≈ 4 seconds → raw data (INVALID)
+- If modal diff ≈ 30 seconds → aggregated (VALID)
+
+
+
+#### 1.2 Sample Size Validation
+
+```python
+def validate_sample_size(self) -> Dict[str, Any]:
+    """
+    Verify sufficient sample size for CCA.
+    
+    CCA Requirements:
+    - Minimum N: 10× number of variables (rule of thumb)
+    - Variables: 3 physio + 6 TET = 9 total
+    - Minimum N: 90 observations
+    - Recommended N: 100+ for stable estimates
+    
+    Process:
+    1. Identify subjects with complete data in both modalities
+    2. Count total observations: N_subjects × N_sessions × N_bins
+    3. Compute observations per subject and per session
+    4. Check against minimum thresholds
+    
+    Returns:
+        Dict with:
+        - n_subjects: Number of subjects with complete data
+        - n_sessions: Total number of sessions
+        - n_total_obs: Total observations (30s bins)
+        - n_obs_per_subject: Mean observations per subject
+        - is_sufficient: Boolean (True if N ≥ 100)
+    """
+```
+
+**Expected Values**:
+- N subjects: ~7 (estimated from preliminary analysis)
+- N sessions per subject: 4 (2 RS + 2 DMT)
+- N bins per session: 18 (first 9 minutes @ 30s bins)
+- Total N: 7 subjects × 4 sessions × 18 bins = 504 observations
+- Per subject: ~72 observations
+- **Sufficient for CCA** (504 >> 100 minimum)
+
+
+
+### 2. Subject-Level Permutation Testing
+
+**Purpose**: Validate CCA significance while accounting for subject-level dependencies.
+
+**Rationale**:
+- Standard parametric tests (Wilks' Lambda) assume independence
+- Observations within subjects are correlated (temporal autocorrelation)
+- Row shuffling breaks temporal structure (inappropriate)
+- Subject-level shuffling preserves within-subject dependencies
+
+**Key Principle**: Randomly pair Subject i's physio with Subject j's TET (i ≠ j)
+
+#### 2.1 Subject-Level Shuffling
+
+```python
+def _subject_level_shuffle(self, X: np.ndarray, Y: np.ndarray, 
+                           subject_ids: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Perform subject-level permutation while preserving temporal structure.
+    
+    Critical Design:
+    - Keep each subject's physio matrix intact (all timepoints together)
+    - Keep each subject's TET matrix intact (all timepoints together)
+    - Randomly pair physio from Subject i with TET from Subject j (i ≠ j)
+    - Preserves within-subject temporal autocorrelation
+    - Breaks between-modality coupling (null hypothesis)
+    
+    Process:
+    1. Identify unique subjects
+    2. For each subject i:
+       a. Extract physio block: X_i (all timepoints for subject i)
+       b. Randomly select different subject j (j ≠ i)
+       c. Extract TET block: Y_j (all timepoints for subject j)
+       d. Pair X_i with Y_j
+    3. Concatenate all paired blocks
+    
+    Returns:
+        X_perm: Permuted physiological matrix (same dimensions as X)
+        Y_perm: Permuted TET matrix (same dimensions as Y)
+    
+    Example (N=3 subjects, 2 timepoints each):
+        Original:
+        X = [X_S1_t1, X_S1_t2, X_S2_t1, X_S2_t2, X_S3_t1, X_S3_t2]
+        Y = [Y_S1_t1, Y_S1_t2, Y_S2_t1, Y_S2_t2, Y_S3_t1, Y_S3_t2]
+        
+        Permuted (example):
+        X_perm = [X_S1_t1, X_S1_t2, X_S2_t1, X_S2_t2, X_S3_t1, X_S3_t2]
+        Y_perm = [Y_S2_t1, Y_S2_t2, Y_S3_t1, Y_S3_t2, Y_S1_t1, Y_S1_t2]
+        
+        Note: Temporal order preserved within each subject block
+    """
+```
+
+**Implementation Details**:
+- Use `np.random.permutation()` to shuffle subject indices
+- Ensure i ≠ j constraint (no self-pairing)
+- Maintain block structure (all timepoints for a subject stay together)
+- Preserve row order within each subject block
+
+
+
+#### 2.2 Permutation Test Procedure
+
+```python
+def permutation_test(self, n_permutations: int = 1000, 
+                     random_state: int = 42) -> pd.DataFrame:
+    """
+    Perform subject-level permutation test for CCA significance.
+    
+    Null Hypothesis: No relationship between physio and TET
+    Alternative: Canonical correlation r > 0
+    
+    Process:
+    1. Fit observed CCA on original data
+    2. Extract observed canonical correlations: r_obs
+    3. For each permutation (1 to n_permutations):
+       a. Apply subject-level shuffle to get (X_perm, Y_perm)
+       b. Fit CCA on permuted data
+       c. Extract permuted canonical correlations: r_perm
+       d. Store r_perm
+    4. Build null distribution from all r_perm values
+    5. Compute empirical p-value for each canonical variate
+    
+    Empirical P-value:
+        p = (count(r_perm ≥ r_obs) + 1) / (n_permutations + 1)
+    
+    Interpretation:
+    - p < 0.05: Significant canonical correlation
+    - p ≥ 0.05: Not significant (could be noise)
+    
+    Returns:
+        DataFrame with columns:
+        - state: RS or DMT
+        - canonical_variate: 1 or 2
+        - observed_r: Observed canonical correlation
+        - permutation_p_value: Empirical p-value
+        - n_permutations: Number of permutations performed
+    """
+```
+
+**Design Decisions**:
+- n_permutations = 1000 (standard for permutation tests)
+- One-tailed test (directional hypothesis: r > 0)
+- Add 1 to numerator and denominator (conservative correction)
+- Separate permutation test for each state (RS, DMT)
+- Store full null distribution for diagnostic plots
+
+
+
+### 3. Leave-One-Subject-Out (LOSO) Cross-Validation
+
+**Purpose**: Assess CCA generalization to new subjects.
+
+**Rationale**:
+- In-sample canonical correlations may overfit
+- LOSO tests whether canonical weights generalize
+- Out-of-sample correlations indicate model stability
+- Overfitting index quantifies train-test discrepancy
+
+#### 3.1 LOSO Fold Generation
+
+```python
+def _generate_loso_folds(self, X: np.ndarray, Y: np.ndarray, 
+                         subject_ids: np.ndarray):
+    """
+    Generate Leave-One-Subject-Out cross-validation folds.
+    
+    Process:
+    1. Identify unique subjects
+    2. For each subject:
+       a. Train set: All subjects except held-out
+       b. Test set: Held-out subject only
+       c. Yield (X_train, Y_train, X_test, Y_test, subject_id)
+    
+    Critical: No data leakage
+    - Test subject's data never seen during training
+    - Canonical weights learned only from training subjects
+    - Applied to test subject to compute out-of-sample correlation
+    
+    Yields:
+        X_train: Training physiological matrix
+        Y_train: Training TET matrix
+        X_test: Test physiological matrix (one subject)
+        Y_test: Test TET matrix (one subject)
+        subject_id: Held-out subject identifier
+    """
+```
+
+**Implementation Details**:
+- Use `sklearn.model_selection.LeaveOneGroupOut` or manual implementation
+- Ensure proper indexing (no overlap between train and test)
+- Maintain temporal order within each subject
+- Expected folds: N_subjects (e.g., 7 folds for 7 subjects)
+
+
+
+#### 3.2 Out-of-Sample Correlation Computation
+
+```python
+def _compute_oos_correlation(self, X_train: np.ndarray, Y_train: np.ndarray,
+                             X_test: np.ndarray, Y_test: np.ndarray,
+                             W_x_global: np.ndarray = None,
+                             W_y_global: np.ndarray = None) -> np.ndarray:
+    """
+    Compute out-of-sample canonical correlations with sign alignment.
+    
+    Process:
+    1. Fit CCA on training data (N-1 subjects)
+       - Extract canonical weights: W_x, W_y
+    
+    2. **CRITICAL: Sign Flipping Handling**
+       - CCA canonical variates have arbitrary signs
+       - Problem: Fold 1 may find +relationship, Fold 2 may find -relationship
+       - Solution: Align signs before applying to test data
+       - If W_x_global provided:
+         * Compute corr(W_x_train, W_x_global)
+         * If correlation < 0: W_x_train = -W_x_train, W_y_train = -W_y_train
+       - This prevents sign cancellation when averaging across folds
+    
+    3. Transform test data using aligned training weights:
+       - U_test = X_test @ W_x
+       - V_test = Y_test @ W_y
+    
+    4. Compute out-of-sample correlation:
+       - r_oos = corr(U_test, V_test)
+    
+    5. **CRITICAL: Low Variance Safety**
+       - If test subject has zero/near-zero variance in any dimension:
+         * Correlation calculation may fail (NaN or error)
+         * Catch exception and return NaN for this fold
+         * Log warning with subject ID
+       - Exclude NaN folds from averaging (report count)
+    
+    Returns:
+        r_oos: Array of out-of-sample correlations (n_components,)
+               May contain NaN for invalid folds
+    
+    Example:
+        r_oos = [0.58, 0.32]  # CV1 and CV2 out-of-sample correlations
+        r_in_sample = [0.65, 0.38]  # Original in-sample correlations
+        Overfitting: CV1 drops by 0.07, CV2 drops by 0.06
+    
+    Technical Notes:
+    - Sign indeterminacy is fundamental to CCA (like PCA/ICA)
+    - Without sign alignment, averaging across folds gives spurious results
+    - Low variance in single subject can cause numerical instability
+    """
+```
+
+**Implementation Details**:
+- Use same CCA parameters as original fit (n_components)
+- Standardize test data using training statistics (mean, std)
+- **Sign alignment**: Compare train weights to global weights
+  ```python
+  for i in range(n_components):
+      if np.corrcoef(W_x_train[:, i], W_x_global[:, i])[0, 1] < 0:
+          W_x_train[:, i] *= -1
+          W_y_train[:, i] *= -1
+  ```
+- **Error handling**: Wrap correlation computation in try-except
+  ```python
+  try:
+      r_oos = np.corrcoef(U_test.T, V_test.T)[0, 1]
+  except (ValueError, RuntimeWarning):
+      r_oos = np.nan
+      logger.warning(f"Invalid correlation for subject {subject_id}")
+  ```
+- Handle edge cases (test subject with insufficient data)
+
+
+
+#### 3.3 Cross-Validation Statistics
+
+```python
+def _summarize_cv_results(self, r_oos_array: np.ndarray, 
+                          r_in_sample: np.ndarray) -> pd.DataFrame:
+    """
+    Summarize LOSO cross-validation results with Fisher Z-transformation.
+    
+    Metrics:
+    1. Mean r_oos: Average out-of-sample correlation across folds
+       **RECOMMENDED: Use Fisher Z-transformation**
+       - Problem: Correlations are not normally distributed
+       - Solution: Transform to z, average, transform back
+       - Formula: z = arctanh(r), mean_z = mean(z), r_mean = tanh(mean_z)
+       - More rigorous than simple averaging, especially with small N
+    
+    2. SD r_oos: Standard deviation (stability measure)
+    3. Min/Max r_oos: Range of performance
+    4. Overfitting index: (r_in_sample - mean_r_oos) / r_in_sample
+    5. Valid folds: Count of non-NaN folds (some may fail due to low variance)
+    
+    Interpretation:
+    - High mean r_oos: Good generalization
+    - Low SD r_oos: Stable across subjects
+    - Overfitting index < 0.3: Acceptable
+    - Overfitting index > 0.5: Severe overfitting
+    - n_valid_folds < 0.7 * n_subjects: Concerning (many failed folds)
+    
+    Returns:
+        DataFrame with columns:
+        - state: RS or DMT
+        - canonical_variate: 1 or 2
+        - mean_r_oos: Mean out-of-sample correlation (Fisher Z-transformed)
+        - sd_r_oos: Standard deviation
+        - min_r_oos: Minimum across valid folds
+        - max_r_oos: Maximum across valid folds
+        - in_sample_r: Original in-sample correlation
+        - overfitting_index: (r_in - mean_r_oos) / r_in
+        - n_valid_folds: Number of successful folds
+        - n_excluded_folds: Number of failed folds (NaN)
+    
+    Example:
+        CV1: mean_r_oos=0.58, SD=0.08, in_sample=0.65, n_valid=7/7
+        Overfitting index = (0.65 - 0.58) / 0.65 = 0.11 (acceptable)
+    """
+```
+
+**Implementation Details**:
+- **Fisher Z-transformation** (recommended):
+  ```python
+  # Remove NaN values
+  r_valid = r_oos_array[~np.isnan(r_oos_array)]
+  
+  # Transform to z
+  z_values = np.arctanh(r_valid)
+  
+  # Compute statistics in z-space
+  mean_z = np.mean(z_values)
+  sd_z = np.std(z_values)
+  
+  # Transform back to r
+  mean_r_oos = np.tanh(mean_z)
+  ```
+
+- **Simple averaging** (acceptable alternative):
+  ```python
+  mean_r_oos = np.nanmean(r_oos_array)  # Ignores NaN
+  sd_r_oos = np.nanstd(r_oos_array)
+  ```
+
+**Thresholds**:
+- **Good generalization**: mean_r_oos > 0.3, overfitting < 0.3, n_valid ≥ 70%
+- **Moderate generalization**: mean_r_oos = 0.2-0.3, overfitting = 0.3-0.5
+- **Poor generalization**: mean_r_oos < 0.2, overfitting > 0.5, or n_valid < 70%
+
+
+
+### 4. Redundancy Index Computation
+
+**Purpose**: Quantify shared variance between physiological and TET matrices.
+
+**Rationale**:
+- Canonical correlation r measures association strength
+- But doesn't quantify variance explained
+- Redundancy index: % of variance in Y explained by X (and vice versa)
+- Distinguishes meaningful coupling from noise
+
+**Formula**:
+```
+Redundancy(Y|X) = r_c² × R²(Y|U)
+
+where:
+- r_c: Canonical correlation
+- R²(Y|U): Average R² from regressing each y_j on canonical variate U
+```
+
+#### 4.1 Variance Explained Computation
+
+```python
+def _compute_variance_explained(self, X: np.ndarray, Y: np.ndarray,
+                                U: np.ndarray, V: np.ndarray) -> Tuple[float, float]:
+    """
+    Compute variance explained by canonical variates.
+    
+    Process:
+    1. For each TET dimension y_j:
+       a. Regress y_j on physiological canonical variate U
+       b. Compute R²_j
+    2. Average R² across all TET dimensions: R²(Y|U)
+    
+    3. For each physio measure x_k:
+       a. Regress x_k on TET canonical variate V
+       b. Compute R²_k
+    4. Average R² across all physio measures: R²(X|V)
+    
+    Returns:
+        R²(Y|U): Variance in TET explained by physio variate
+        R²(X|V): Variance in physio explained by TET variate
+    
+    Example:
+        R²(Y|U) = 0.35  # Physio variate explains 35% of TET variance
+        R²(X|V) = 0.42  # TET variate explains 42% of physio variance
+    """
+```
+
+**Implementation Details**:
+- Use `sklearn.linear_model.LinearRegression()` for each regression
+- Extract R² from `model.score()`
+- Average across all variables in each set
+- Typical values: 0.20 - 0.50 (20-50% variance explained)
+
+
+
+#### 4.2 Redundancy Index Calculation
+
+```python
+def _compute_redundancy(self, canonical_corrs: np.ndarray,
+                        var_explained_Y_by_U: np.ndarray,
+                        var_explained_X_by_V: np.ndarray) -> pd.DataFrame:
+    """
+    Compute redundancy indices for each canonical variate.
+    
+    Redundancy Index:
+    - Redundancy(Y|X) = r_c² × R²(Y|U)
+    - Redundancy(X|Y) = r_c² × R²(X|V)
+    
+    Interpretation:
+    - Redundancy(Y|X): % of TET variance explained by physio
+    - Redundancy(X|Y): % of physio variance explained by TET
+    - Total redundancy: Sum across all canonical variates
+    
+    Thresholds:
+    - Low: < 10% (weak coupling)
+    - Moderate: 10-25% (meaningful coupling)
+    - High: > 25% (strong coupling)
+    
+    Returns:
+        DataFrame with columns:
+        - state: RS or DMT
+        - canonical_variate: 1 or 2
+        - r_canonical: Canonical correlation
+        - var_explained_Y_by_U: R²(Y|U)
+        - var_explained_X_by_V: R²(X|V)
+        - redundancy_Y_given_X: % TET variance explained by physio
+        - redundancy_X_given_Y: % physio variance explained by TET
+    
+    Example:
+        CV1: r=0.65, R²(Y|U)=0.35, R²(X|V)=0.42
+        Redundancy(Y|X) = 0.65² × 0.35 = 0.148 (14.8%)
+        Redundancy(X|Y) = 0.65² × 0.42 = 0.178 (17.8%)
+        
+        Interpretation: Physio explains 14.8% of TET variance
+                       TET explains 17.8% of physio variance
+    """
+```
+
+**Total Redundancy**:
+- Sum redundancy across all canonical variates
+- Represents total shared variance between modalities
+- Typical range: 15-40% for meaningful coupling
+
+
+
+### 5. Validation Visualizations
+
+#### 5.1 Permutation Null Distribution Plots
+
+```python
+def plot_permutation_distributions(self, permutation_results: pd.DataFrame,
+                                   null_distributions: Dict,
+                                   output_dir: str) -> List[str]:
+    """
+    Generate permutation null distribution plots.
+    
+    Creates:
+    1. Histogram of permuted correlations (null distribution)
+    2. Vertical line marking observed correlation
+    3. Shaded rejection region (top 5%)
+    4. P-value annotation
+    
+    Layout:
+    - Separate panel for each canonical variate
+    - Rows: States (RS, DMT)
+    - Columns: Canonical variates (CV1, CV2)
+    
+    Interpretation:
+    - Observed r in tail → significant (p < 0.05)
+    - Observed r in bulk → not significant (p ≥ 0.05)
+    
+    Returns:
+        List of generated figure paths
+    """
+```
+
+**Design Elements**:
+- Use `plt.hist()` for null distribution
+- Add `plt.axvline()` for observed r
+- Shade rejection region with `plt.axvspan()`
+- Annotate with p-value using `plt.text()`
+- Figure size: 12×8 inches (4 panels)
+
+
+
+#### 5.2 Cross-Validation Diagnostic Plots
+
+```python
+def plot_cv_diagnostics(self, cv_results: pd.DataFrame,
+                        output_dir: str) -> List[str]:
+    """
+    Generate cross-validation diagnostic plots.
+    
+    Creates three figures:
+    
+    Figure 1: Box plots of r_oos distributions
+    - X-axis: Canonical variates (CV1, CV2)
+    - Y-axis: Out-of-sample correlation
+    - Separate boxes for RS and DMT
+    - Horizontal line at in-sample r for comparison
+    
+    Figure 2: In-sample vs out-of-sample scatter
+    - X-axis: In-sample correlation
+    - Y-axis: Mean out-of-sample correlation
+    - Identity line (perfect generalization)
+    - Points colored by state
+    
+    Figure 3: Overfitting index bar chart
+    - X-axis: Canonical variates
+    - Y-axis: Overfitting index
+    - Horizontal lines at 0.3 (acceptable) and 0.5 (severe)
+    - Separate bars for RS and DMT
+    
+    Returns:
+        List of generated figure paths
+    """
+```
+
+**Interpretation Guide**:
+- Box plot: Narrow boxes → stable generalization
+- Scatter: Points near identity line → good generalization
+- Bar chart: Bars below 0.3 → acceptable overfitting
+
+
+
+#### 5.3 Redundancy Index Visualization
+
+```python
+def plot_redundancy_indices(self, redundancy_df: pd.DataFrame,
+                            output_dir: str) -> List[str]:
+    """
+    Generate redundancy index bar charts.
+    
+    Creates grouped bar chart:
+    - X-axis: Canonical variates (CV1, CV2, Total)
+    - Y-axis: Redundancy index (%)
+    - Bar groups:
+      * Physio → TET (blue)
+      * TET → Physio (red)
+    - Separate panels for RS and DMT
+    - Horizontal reference line at 10% (meaningful threshold)
+    
+    Annotations:
+    - Exact percentages on each bar
+    - Total redundancy highlighted
+    
+    Interpretation:
+    - Bars > 10%: Meaningful shared variance
+    - Bars < 10%: Weak coupling (may be noise)
+    - Asymmetry: One direction stronger than other
+    
+    Returns:
+        List of generated figure paths
+    """
+```
+
+**Design Elements**:
+- Use `plt.bar()` with grouped layout
+- Color scheme: Blue (physio→TET), Red (TET→physio)
+- Add threshold line at 10% with `plt.axhline()`
+- Annotate bars with `plt.text()`
+- Figure size: 10×6 inches
+
+
+
+### 6. Output Files Extension
+
+```
+results/tet/physio_correlation/
+├── validation/
+│   ├── data_validation_report.txt        # Temporal resolution, sample size audit
+│   ├── cca_permutation_pvalues.csv       # Empirical p-values
+│   ├── cca_permutation_distributions.csv # Full null distributions
+│   ├── cca_cross_validation_summary.csv  # CV statistics
+│   ├── cca_cross_validation_folds.csv    # Per-fold results
+│   ├── cca_redundancy_indices.csv        # Redundancy metrics
+│   └── cca_validation_summary_table.csv  # Comprehensive summary
+├── figures/
+│   ├── permutation_null_distributions.png
+│   ├── cv_boxplots.png
+│   ├── cv_in_vs_out_sample.png
+│   ├── cv_overfitting_index.png
+│   └── redundancy_indices.png
+└── cca_validation_report.md              # Comprehensive validation report
+```
+
+### 7. Validation Report Structure
+
+```markdown
+# CCA Statistical Validation Report
+
+## Data Validation
+- Temporal resolution: 30-second bins ✓
+- Sample size: N=504 observations (7 subjects) ✓
+- Complete cases: 100% ✓
+
+## Permutation Test Results
+### RS State
+- CV1: r=0.65, p_perm=0.001 (significant)
+- CV2: r=0.38, p_perm=0.042 (significant)
+
+### DMT State
+- CV1: r=0.71, p_perm<0.001 (significant)
+- CV2: r=0.42, p_perm=0.018 (significant)
+
+## Cross-Validation Results
+### RS State
+- CV1: mean_r_oos=0.58±0.08, overfitting=0.11 (acceptable)
+- CV2: mean_r_oos=0.32±0.12, overfitting=0.16 (acceptable)
+
+### DMT State
+- CV1: mean_r_oos=0.64±0.06, overfitting=0.10 (acceptable)
+- CV2: mean_r_oos=0.38±0.10, overfitting=0.10 (acceptable)
+
+## Redundancy Indices
+### RS State
+- Total redundancy (Physio→TET): 16.2%
+- Total redundancy (TET→Physio): 19.5%
+
+### DMT State
+- Total redundancy (Physio→TET): 22.8%
+- Total redundancy (TET→Physio): 26.3%
+
+## Interpretation
+✓ CCA results are statistically robust
+✓ Canonical correlations generalize to new subjects
+✓ Meaningful shared variance (>10% redundancy)
+✓ DMT shows stronger physiological-affective coupling than RS
+```
+
+
+
+### 8. Decision Criteria for CCA Validity
+
+**Use this framework to determine if CCA results are trustworthy:**
+
+#### Green Light (Robust Results) ✓
+All criteria met:
+1. **Data validation**: 30-second bins, N ≥ 100
+2. **Permutation test**: p < 0.05 for at least CV1
+3. **Cross-validation**: mean_r_oos > 0.3, overfitting < 0.3
+4. **Redundancy**: Total redundancy > 10%
+
+**Interpretation**: CCA reveals meaningful physiological-affective coupling
+
+#### Yellow Light (Proceed with Caution) ⚠
+Some concerns:
+1. **Permutation test**: p < 0.05 for CV1, but p > 0.05 for CV2
+2. **Cross-validation**: mean_r_oos = 0.2-0.3, overfitting = 0.3-0.5
+3. **Redundancy**: Total redundancy = 5-10%
+
+**Interpretation**: CV1 may be meaningful, but CV2 likely noise. Report CV1 only.
+
+#### Red Light (Invalid Results) ✗
+Critical failures:
+1. **Data validation**: Raw 4-second data used (N inflated)
+2. **Permutation test**: p > 0.05 for all canonical variates
+3. **Cross-validation**: mean_r_oos < 0.2, overfitting > 0.5
+4. **Redundancy**: Total redundancy < 5%
+
+**Interpretation**: CCA results are not reliable. Do not report.
+
+### 9. Integration with Main Analysis Script
+
+**Update to `scripts/compute_physio_correlation.py`:**
+
+```python
+def main():
+    # ... existing data loading and merging ...
+    
+    # NEW: Data validation
+    if args.validate_cca:
+        logger.info("Validating CCA input data...")
+        validator = CCADataValidator(merged_data)
+        
+        # Check temporal resolution
+        resolution_check = validator.validate_temporal_resolution()
+        if not resolution_check['is_valid']:
+            logger.error(resolution_check['warning_message'])
+            sys.exit(1)
+        
+        # Check sample size
+        sample_check = validator.validate_sample_size()
+        if not sample_check['is_sufficient']:
+            logger.warning("Sample size may be insufficient for stable CCA")
+        
+        # Generate validation report
+        validation_report = validator.generate_validation_report()
+        logger.info(f"Validation report: {validation_report}")
+    
+    # ... existing CCA fitting ...
+    
+    # NEW: Permutation testing
+    if args.permutation_test:
+        logger.info("Running subject-level permutation test...")
+        perm_results = cca_analyzer.permutation_test(
+            n_permutations=args.n_permutations
+        )
+        cca_analyzer.plot_permutation_distributions(output_dir)
+        logger.info(f"Permutation p-values:\n{perm_results}")
+    
+    # NEW: Cross-validation
+    if args.cross_validate:
+        logger.info("Running LOSO cross-validation...")
+        cv_results = cca_analyzer.loso_cross_validation()
+        cca_analyzer.plot_cv_diagnostics(output_dir)
+        logger.info(f"CV summary:\n{cv_results}")
+    
+    # NEW: Redundancy analysis
+    logger.info("Computing redundancy indices...")
+    redundancy_results = cca_analyzer.compute_redundancy_index()
+    cca_analyzer.plot_redundancy_indices(output_dir)
+    logger.info(f"Redundancy indices:\n{redundancy_results}")
+    
+    # NEW: Generate comprehensive validation report
+    generate_cca_validation_report(
+        validation_report, perm_results, cv_results, 
+        redundancy_results, output_dir
+    )
+```
+
+
+
+### 10. Performance Considerations for Validation
+
+**Computational Complexity:**
+
+- **Permutation Testing**: O(n_permutations × CCA_fit_time)
+  - Expected: 1000 permutations × 0.5s = 500s ≈ 8 minutes
+  - Parallelizable: Can reduce to ~2 minutes with 4 cores
+
+- **LOSO Cross-Validation**: O(n_subjects × CCA_fit_time)
+  - Expected: 7 subjects × 0.5s = 3.5s
+  - Fast (< 5 seconds)
+
+- **Redundancy Index**: O(n_variables × regression_time)
+  - Expected: 9 variables × 0.01s = 0.09s
+  - Negligible (< 1 second)
+
+**Total Validation Time**: ~10 minutes (with permutation testing)
+
+**Optimization Strategies:**
+1. Cache CCA fits to avoid redundant computation
+2. Parallelize permutation iterations using `joblib.Parallel`
+3. Use sparse matrices if data allows
+4. Reduce n_permutations to 500 for faster debugging
+
+### 11. Testing Strategy for Validation
+
+**Unit Tests:**
+
+1. **test_cca_data_validator.py**
+   - Test temporal resolution detection (30s vs 4s)
+   - Test sample size computation
+   - Test data structure audit
+
+2. **test_subject_level_permutation.py**
+   - Verify temporal structure preserved
+   - Verify no self-pairing (i ≠ j)
+   - Test null distribution properties
+
+3. **test_loso_cross_validation.py**
+   - Verify no data leakage
+   - Test fold generation
+   - Test out-of-sample correlation computation
+
+4. **test_redundancy_index.py**
+   - Test variance explained computation
+   - Test redundancy formula
+   - Verify with known covariance structure
+
+**Integration Tests:**
+
+5. **test_cca_validation_pipeline.py**
+   - Test complete validation workflow
+   - Verify all output files created
+   - Test with realistic data
+
+**Validation Tests:**
+
+6. **test_statistical_properties.py**
+   - Verify permutation p-values are valid (0-1)
+   - Verify CV correlations ≤ in-sample correlations
+   - Verify redundancy indices are non-negative
+
+### 12. Documentation Requirements
+
+**New Documentation Files:**
+
+1. **docs/cca_validation_methods.md**
+   - Mathematical formulas for all validation metrics
+   - Rationale for subject-level permutation
+   - Interpretation guidelines
+   - Decision criteria
+
+2. **docs/cca_validation_interpretation.md**
+   - How to read validation reports
+   - Common pitfalls and how to avoid them
+   - Example interpretations (good, moderate, poor results)
+
+3. **test/tet/inspect_cca_validation.py**
+   - Interactive script to explore validation results
+   - Generate summary interpretations
+   - Highlight concerns
+
+**Updates to Existing Documentation:**
+
+4. **Update docs/TET_ANALYSIS_GUIDE.md**
+   - Add CCA validation section
+   - Reference new validation methods
+   - Include usage examples
+
+5. **Update comprehensive results document**
+   - Add CCA validation subsection
+   - Report all validation metrics
+   - Interpret robustness of findings
+
+---
+
+## Summary: CCA Validation Extension
+
+This extension transforms basic CCA analysis into publication-ready, statistically rigorous multivariate analysis by:
+
+1. **Validating data structure** to ensure proper temporal resolution
+2. **Testing significance** while accounting for subject-level dependencies
+3. **Assessing generalization** through cross-validation
+4. **Quantifying shared variance** via redundancy indices
+
+The validation framework provides clear decision criteria for determining whether CCA results represent meaningful physiological-affective coupling or statistical artifacts.
+
+**Key Deliverables:**
+- Validation report confirming data integrity
+- Permutation p-values for robust significance testing
+- Cross-validation metrics for generalization assessment
+- Redundancy indices for shared variance quantification
+- Comprehensive diagnostic visualizations
+- Clear interpretation guidelines
+
+**Expected Outcome:**
+Publication-quality CCA analysis that withstands reviewer scrutiny and provides confident conclusions about physiological-affective integration during psychedelic states.
+

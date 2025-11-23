@@ -60,6 +60,8 @@ class TETPhysioCCAAnalyzer:
         self.cca_models: Dict[str, CCA] = {}
         self.canonical_correlations: Dict[str, np.ndarray] = {}
         self.canonical_loadings: Dict[str, pd.DataFrame] = {}
+        self.permutation_results: Dict[str, pd.DataFrame] = {}
+        self.cv_results: Dict[str, pd.DataFrame] = {}
         
         # Logging
         self.logger = logging.getLogger(__name__)
@@ -347,6 +349,1155 @@ class TETPhysioCCAAnalyzer:
         
         return loadings_df
     
+    def _subject_level_shuffle(
+        self, 
+        X: np.ndarray, 
+        Y: np.ndarray, 
+        subject_ids: np.ndarray,
+        random_state: Optional[int] = None
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Perform subject-level shuffling for permutation testing.
+        
+        This method preserves within-subject temporal structure while
+        randomly pairing physiological and TET data across subjects.
+        
+        Process:
+        1. Identify unique subjects
+        2. For each subject i:
+           a. Keep subject i's physiological matrix intact
+           b. Randomly pair with subject j's TET matrix (i ≠ j)
+           c. Maintain temporal order within each subject
+        
+        Args:
+            X: Physiological matrix (n_obs × 3)
+            Y: TET affective matrix (n_obs × 6)
+            subject_ids: Subject identifiers for each observation
+            random_state: Random seed for reproducibility
+        
+        Returns:
+            X_perm: Original X (unchanged)
+            Y_perm: Shuffled Y with preserved temporal structure
+        
+        Note:
+            This approach maintains temporal autocorrelation within subjects
+            while breaking the cross-subject physiological-affective coupling.
+        """
+        if random_state is not None:
+            np.random.seed(random_state)
+        
+        # Get unique subjects
+        unique_subjects = np.unique(subject_ids)
+        n_subjects = len(unique_subjects)
+        
+        # Create permutation mapping (i -> j where i ≠ j)
+        permuted_subjects = unique_subjects.copy()
+        
+        # Shuffle until no subject maps to itself
+        valid_permutation = False
+        max_attempts = 100
+        attempt = 0
+        
+        while not valid_permutation and attempt < max_attempts:
+            np.random.shuffle(permuted_subjects)
+            # Check that no subject maps to itself
+            if not np.any(unique_subjects == permuted_subjects):
+                valid_permutation = True
+            attempt += 1
+        
+        if not valid_permutation:
+            # Fallback: use derangement algorithm
+            # Simple swap-based derangement
+            for i in range(n_subjects):
+                if unique_subjects[i] == permuted_subjects[i]:
+                    # Find another position to swap with
+                    for j in range(i + 1, n_subjects):
+                        if unique_subjects[j] != permuted_subjects[i] and \
+                           unique_subjects[i] != permuted_subjects[j]:
+                            permuted_subjects[i], permuted_subjects[j] = \
+                                permuted_subjects[j], permuted_subjects[i]
+                            break
+        
+        # Create mapping dictionary
+        subject_mapping = dict(zip(unique_subjects, permuted_subjects))
+        
+        # Apply permutation to Y
+        Y_perm = np.zeros_like(Y)
+        
+        for subject in unique_subjects:
+            # Get indices for this subject's data
+            subject_mask = subject_ids == subject
+            
+            # Get the subject this one is paired with
+            paired_subject = subject_mapping[subject]
+            paired_mask = subject_ids == paired_subject
+            
+            # Copy paired subject's Y data to this subject's position
+            # This preserves temporal order within each subject
+            Y_perm[subject_mask] = Y[paired_mask]
+        
+        return X, Y_perm
+    
+    def _fit_permuted_cca(
+        self,
+        X: np.ndarray,
+        Y: np.ndarray,
+        subject_ids: np.ndarray,
+        n_components: int,
+        random_state: Optional[int] = None
+    ) -> np.ndarray:
+        """
+        Fit CCA on permuted data.
+        
+        Args:
+            X: Physiological matrix (n_obs × 3)
+            Y: TET affective matrix (n_obs × 6)
+            subject_ids: Subject identifiers
+            n_components: Number of canonical variates
+            random_state: Random seed
+        
+        Returns:
+            Array of permuted canonical correlations (n_components,)
+        """
+        # Shuffle at subject level
+        X_perm, Y_perm = self._subject_level_shuffle(X, Y, subject_ids, random_state)
+        
+        # Fit CCA on permuted data
+        cca_perm = CCA(n_components=n_components)
+        cca_perm.fit(X_perm, Y_perm)
+        
+        # Transform to canonical variates
+        U_perm, V_perm = cca_perm.transform(X_perm, Y_perm)
+        
+        # Compute canonical correlations
+        canonical_corrs_perm = np.array([
+            np.corrcoef(U_perm[:, i], V_perm[:, i])[0, 1]
+            for i in range(n_components)
+        ])
+        
+        return canonical_corrs_perm
+    
+    def _compute_permutation_pvalues(
+        self,
+        observed_corrs: np.ndarray,
+        permuted_corrs: np.ndarray
+    ) -> np.ndarray:
+        """
+        Compute empirical p-values from permutation distribution.
+        
+        P-value = (count of permuted r >= observed r + 1) / (n_permutations + 1)
+        
+        The +1 in numerator and denominator accounts for the observed value
+        being part of the permutation distribution.
+        
+        Args:
+            observed_corrs: Observed canonical correlations (n_components,)
+            permuted_corrs: Permuted correlations (n_permutations × n_components)
+        
+        Returns:
+            Array of p-values (n_components,)
+        """
+        n_permutations = permuted_corrs.shape[0]
+        n_components = observed_corrs.shape[0]
+        
+        p_values = np.zeros(n_components)
+        
+        for i in range(n_components):
+            # Count permutations where r_perm >= r_observed
+            count = np.sum(permuted_corrs[:, i] >= observed_corrs[i])
+            
+            # Compute empirical p-value (one-tailed test)
+            p_values[i] = (count + 1) / (n_permutations + 1)
+        
+        return p_values
+    
+    def permutation_test(
+        self,
+        n_permutations: int = 100,
+        random_state: int = 42
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        Perform subject-level permutation testing for CCA.
+        
+        This method validates CCA canonical correlation significance by
+        randomly pairing subjects' physiological and TET data while
+        preserving within-subject temporal structure.
+        
+        Process:
+        1. For each state (RS, DMT):
+           a. Extract observed canonical correlations
+           b. For each permutation:
+              - Shuffle subject pairings (i -> j where i ≠ j)
+              - Fit CCA on permuted data
+              - Extract permuted canonical correlations
+           c. Compute empirical p-values
+        
+        Args:
+            n_permutations: Number of permutation iterations (default: 100)
+                Use 100 for debugging (~2 min), 1000 for publication (~15 min)
+            random_state: Random seed for reproducibility (default: 42)
+        
+        Returns:
+            Dict mapping state to DataFrame with columns:
+            - canonical_variate: 1, 2, ...
+            - observed_r: Observed canonical correlation
+            - permutation_p_value: Empirical p-value
+            - n_permutations: Number of permutations performed
+        
+        Note:
+            Start with n_permutations=100 for debugging to catch bugs quickly.
+            Scale to n_permutations=1000 for final publication results.
+        
+        Example:
+            >>> analyzer.fit_cca(n_components=2)
+            >>> perm_results = analyzer.permutation_test(n_permutations=100)
+            >>> print(perm_results['DMT'])
+        """
+        if not self.cca_models:
+            raise ValueError(
+                "Must fit CCA models first using fit_cca() before permutation testing"
+            )
+        
+        self.logger.info(
+            f"Starting permutation testing with {n_permutations} iterations "
+            f"(random_state={random_state})"
+        )
+        
+        results_dict = {}
+        
+        for state in self.cca_models.keys():
+            self.logger.info(f"Permutation testing for {state} state...")
+            
+            # Prepare matrices and get subject IDs
+            X, Y = self.prepare_matrices(state)
+            
+            # Get subject IDs for this state
+            state_data = self.data[self.data['state'] == state].copy()
+            subject_ids_full = state_data['subject'].values
+            
+            # Filter to valid observations (same as prepare_matrices)
+            X_full = state_data[self.physio_measures].values
+            Y_full = state_data[self.tet_affective].values
+            valid_mask = ~(np.isnan(X_full).any(axis=1) | np.isnan(Y_full).any(axis=1))
+            subject_ids = subject_ids_full[valid_mask]
+            
+            # Get observed canonical correlations
+            observed_corrs = self.canonical_correlations[state]
+            n_components = len(observed_corrs)
+            
+            # Initialize storage for permuted correlations
+            permuted_corrs = np.zeros((n_permutations, n_components))
+            
+            # Perform permutations
+            for perm_idx in range(n_permutations):
+                # Set seed for this permutation
+                perm_seed = random_state + perm_idx if random_state is not None else None
+                
+                # Fit CCA on permuted data
+                permuted_corrs[perm_idx] = self._fit_permuted_cca(
+                    X, Y, subject_ids, n_components, perm_seed
+                )
+                
+                # Log progress every 10 permutations
+                if (perm_idx + 1) % 10 == 0:
+                    self.logger.info(
+                        f"  Completed {perm_idx + 1}/{n_permutations} permutations"
+                    )
+            
+            # Compute empirical p-values
+            p_values = self._compute_permutation_pvalues(observed_corrs, permuted_corrs)
+            
+            # Create results DataFrame
+            results = []
+            for i in range(n_components):
+                results.append({
+                    'state': state,
+                    'canonical_variate': i + 1,
+                    'observed_r': observed_corrs[i],
+                    'permutation_p_value': p_values[i],
+                    'n_permutations': n_permutations
+                })
+            
+            results_df = pd.DataFrame(results)
+            results_dict[state] = results_df
+            
+            self.logger.info(
+                f"Permutation testing complete for {state}: "
+                f"p-values = {p_values}"
+            )
+        
+        # Store results
+        self.permutation_results = results_dict
+        
+        return results_dict
+    
+    def plot_permutation_distributions(
+        self,
+        output_dir: str,
+        alpha: float = 0.05
+    ) -> Dict[str, str]:
+        """
+        Generate permutation null distribution plots.
+        
+        For each canonical variate:
+        1. Plot histogram of permuted correlations
+        2. Mark observed correlation with vertical line
+        3. Shade rejection region (top alpha%)
+        4. Annotate with p-value
+        
+        Args:
+            output_dir: Directory to save figures
+            alpha: Significance level for rejection region (default: 0.05)
+        
+        Returns:
+            Dict mapping state to figure file path
+        
+        Raises:
+            ValueError: If permutation testing has not been performed
+        """
+        if not self.permutation_results:
+            raise ValueError(
+                "Must perform permutation testing first using permutation_test()"
+            )
+        
+        import matplotlib.pyplot as plt
+        
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        figure_paths = {}
+        
+        for state in self.permutation_results.keys():
+            results_df = self.permutation_results[state]
+            n_components = len(results_df)
+            
+            # Get permuted correlations for this state
+            # Need to recompute to get full distribution
+            X, Y = self.prepare_matrices(state)
+            state_data = self.data[self.data['state'] == state].copy()
+            subject_ids_full = state_data['subject'].values
+            X_full = state_data[self.physio_measures].values
+            Y_full = state_data[self.tet_affective].values
+            valid_mask = ~(np.isnan(X_full).any(axis=1) | np.isnan(Y_full).any(axis=1))
+            subject_ids = subject_ids_full[valid_mask]
+            
+            # Get n_permutations from results
+            n_permutations = results_df['n_permutations'].iloc[0]
+            
+            # Recompute permuted correlations to get full distribution
+            permuted_corrs = np.zeros((n_permutations, n_components))
+            for perm_idx in range(n_permutations):
+                permuted_corrs[perm_idx] = self._fit_permuted_cca(
+                    X, Y, subject_ids, n_components, 42 + perm_idx
+                )
+            
+            # Create figure with subplots for each canonical variate
+            fig, axes = plt.subplots(1, n_components, figsize=(6 * n_components, 5))
+            if n_components == 1:
+                axes = [axes]
+            
+            for i in range(n_components):
+                ax = axes[i]
+                
+                # Get observed correlation and p-value
+                observed_r = results_df.iloc[i]['observed_r']
+                p_value = results_df.iloc[i]['permutation_p_value']
+                
+                # Plot histogram of permuted correlations
+                ax.hist(
+                    permuted_corrs[:, i],
+                    bins=30,
+                    color='lightgray',
+                    edgecolor='black',
+                    alpha=0.7,
+                    label='Permuted'
+                )
+                
+                # Mark observed correlation
+                ax.axvline(
+                    observed_r,
+                    color='red',
+                    linewidth=2,
+                    linestyle='--',
+                    label=f'Observed (r={observed_r:.3f})'
+                )
+                
+                # Shade rejection region (top alpha%)
+                rejection_threshold = np.percentile(permuted_corrs[:, i], (1 - alpha) * 100)
+                ax.axvspan(
+                    rejection_threshold,
+                    permuted_corrs[:, i].max(),
+                    alpha=0.2,
+                    color='red',
+                    label=f'Rejection region (α={alpha})'
+                )
+                
+                # Annotate with p-value
+                ax.text(
+                    0.05, 0.95,
+                    f'p = {p_value:.3f}',
+                    transform=ax.transAxes,
+                    fontsize=12,
+                    verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.8)
+                )
+                
+                # Labels and title
+                ax.set_xlabel('Canonical Correlation', fontsize=11)
+                ax.set_ylabel('Frequency', fontsize=11)
+                ax.set_title(
+                    f'Canonical Variate {i + 1}',
+                    fontsize=12,
+                    fontweight='bold'
+                )
+                ax.legend(fontsize=9)
+                ax.grid(True, alpha=0.3)
+            
+            # Overall title
+            fig.suptitle(
+                f'Permutation Null Distributions - {state} State',
+                fontsize=14,
+                fontweight='bold'
+            )
+            plt.tight_layout()
+            
+            # Save figure
+            fig_path = output_path / f'permutation_null_distributions_{state.lower()}.png'
+            plt.savefig(fig_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            figure_paths[state] = str(fig_path)
+            self.logger.info(f"Saved permutation distribution plot to {fig_path}")
+        
+        return figure_paths
+    
+    def _generate_loso_folds(
+        self,
+        X: np.ndarray,
+        Y: np.ndarray,
+        subject_ids: np.ndarray
+    ):
+        """
+        Generate Leave-One-Subject-Out (LOSO) cross-validation folds.
+        
+        For each unique subject:
+        - Train set: all subjects except held-out
+        - Test set: held-out subject only
+        
+        Args:
+            X: Physiological matrix (n_obs × 3)
+            Y: TET affective matrix (n_obs × 6)
+            subject_ids: Subject identifiers for each observation
+        
+        Yields:
+            Tuple of (X_train, Y_train, X_test, Y_test, subject_id)
+        """
+        unique_subjects = np.unique(subject_ids)
+        
+        for held_out_subject in unique_subjects:
+            # Create train/test masks
+            test_mask = subject_ids == held_out_subject
+            train_mask = ~test_mask
+            
+            # Split data
+            X_train = X[train_mask]
+            Y_train = Y[train_mask]
+            X_test = X[test_mask]
+            Y_test = Y[test_mask]
+            
+            yield X_train, Y_train, X_test, Y_test, held_out_subject
+    
+    def _compute_oos_correlation(
+        self,
+        X_train: np.ndarray,
+        Y_train: np.ndarray,
+        X_test: np.ndarray,
+        Y_test: np.ndarray,
+        n_components: int,
+        global_weights: Optional[Tuple[np.ndarray, np.ndarray]] = None
+    ) -> np.ndarray:
+        """
+        Compute out-of-sample correlation for one LOSO fold.
+        
+        CRITICAL: Sign Flipping Handling
+        - CCA canonical variates have arbitrary signs
+        - Before applying weights to test subject, check sign consistency
+        - If correlation with global weights is negative, flip signs
+        - This prevents sign cancellation when averaging across folds
+        
+        CRITICAL: Low Variance Safety
+        - Handle cases where test subject has zero/near-zero variance
+        - If correlation calculation fails (NaN), flag as invalid fold
+        - Log warning with subject ID and continue to next fold
+        
+        Args:
+            X_train: Training physiological matrix (n_train × 3)
+            Y_train: Training TET matrix (n_train × 6)
+            X_test: Test physiological matrix (n_test × 3)
+            Y_test: Test TET matrix (n_test × 6)
+            n_components: Number of canonical variates
+            global_weights: Optional tuple of (W_x_global, W_y_global) for sign alignment
+        
+        Returns:
+            Array of out-of-sample correlations (n_components,)
+            Returns NaN for components with invalid correlations
+        """
+        try:
+            # Fit CCA on training data
+            cca_train = CCA(n_components=n_components)
+            cca_train.fit(X_train, Y_train)
+            
+            # Extract canonical weights
+            W_x = cca_train.x_weights_  # (3 × n_components)
+            W_y = cca_train.y_weights_  # (6 × n_components)
+            
+            # Sign flipping: align with global weights if provided
+            if global_weights is not None:
+                W_x_global, W_y_global = global_weights
+                
+                for i in range(n_components):
+                    # Compute correlation between train weights and global weights
+                    corr_x = np.corrcoef(W_x[:, i], W_x_global[:, i])[0, 1]
+                    corr_y = np.corrcoef(W_y[:, i], W_y_global[:, i])[0, 1]
+                    
+                    # If correlation is negative, flip signs
+                    if corr_x < 0:
+                        W_x[:, i] = -W_x[:, i]
+                    if corr_y < 0:
+                        W_y[:, i] = -W_y[:, i]
+            
+            # Transform test data using training weights
+            U_test = X_test @ W_x  # (n_test × n_components)
+            V_test = Y_test @ W_y  # (n_test × n_components)
+            
+            # Compute out-of-sample correlations
+            r_oos = np.zeros(n_components)
+            
+            for i in range(n_components):
+                # Check for zero/near-zero variance
+                if np.std(U_test[:, i]) < 1e-10 or np.std(V_test[:, i]) < 1e-10:
+                    r_oos[i] = np.nan
+                    continue
+                
+                # Compute correlation
+                try:
+                    r_oos[i] = np.corrcoef(U_test[:, i], V_test[:, i])[0, 1]
+                    
+                    # Check for NaN
+                    if np.isnan(r_oos[i]):
+                        continue
+                        
+                except Exception:
+                    r_oos[i] = np.nan
+            
+            return r_oos
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to compute OOS correlation: {e}")
+            return np.full(n_components, np.nan)
+    
+    def loso_cross_validation(
+        self,
+        state: str,
+        n_components: int = 2
+    ) -> pd.DataFrame:
+        """
+        Perform Leave-One-Subject-Out (LOSO) cross-validation for CCA.
+        
+        This method assesses CCA generalization by training on N-1 subjects
+        and testing on the held-out subject.
+        
+        Process:
+        1. For each subject:
+           a. Train CCA on all other subjects
+           b. Extract canonical weights (W_x, W_y)
+           c. Handle sign flipping (align with global weights)
+           d. Transform held-out subject's data
+           e. Compute out-of-sample correlation
+           f. Handle low variance cases (flag as invalid)
+        2. Compute summary statistics across folds
+        
+        Args:
+            state: 'RS' or 'DMT'
+            n_components: Number of canonical variates (default: 2)
+        
+        Returns:
+            DataFrame with columns:
+            - state: RS or DMT
+            - canonical_variate: 1, 2, ...
+            - fold_id: Subject held out
+            - r_oos: Out-of-sample correlation (NaN if invalid)
+        
+        Technical Note:
+            Sign indeterminacy is a fundamental property of CCA that must
+            be handled to avoid spurious results. We align signs with the
+            global (full-sample) CCA weights.
+        
+        Example:
+            >>> analyzer.fit_cca(n_components=2)
+            >>> cv_results = analyzer.loso_cross_validation('DMT')
+            >>> print(cv_results.groupby('canonical_variate')['r_oos'].mean())
+        """
+        if state not in self.cca_models:
+            raise ValueError(
+                f"Must fit CCA for {state} state first using fit_cca()"
+            )
+        
+        self.logger.info(
+            f"Starting LOSO cross-validation for {state} state "
+            f"with {n_components} components"
+        )
+        
+        # Prepare matrices and get subject IDs
+        X, Y = self.prepare_matrices(state)
+        
+        state_data = self.data[self.data['state'] == state].copy()
+        subject_ids_full = state_data['subject'].values
+        
+        # Filter to valid observations (same as prepare_matrices)
+        X_full = state_data[self.physio_measures].values
+        Y_full = state_data[self.tet_affective].values
+        valid_mask = ~(np.isnan(X_full).any(axis=1) | np.isnan(Y_full).any(axis=1))
+        subject_ids = subject_ids_full[valid_mask]
+        
+        # Get global weights for sign alignment
+        global_model = self.cca_models[state]
+        W_x_global = global_model.x_weights_
+        W_y_global = global_model.y_weights_
+        global_weights = (W_x_global, W_y_global)
+        
+        # Perform LOSO cross-validation
+        cv_records = []
+        
+        for X_train, Y_train, X_test, Y_test, subject_id in self._generate_loso_folds(
+            X, Y, subject_ids
+        ):
+            # Compute out-of-sample correlations
+            r_oos = self._compute_oos_correlation(
+                X_train, Y_train, X_test, Y_test,
+                n_components, global_weights
+            )
+            
+            # Store results for each canonical variate
+            for i in range(n_components):
+                cv_records.append({
+                    'state': state,
+                    'canonical_variate': i + 1,
+                    'fold_id': subject_id,
+                    'r_oos': r_oos[i]
+                })
+            
+            # Log progress
+            if np.all(np.isnan(r_oos)):
+                self.logger.warning(
+                    f"  Subject {subject_id}: All correlations invalid (low variance)"
+                )
+            else:
+                self.logger.info(
+                    f"  Subject {subject_id}: r_oos = {r_oos}"
+                )
+        
+        cv_df = pd.DataFrame(cv_records)
+        
+        # Store results
+        if state not in self.cv_results:
+            self.cv_results[state] = cv_df
+        else:
+            self.cv_results[state] = pd.concat(
+                [self.cv_results[state], cv_df],
+                ignore_index=True
+            )
+        
+        self.logger.info(
+            f"LOSO cross-validation complete for {state}: "
+            f"{len(cv_df)} fold results"
+        )
+        
+        return cv_df
+    
+    def _summarize_cv_results(self, state: str) -> pd.DataFrame:
+        """
+        Compute cross-validation summary statistics.
+        
+        RECOMMENDED: Fisher Z-Transformation for Averaging Correlations
+        - Convert each r_oos to Fisher z: z = np.arctanh(r_oos)
+        - Compute mean_z and sd_z across valid folds (excluding NaN)
+        - Convert back to correlation: mean_r_oos = np.tanh(mean_z)
+        - Rationale: Correlation distribution is non-normal, especially with small N
+        
+        For each canonical variate:
+        - Compute mean and SD of out-of-sample correlations
+        - Compute min and max r_oos across valid folds
+        - Compare to in-sample r (overfitting check)
+        - Report number of valid and excluded folds
+        
+        Args:
+            state: 'RS' or 'DMT'
+        
+        Returns:
+            DataFrame with columns:
+            - state: RS or DMT
+            - canonical_variate: 1, 2, ...
+            - mean_r_oos: Mean out-of-sample correlation (Fisher Z-transformed)
+            - sd_r_oos: Standard deviation of r_oos
+            - min_r_oos: Minimum r_oos across valid folds
+            - max_r_oos: Maximum r_oos across valid folds
+            - in_sample_r: In-sample canonical correlation
+            - overfitting_index: (in_sample_r - mean_r_oos) / in_sample_r
+            - n_valid_folds: Number of valid folds
+            - n_excluded_folds: Number of excluded folds (NaN)
+        
+        Technical Note:
+            Fisher Z-transformation is statistically more rigorous than
+            simple averaging of correlations.
+        """
+        if state not in self.cv_results:
+            raise ValueError(
+                f"Must perform LOSO cross-validation for {state} first"
+            )
+        
+        cv_df = self.cv_results[state]
+        in_sample_corrs = self.canonical_correlations[state]
+        
+        summary_records = []
+        
+        for variate_idx in cv_df['canonical_variate'].unique():
+            variate_data = cv_df[cv_df['canonical_variate'] == variate_idx]
+            
+            # Get r_oos values (excluding NaN)
+            r_oos_values = variate_data['r_oos'].values
+            valid_mask = ~np.isnan(r_oos_values)
+            r_oos_valid = r_oos_values[valid_mask]
+            
+            n_valid = valid_mask.sum()
+            n_excluded = (~valid_mask).sum()
+            
+            if n_valid == 0:
+                # All folds invalid
+                summary_records.append({
+                    'state': state,
+                    'canonical_variate': variate_idx,
+                    'mean_r_oos': np.nan,
+                    'sd_r_oos': np.nan,
+                    'min_r_oos': np.nan,
+                    'max_r_oos': np.nan,
+                    'in_sample_r': in_sample_corrs[variate_idx - 1],
+                    'overfitting_index': np.nan,
+                    'n_valid_folds': n_valid,
+                    'n_excluded_folds': n_excluded
+                })
+                continue
+            
+            # Fisher Z-transformation for averaging
+            z_values = np.arctanh(r_oos_valid)
+            mean_z = np.mean(z_values)
+            sd_z = np.std(z_values, ddof=1) if n_valid > 1 else 0.0
+            
+            # Convert back to correlation
+            mean_r_oos = np.tanh(mean_z)
+            
+            # Compute SD in correlation space (for reporting)
+            sd_r_oos = np.std(r_oos_valid, ddof=1) if n_valid > 1 else 0.0
+            
+            # Min and max
+            min_r_oos = np.min(r_oos_valid)
+            max_r_oos = np.max(r_oos_valid)
+            
+            # In-sample correlation
+            in_sample_r = in_sample_corrs[variate_idx - 1]
+            
+            # Overfitting index
+            if in_sample_r != 0:
+                overfitting_index = (in_sample_r - mean_r_oos) / in_sample_r
+            else:
+                overfitting_index = np.nan
+            
+            summary_records.append({
+                'state': state,
+                'canonical_variate': variate_idx,
+                'mean_r_oos': mean_r_oos,
+                'sd_r_oos': sd_r_oos,
+                'min_r_oos': min_r_oos,
+                'max_r_oos': max_r_oos,
+                'in_sample_r': in_sample_r,
+                'overfitting_index': overfitting_index,
+                'n_valid_folds': n_valid,
+                'n_excluded_folds': n_excluded
+            })
+        
+        summary_df = pd.DataFrame(summary_records)
+        
+        self.logger.info(
+            f"Computed CV summary for {state}: "
+            f"{len(summary_df)} canonical variates"
+        )
+        
+        return summary_df
+    
+    def compute_cv_significance(self) -> pd.DataFrame:
+        """
+        Perform statistical significance testing on cross-validation correlations.
+        
+        This method tests whether out-of-sample correlations are significantly
+        greater than zero using both parametric (t-test) and non-parametric
+        (Wilcoxon) approaches.
+        
+        Process:
+        1. For each state and canonical variate:
+           a. Extract r_oos values from valid folds
+           b. Apply Fisher Z-transformation: z = arctanh(r)
+           c. Perform one-sample t-test: H0: z = 0, H1: z > 0
+           d. Perform Wilcoxon signed-rank test as robust alternative
+           e. Compute success rate (proportion of folds with r_oos > 0)
+        
+        Fisher Z-Transformation Rationale:
+        - Raw correlations are not normally distributed
+        - Fisher Z-transform normalizes the distribution
+        - Enables valid parametric testing with t-test
+        - Especially important for small sample sizes (N=7 folds)
+        
+        One-Tailed Test Rationale:
+        - We test if r_oos > 0 (positive prediction)
+        - Negative correlations are as bad as zero for our purposes
+        - One-tailed test is more powerful for directional hypothesis
+        
+        Returns:
+            DataFrame with columns:
+            - state: RS or DMT
+            - canonical_variate: 1, 2, ...
+            - n_folds: Number of valid folds
+            - mean_r_oos: Mean out-of-sample correlation
+            - sd_r_oos: Standard deviation of r_oos
+            - t_statistic: T-statistic from one-sample t-test
+            - p_value_t_test: One-tailed p-value from t-test
+            - p_value_wilcoxon: One-tailed p-value from Wilcoxon test
+            - success_rate: Proportion of folds with r_oos > 0
+            - n_positive_folds: Count of folds with r_oos > 0
+            - significant: Boolean (True if p_value_t_test < 0.05)
+            - interpretation: Text interpretation of results
+        
+        Raises:
+            ValueError: If cross-validation has not been performed
+        
+        Example:
+            >>> analyzer.fit_cca(n_components=2)
+            >>> analyzer.loso_cross_validation('DMT')
+            >>> sig_results = analyzer.compute_cv_significance()
+            >>> print(sig_results[sig_results['significant']])
+        """
+        if not self.cv_results:
+            raise ValueError(
+                "Must perform LOSO cross-validation first using loso_cross_validation()"
+            )
+        
+        self.logger.info("Computing cross-validation significance tests...")
+        
+        significance_records = []
+        
+        for state in self.cv_results.keys():
+            cv_df = self.cv_results[state]
+            
+            for variate_idx in cv_df['canonical_variate'].unique():
+                variate_data = cv_df[cv_df['canonical_variate'] == variate_idx]
+                
+                # Get r_oos values (excluding NaN)
+                r_oos_values = variate_data['r_oos'].values
+                valid_mask = ~np.isnan(r_oos_values)
+                r_oos_valid = r_oos_values[valid_mask]
+                
+                n_valid = valid_mask.sum()
+                
+                if n_valid < 3:
+                    # Insufficient data for statistical testing
+                    self.logger.warning(
+                        f"{state} CV{variate_idx}: Only {n_valid} valid folds, "
+                        "skipping significance testing (minimum 3 required)"
+                    )
+                    significance_records.append({
+                        'state': state,
+                        'canonical_variate': variate_idx,
+                        'n_folds': n_valid,
+                        'mean_r_oos': np.nan,
+                        'sd_r_oos': np.nan,
+                        't_statistic': np.nan,
+                        'p_value_t_test': np.nan,
+                        'p_value_wilcoxon': np.nan,
+                        'success_rate': np.nan,
+                        'n_positive_folds': 0,
+                        'significant': False,
+                        'interpretation': 'Insufficient Data'
+                    })
+                    continue
+                
+                # Clip r_oos to avoid infinities in Fisher Z-transform
+                r_oos_clipped = np.clip(r_oos_valid, -0.99999, 0.99999)
+                
+                # Fisher Z-transformation
+                z_scores = np.arctanh(r_oos_clipped)
+                
+                # One-sample t-test (one-tailed: greater than 0)
+                t_stat, p_value_t = stats.ttest_1samp(
+                    z_scores,
+                    popmean=0,
+                    alternative='greater'
+                )
+                
+                # Wilcoxon signed-rank test (robust alternative)
+                # Test if r_oos values are significantly greater than 0
+                try:
+                    w_stat, p_value_w = stats.wilcoxon(
+                        r_oos_valid - 0,
+                        alternative='greater'
+                    )
+                except ValueError as e:
+                    # Handle case where all values are zero or identical
+                    self.logger.warning(
+                        f"{state} CV{variate_idx}: Wilcoxon test failed ({e}), "
+                        "using p=1.0"
+                    )
+                    p_value_w = 1.0
+                
+                # Compute success rate
+                n_positive = np.sum(r_oos_valid > 0)
+                success_rate = n_positive / n_valid
+                
+                # Compute mean and SD
+                mean_r_oos = np.mean(r_oos_valid)
+                sd_r_oos = np.std(r_oos_valid, ddof=1) if n_valid > 1 else 0.0
+                
+                # Determine significance
+                significant = p_value_t < 0.05
+                
+                # Interpretation
+                if p_value_t < 0.05:
+                    interpretation = 'Significant Generalization'
+                elif p_value_t < 0.10:
+                    interpretation = 'Trend'
+                else:
+                    interpretation = 'Not Significant'
+                
+                significance_records.append({
+                    'state': state,
+                    'canonical_variate': variate_idx,
+                    'n_folds': n_valid,
+                    'mean_r_oos': mean_r_oos,
+                    'sd_r_oos': sd_r_oos,
+                    't_statistic': t_stat,
+                    'p_value_t_test': p_value_t,
+                    'p_value_wilcoxon': p_value_w,
+                    'success_rate': success_rate,
+                    'n_positive_folds': n_positive,
+                    'significant': significant,
+                    'interpretation': interpretation
+                })
+                
+                self.logger.info(
+                    f"{state} CV{variate_idx}: mean_r={mean_r_oos:.3f}, "
+                    f"t={t_stat:.2f}, p={p_value_t:.4f} ({interpretation})"
+                )
+        
+        significance_df = pd.DataFrame(significance_records)
+        
+        self.logger.info(
+            f"Computed CV significance for {len(significance_df)} canonical variates"
+        )
+        
+        return significance_df
+    
+    def plot_cv_diagnostics(
+        self,
+        output_dir: str
+    ) -> Dict[str, str]:
+        """
+        Generate cross-validation diagnostic plots.
+        
+        Creates three diagnostic plots:
+        1. Box plots of r_oos distributions per canonical variate
+        2. Scatter plot of in-sample vs mean out-of-sample r
+        3. Bar chart showing overfitting index per variate
+        
+        Args:
+            output_dir: Directory to save figures
+        
+        Returns:
+            Dict mapping plot type to file path
+        
+        Raises:
+            ValueError: If cross-validation has not been performed
+        """
+        if not self.cv_results:
+            raise ValueError(
+                "Must perform LOSO cross-validation first using loso_cross_validation()"
+            )
+        
+        import matplotlib.pyplot as plt
+        
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        figure_paths = {}
+        
+        # Combine all states for plotting
+        all_cv_data = []
+        all_summaries = []
+        
+        for state in self.cv_results.keys():
+            cv_df = self.cv_results[state]
+            all_cv_data.append(cv_df)
+            
+            summary_df = self._summarize_cv_results(state)
+            all_summaries.append(summary_df)
+        
+        combined_cv = pd.concat(all_cv_data, ignore_index=True)
+        combined_summary = pd.concat(all_summaries, ignore_index=True)
+        
+        # Plot 1: Box plots of r_oos distributions
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+        
+        for idx, state in enumerate(['RS', 'DMT']):
+            ax = axes[idx]
+            state_data = combined_cv[combined_cv['state'] == state]
+            
+            # Prepare data for box plot
+            box_data = []
+            labels = []
+            for variate in sorted(state_data['canonical_variate'].unique()):
+                variate_data = state_data[state_data['canonical_variate'] == variate]
+                r_oos_valid = variate_data['r_oos'].dropna().values
+                box_data.append(r_oos_valid)
+                labels.append(f'CV{variate}')
+            
+            # Create box plot
+            bp = ax.boxplot(box_data, labels=labels, patch_artist=True)
+            
+            # Color boxes
+            for patch in bp['boxes']:
+                patch.set_facecolor('lightblue')
+            
+            # Add horizontal line at 0
+            ax.axhline(0, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+            
+            ax.set_xlabel('Canonical Variate', fontsize=11)
+            ax.set_ylabel('Out-of-Sample Correlation', fontsize=11)
+            ax.set_title(f'{state} State', fontsize=12, fontweight='bold')
+            ax.grid(True, alpha=0.3, axis='y')
+        
+        fig.suptitle(
+            'LOSO Cross-Validation: r_oos Distributions',
+            fontsize=14,
+            fontweight='bold'
+        )
+        plt.tight_layout()
+        
+        fig_path = output_path / 'cca_cross_validation_boxplots.png'
+        plt.savefig(fig_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        figure_paths['boxplots'] = str(fig_path)
+        self.logger.info(f"Saved CV boxplots to {fig_path}")
+        
+        # Plot 2: In-sample vs out-of-sample scatter
+        fig, ax = plt.subplots(figsize=(8, 8))
+        
+        colors = {'RS': 'blue', 'DMT': 'red'}
+        markers = {1: 'o', 2: 's'}
+        
+        for _, row in combined_summary.iterrows():
+            ax.scatter(
+                row['in_sample_r'],
+                row['mean_r_oos'],
+                color=colors[row['state']],
+                marker=markers[row['canonical_variate']],
+                s=100,
+                alpha=0.7,
+                label=f"{row['state']} CV{row['canonical_variate']}"
+            )
+            
+            # Add error bars (SD)
+            ax.errorbar(
+                row['in_sample_r'],
+                row['mean_r_oos'],
+                yerr=row['sd_r_oos'],
+                color=colors[row['state']],
+                alpha=0.5,
+                capsize=5
+            )
+        
+        # Add identity line
+        max_r = max(
+            combined_summary['in_sample_r'].max(),
+            combined_summary['mean_r_oos'].max()
+        )
+        min_r = min(
+            combined_summary['in_sample_r'].min(),
+            combined_summary['mean_r_oos'].min()
+        )
+        ax.plot([min_r, max_r], [min_r, max_r], 'k--', linewidth=2, alpha=0.5, label='Identity')
+        
+        ax.set_xlabel('In-Sample Correlation', fontsize=12)
+        ax.set_ylabel('Mean Out-of-Sample Correlation', fontsize=12)
+        ax.set_title(
+            'In-Sample vs Out-of-Sample Correlations',
+            fontsize=14,
+            fontweight='bold'
+        )
+        ax.legend(fontsize=9)
+        ax.grid(True, alpha=0.3)
+        
+        fig_path = output_path / 'cca_cross_validation_scatter.png'
+        plt.savefig(fig_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        figure_paths['scatter'] = str(fig_path)
+        self.logger.info(f"Saved CV scatter plot to {fig_path}")
+        
+        # Plot 3: Overfitting index bar chart
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # Prepare data for grouped bar chart
+        x_positions = []
+        bar_heights = []
+        bar_colors = []
+        bar_labels = []
+        
+        x_pos = 0
+        for state in ['RS', 'DMT']:
+            state_summary = combined_summary[combined_summary['state'] == state]
+            
+            for _, row in state_summary.iterrows():
+                x_positions.append(x_pos)
+                bar_heights.append(row['overfitting_index'])
+                bar_colors.append(colors[state])
+                bar_labels.append(f"{state}\nCV{row['canonical_variate']}")
+                x_pos += 1
+            
+            x_pos += 0.5  # Add space between states
+        
+        bars = ax.bar(x_positions, bar_heights, color=bar_colors, alpha=0.7, edgecolor='black')
+        ax.set_xticks(x_positions)
+        ax.set_xticklabels(bar_labels, fontsize=10)
+        
+        # Add horizontal line at 0
+        ax.axhline(0, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        
+        # Add reference line at 0.1 (10% overfitting threshold)
+        ax.axhline(0.1, color='orange', linestyle=':', linewidth=2, alpha=0.7, label='10% threshold')
+        
+        ax.set_ylabel('Overfitting Index', fontsize=12)
+        ax.set_title(
+            'Overfitting Index: (In-Sample - OOS) / In-Sample',
+            fontsize=14,
+            fontweight='bold'
+        )
+        ax.legend(fontsize=10)
+        ax.grid(True, alpha=0.3, axis='y')
+        
+        fig_path = output_path / 'cca_cross_validation_overfitting.png'
+        plt.savefig(fig_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        figure_paths['overfitting'] = str(fig_path)
+        self.logger.info(f"Saved CV overfitting plot to {fig_path}")
+        
+        return figure_paths
+    
     def export_results(self, output_dir: str) -> Dict[str, str]:
         """
         Export CCA results to CSV files.
@@ -354,6 +1505,10 @@ class TETPhysioCCAAnalyzer:
         Creates:
         - cca_results.csv: Canonical correlations and significance tests
         - cca_loadings.csv: Canonical loadings for all variables
+        - cca_redundancy_indices.csv: Redundancy indices for each canonical variate
+        - cca_permutation_pvalues.csv: Permutation test p-values (if available)
+        - cca_cross_validation_folds.csv: Per-fold CV results (if available)
+        - cca_cross_validation_summary.csv: CV summary statistics (if available)
         
         Args:
             output_dir: Directory to save results
@@ -381,4 +1536,480 @@ class TETPhysioCCAAnalyzer:
             file_paths['cca_loadings'] = str(loadings_path)
             self.logger.info(f"Exported CCA loadings to {loadings_path}")
         
+        # Export redundancy indices
+        if self.cca_models:
+            redundancy_dfs = []
+            for state in self.cca_models.keys():
+                redundancy_df = self.compute_redundancy_index(state)
+                redundancy_dfs.append(redundancy_df)
+            
+            if redundancy_dfs:
+                redundancy_combined = pd.concat(redundancy_dfs, ignore_index=True)
+                redundancy_path = output_path / 'cca_redundancy_indices.csv'
+                redundancy_combined.to_csv(redundancy_path, index=False)
+                file_paths['cca_redundancy_indices'] = str(redundancy_path)
+                self.logger.info(f"Exported redundancy indices to {redundancy_path}")
+                
+                # Add interpretation column
+                redundancy_combined['interpretation'] = redundancy_combined.apply(
+                    self._interpret_redundancy, axis=1
+                )
+                redundancy_interpreted_path = output_path / 'cca_redundancy_indices_interpreted.csv'
+                redundancy_combined.to_csv(redundancy_interpreted_path, index=False)
+                file_paths['cca_redundancy_indices_interpreted'] = str(redundancy_interpreted_path)
+        
+        # Export permutation test results
+        if self.permutation_results:
+            # Combine all states into single DataFrame
+            perm_dfs = []
+            for state, df in self.permutation_results.items():
+                perm_dfs.append(df)
+            
+            if perm_dfs:
+                perm_combined = pd.concat(perm_dfs, ignore_index=True)
+                perm_path = output_path / 'cca_permutation_pvalues.csv'
+                perm_combined.to_csv(perm_path, index=False)
+                file_paths['cca_permutation_pvalues'] = str(perm_path)
+                self.logger.info(f"Exported permutation p-values to {perm_path}")
+                
+                # Export full permutation distributions
+                self._export_permutation_distributions(output_path)
+                file_paths['cca_permutation_distributions'] = str(
+                    output_path / 'cca_permutation_distributions.csv'
+                )
+        
+        # Export cross-validation results
+        if self.cv_results:
+            # Export per-fold results
+            cv_dfs = []
+            for state, df in self.cv_results.items():
+                cv_dfs.append(df)
+            
+            if cv_dfs:
+                cv_combined = pd.concat(cv_dfs, ignore_index=True)
+                cv_folds_path = output_path / 'cca_cross_validation_folds.csv'
+                cv_combined.to_csv(cv_folds_path, index=False)
+                file_paths['cca_cross_validation_folds'] = str(cv_folds_path)
+                self.logger.info(f"Exported CV fold results to {cv_folds_path}")
+            
+            # Export summary statistics
+            summary_dfs = []
+            for state in self.cv_results.keys():
+                summary_df = self._summarize_cv_results(state)
+                summary_dfs.append(summary_df)
+            
+            if summary_dfs:
+                summary_combined = pd.concat(summary_dfs, ignore_index=True)
+                cv_summary_path = output_path / 'cca_cross_validation_summary.csv'
+                summary_combined.to_csv(cv_summary_path, index=False)
+                file_paths['cca_cross_validation_summary'] = str(cv_summary_path)
+                self.logger.info(f"Exported CV summary to {cv_summary_path}")
+            
+            # Export CV significance results
+            try:
+                cv_significance_df = self.compute_cv_significance()
+                cv_sig_path = output_path / 'cca_cv_significance.csv'
+                cv_significance_df.to_csv(cv_sig_path, index=False)
+                file_paths['cca_cv_significance'] = str(cv_sig_path)
+                self.logger.info(f"Exported CV significance results to {cv_sig_path}")
+            except ValueError as e:
+                self.logger.warning(f"Could not compute CV significance: {e}")
+        
         return file_paths
+    
+    def _interpret_redundancy(self, row: pd.Series) -> str:
+        """
+        Interpret redundancy index magnitude.
+        
+        Interpretation guidelines:
+        - High (> 15%): Strong shared variance
+        - Moderate (10-15%): Meaningful relationship
+        - Low (5-10%): Weak relationship
+        - Very Low (< 5%): Minimal shared variance, potential overfitting
+        
+        Args:
+            row: DataFrame row with redundancy values
+        
+        Returns:
+            Interpretation string
+        """
+        if row['canonical_variate'] == 'Total':
+            # For total row, interpret based on total redundancy
+            redundancy = max(
+                row['redundancy_Y_given_X'],
+                row['redundancy_X_given_Y']
+            )
+        else:
+            # For individual variates, interpret based on average
+            redundancy = (
+                row['redundancy_Y_given_X'] + row['redundancy_X_given_Y']
+            ) / 2
+        
+        if pd.isna(redundancy):
+            return 'N/A'
+        elif redundancy > 0.15:
+            return 'High'
+        elif redundancy > 0.10:
+            return 'Moderate'
+        elif redundancy > 0.05:
+            return 'Low'
+        else:
+            return 'Very Low'
+    
+    def _export_permutation_distributions(self, output_path: Path) -> None:
+        """
+        Export full permutation distributions to CSV.
+        
+        Creates a CSV with all permuted correlations for each state and
+        canonical variate, enabling further analysis and visualization.
+        
+        Args:
+            output_path: Directory to save the file
+        """
+        distribution_records = []
+        
+        for state in self.permutation_results.keys():
+            results_df = self.permutation_results[state]
+            n_components = len(results_df)
+            n_permutations = results_df['n_permutations'].iloc[0]
+            
+            # Recompute permuted correlations to get full distribution
+            X, Y = self.prepare_matrices(state)
+            state_data = self.data[self.data['state'] == state].copy()
+            subject_ids_full = state_data['subject'].values
+            X_full = state_data[self.physio_measures].values
+            Y_full = state_data[self.tet_affective].values
+            valid_mask = ~(np.isnan(X_full).any(axis=1) | np.isnan(Y_full).any(axis=1))
+            subject_ids = subject_ids_full[valid_mask]
+            
+            # Compute permuted correlations
+            for perm_idx in range(n_permutations):
+                permuted_corrs = self._fit_permuted_cca(
+                    X, Y, subject_ids, n_components, 42 + perm_idx
+                )
+                
+                for i in range(n_components):
+                    distribution_records.append({
+                        'state': state,
+                        'canonical_variate': i + 1,
+                        'permutation_id': perm_idx,
+                        'permuted_correlation': permuted_corrs[i]
+                    })
+        
+        # Create DataFrame and export
+        distribution_df = pd.DataFrame(distribution_records)
+        dist_path = output_path / 'cca_permutation_distributions.csv'
+        distribution_df.to_csv(dist_path, index=False)
+        self.logger.info(f"Exported permutation distributions to {dist_path}")
+    
+    def compute_redundancy_index(self, state: str) -> pd.DataFrame:
+        """
+        Compute redundancy index for CCA canonical variates.
+        
+        The redundancy index quantifies the percentage of variance in one
+        variable set explained by the canonical variates from the other set.
+        
+        Redundancy Index Formula:
+        - Redundancy of Y given X = r_c² × R²(Y|U)
+        - Redundancy of X given Y = r_c² × R²(X|V)
+        
+        Where:
+        - r_c = canonical correlation for variate pair
+        - R²(Y|U) = average R² from regressing each y_j on U_i
+        - R²(X|V) = average R² from regressing each x_k on V_i
+        - U_i = canonical variate for physio (X @ W_x)
+        - V_i = canonical variate for TET (Y @ W_y)
+        
+        Interpretation:
+        - Redundancy > 10%: Meaningful shared variance
+        - Redundancy < 5%: Weak relationship, potential overfitting
+        - Total redundancy = sum across all canonical variates
+        
+        Args:
+            state: 'RS' or 'DMT'
+        
+        Returns:
+            DataFrame with columns:
+            - state: RS or DMT
+            - canonical_variate: 1, 2, ...
+            - r_canonical: Canonical correlation
+            - var_explained_Y_by_U: Average R² of TET variables by physio variate
+            - var_explained_X_by_V: Average R² of physio variables by TET variate
+            - redundancy_Y_given_X: % variance in TET explained by physio
+            - redundancy_X_given_Y: % variance in physio explained by TET
+        
+        Example:
+            >>> analyzer.fit_cca(n_components=2)
+            >>> redundancy_df = analyzer.compute_redundancy_index('DMT')
+            >>> print(redundancy_df)
+        """
+        if state not in self.cca_models:
+            raise ValueError(
+                f"Must fit CCA for {state} state first using fit_cca()"
+            )
+        
+        self.logger.info(f"Computing redundancy index for {state} state")
+        
+        # Prepare matrices
+        X, Y = self.prepare_matrices(state)
+        
+        # Get CCA model and transform to canonical variates
+        cca_model = self.cca_models[state]
+        U, V = cca_model.transform(X, Y)
+        
+        # Get canonical correlations
+        canonical_corrs = self.canonical_correlations[state]
+        n_components = len(canonical_corrs)
+        
+        # Compute variance explained for each canonical variate
+        results = []
+        
+        for i in range(n_components):
+            # Get canonical correlation
+            r_c = canonical_corrs[i]
+            
+            # Compute variance explained in Y by U_i
+            var_explained_Y = self._compute_variance_explained(Y, U[:, i])
+            
+            # Compute variance explained in X by V_i
+            var_explained_X = self._compute_variance_explained(X, V[:, i])
+            
+            # Compute redundancy indices
+            redundancy_Y_given_X = (r_c ** 2) * var_explained_Y
+            redundancy_X_given_Y = (r_c ** 2) * var_explained_X
+            
+            results.append({
+                'state': state,
+                'canonical_variate': i + 1,
+                'r_canonical': r_c,
+                'var_explained_Y_by_U': var_explained_Y,
+                'var_explained_X_by_V': var_explained_X,
+                'redundancy_Y_given_X': redundancy_Y_given_X,
+                'redundancy_X_given_Y': redundancy_X_given_Y
+            })
+        
+        # Create DataFrame
+        redundancy_df = pd.DataFrame(results)
+        
+        # Compute total redundancy (sum across all variates)
+        total_redundancy_Y = redundancy_df['redundancy_Y_given_X'].sum()
+        total_redundancy_X = redundancy_df['redundancy_X_given_Y'].sum()
+        
+        # Add total row
+        total_row = {
+            'state': state,
+            'canonical_variate': 'Total',
+            'r_canonical': np.nan,
+            'var_explained_Y_by_U': np.nan,
+            'var_explained_X_by_V': np.nan,
+            'redundancy_Y_given_X': total_redundancy_Y,
+            'redundancy_X_given_Y': total_redundancy_X
+        }
+        redundancy_df = pd.concat(
+            [redundancy_df, pd.DataFrame([total_row])],
+            ignore_index=True
+        )
+        
+        self.logger.info(
+            f"Redundancy index computed for {state}: "
+            f"Total TET variance explained by physio = {total_redundancy_Y:.1%}, "
+            f"Total physio variance explained by TET = {total_redundancy_X:.1%}"
+        )
+        
+        return redundancy_df
+    
+    def _compute_variance_explained(
+        self,
+        Y: np.ndarray,
+        U: np.ndarray
+    ) -> float:
+        """
+        Compute average variance explained in Y by canonical variate U.
+        
+        For each variable y_j in Y:
+        1. Regress y_j on U: y_j = β₀ + β₁ * U + ε
+        2. Compute R² = 1 - (SS_residual / SS_total)
+        3. Average R² across all variables
+        
+        Args:
+            Y: Variable matrix (n_obs × n_vars)
+            U: Canonical variate (n_obs,)
+        
+        Returns:
+            Average R² across all variables in Y
+        """
+        n_vars = Y.shape[1]
+        r_squared_values = []
+        
+        for j in range(n_vars):
+            y_j = Y[:, j]
+            
+            # Compute correlation between y_j and U
+            # R² for simple linear regression = r²
+            r = np.corrcoef(y_j, U)[0, 1]
+            r_squared = r ** 2
+            
+            r_squared_values.append(r_squared)
+        
+        # Average R² across all variables
+        avg_r_squared = np.mean(r_squared_values)
+        
+        return avg_r_squared
+    
+    def plot_redundancy_indices(
+        self,
+        output_dir: str
+    ) -> str:
+        """
+        Generate redundancy index visualization.
+        
+        Creates a grouped bar chart showing redundancy indices for each
+        canonical variate pair, with separate panels for RS and DMT states.
+        
+        Visualization:
+        - X-axis: Canonical variates (CV1, CV2)
+        - Y-axis: Redundancy index (%)
+        - Blue bars: Physio → TET (variance in TET explained by physio)
+        - Red bars: TET → Physio (variance in physio explained by TET)
+        - Horizontal reference line at 10% (meaningful threshold)
+        - Annotations showing exact percentages
+        
+        Args:
+            output_dir: Directory to save figure
+        
+        Returns:
+            Path to saved figure
+        
+        Raises:
+            ValueError: If redundancy indices have not been computed
+        
+        Example:
+            >>> analyzer.fit_cca(n_components=2)
+            >>> redundancy_df_rs = analyzer.compute_redundancy_index('RS')
+            >>> redundancy_df_dmt = analyzer.compute_redundancy_index('DMT')
+            >>> fig_path = analyzer.plot_redundancy_indices('results/tet/physio_correlation')
+        """
+        import matplotlib.pyplot as plt
+        
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        # Compute redundancy indices for both states if not already done
+        redundancy_data = {}
+        
+        for state in ['RS', 'DMT']:
+            if state in self.cca_models:
+                redundancy_df = self.compute_redundancy_index(state)
+                # Exclude total row for plotting
+                redundancy_data[state] = redundancy_df[
+                    redundancy_df['canonical_variate'] != 'Total'
+                ].copy()
+        
+        if not redundancy_data:
+            raise ValueError(
+                "Must fit CCA models first using fit_cca() before plotting redundancy"
+            )
+        
+        # Create figure with subplots for each state
+        n_states = len(redundancy_data)
+        fig, axes = plt.subplots(1, n_states, figsize=(6 * n_states, 6))
+        
+        if n_states == 1:
+            axes = [axes]
+        
+        for idx, (state, redundancy_df) in enumerate(redundancy_data.items()):
+            ax = axes[idx]
+            
+            # Prepare data for grouped bar chart
+            n_variates = len(redundancy_df)
+            x_positions = np.arange(n_variates)
+            bar_width = 0.35
+            
+            # Extract redundancy values (convert to percentages)
+            redundancy_physio_to_tet = redundancy_df['redundancy_Y_given_X'].values * 100
+            redundancy_tet_to_physio = redundancy_df['redundancy_X_given_Y'].values * 100
+            
+            # Create grouped bars
+            bars1 = ax.bar(
+                x_positions - bar_width/2,
+                redundancy_physio_to_tet,
+                bar_width,
+                label='Physio → TET',
+                color='steelblue',
+                alpha=0.8,
+                edgecolor='black'
+            )
+            
+            bars2 = ax.bar(
+                x_positions + bar_width/2,
+                redundancy_tet_to_physio,
+                bar_width,
+                label='TET → Physio',
+                color='coral',
+                alpha=0.8,
+                edgecolor='black'
+            )
+            
+            # Add horizontal reference line at 10%
+            ax.axhline(
+                10,
+                color='gray',
+                linestyle='--',
+                linewidth=2,
+                alpha=0.7,
+                label='10% threshold'
+            )
+            
+            # Annotate bars with exact percentages
+            for bars in [bars1, bars2]:
+                for bar in bars:
+                    height = bar.get_height()
+                    if height > 0:
+                        ax.text(
+                            bar.get_x() + bar.get_width() / 2,
+                            height + 0.5,
+                            f'{height:.1f}%',
+                            ha='center',
+                            va='bottom',
+                            fontsize=9
+                        )
+            
+            # Set x-axis labels
+            variate_labels = [f'CV{int(v)}' for v in redundancy_df['canonical_variate']]
+            ax.set_xticks(x_positions)
+            ax.set_xticklabels(variate_labels, fontsize=11)
+            
+            # Labels and title
+            ax.set_xlabel('Canonical Variate', fontsize=12)
+            ax.set_ylabel('Redundancy Index (%)', fontsize=12)
+            ax.set_title(
+                f'{state} State',
+                fontsize=13,
+                fontweight='bold'
+            )
+            ax.legend(fontsize=10, loc='upper right')
+            ax.grid(True, alpha=0.3, axis='y')
+            
+            # Set y-axis limits to accommodate annotations
+            max_redundancy = max(
+                redundancy_physio_to_tet.max(),
+                redundancy_tet_to_physio.max()
+            )
+            ax.set_ylim(0, max_redundancy * 1.15)
+        
+        # Overall title
+        fig.suptitle(
+            'CCA Redundancy Indices: Shared Variance Between Physio and TET',
+            fontsize=14,
+            fontweight='bold'
+        )
+        plt.tight_layout()
+        
+        # Save figure
+        fig_path = output_path / 'cca_redundancy_indices.png'
+        plt.savefig(fig_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        self.logger.info(f"Saved redundancy indices plot to {fig_path}")
+        
+        return str(fig_path)

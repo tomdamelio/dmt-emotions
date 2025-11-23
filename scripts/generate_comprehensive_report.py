@@ -133,14 +133,17 @@ def main():
             loaded_components.append("PCA Results")
         if synthesizer.clustering_results is not None:
             loaded_components.append("Clustering Results")
+        if synthesizer.physio_correlation_results is not None:
+            loaded_components.append("Physiological-Affective Integration")
         
-        logger.info(f"\nLoaded components ({len(loaded_components)}/4):")
+        logger.info(f"\nLoaded components ({len(loaded_components)}/5):")
         for component in loaded_components:
             logger.info(f"  ✓ {component}")
         
         missing_components = set([
             "Descriptive Statistics", "LME Results",
-            "PCA Results", "Clustering Results"
+            "PCA Results", "Clustering Results",
+            "Physiological-Affective Integration"
         ]) - set(loaded_components)
         
         if missing_components:

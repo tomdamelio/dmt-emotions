@@ -388,6 +388,137 @@ class TETPhysioDataLoader:
         """
         return ['HR_z', 'SMNA_AUC_z', 'RVT_z']
     
+    def load_and_merge_high_resolution(self) -> pd.DataFrame:
+        """
+        Load TET at original 4s resolution and interpolate physio data to match.
+        
+        This method provides an alternative to the standard 30s binning approach:
+        1. Load TET data at original 4-second resolution (no aggregation)
+        2. Load physiological data at 30-second resolution
+        3. Interpolate physiological data to 4-second resolution
+        4. Merge on (subject, state, dose, time_sec)
+        
+        This preserves the temporal dynamics of TET while maintaining
+        physiological signal continuity through interpolation.
+        
+        Returns:
+            DataFrame with merged data at 4-second resolution
+            
+        Note:
+            - Interpolation uses linear method for physiological signals
+            - This assumes physiological signals change smoothly over time
+            - Results in ~7.5x more observations than 30s binning
+        """
+        logger.info("\n" + "=" * 80)
+        logger.info("Loading data at HIGH RESOLUTION (4-second bins)")
+        logger.info("=" * 80)
+        
+        # Load TET data without aggregation
+        logger.info("\nLoading TET data at original 4s resolution...")
+        tet_df = pd.read_csv(self.tet_path)
+        
+        # Filter to first 9 minutes (540 seconds)
+        tet_df = tet_df[tet_df['t_sec'] <= 540].copy()
+        
+        logger.info(f"  Loaded {len(tet_df)} TET timepoints @ 4s resolution")
+        logger.info(f"  Subjects: {tet_df['subject'].nunique()}")
+        logger.info(f"  Time range: 0-{tet_df['t_sec'].max()}s")
+        
+        # Load physiological data (30s resolution)
+        logger.info("\nLoading physiological data @ 30s resolution...")
+        physio_df = self.load_physiological_data()
+        
+        # Convert window to time_sec for physio (window 1 = 0-30s, window 2 = 30-60s, etc.)
+        physio_df['t_sec'] = (physio_df['window'] - 1) * 30
+        
+        # Prepare for interpolation
+        logger.info("\nInterpolating physiological data to 4s resolution...")
+        
+        # Create list to store interpolated data
+        interpolated_dfs = []
+        
+        # Interpolate for each subject-session combination
+        for (subject, state, dose), group in physio_df.groupby(['subject', 'State', 'Dose']):
+            # Sort by time
+            group = group.sort_values('t_sec')
+            
+            # Create target time points (every 4 seconds from 0 to 540)
+            target_times = np.arange(0, 544, 4)  # 0, 4, 8, ..., 540
+            
+            # Interpolate each physiological variable
+            interp_data = {
+                'subject': subject,
+                'state': state,
+                'dose': dose,
+                't_sec': target_times
+            }
+            
+            # Interpolate z-scored physiological measures
+            for col in ['HR_z', 'SMNA_AUC_z', 'RVT_z', 'ArousalIndex']:
+                interp_data[col] = np.interp(
+                    target_times,
+                    group['t_sec'].values,
+                    group[col].values
+                )
+            
+            interpolated_dfs.append(pd.DataFrame(interp_data))
+        
+        # Combine all interpolated data
+        physio_interp = pd.concat(interpolated_dfs, ignore_index=True)
+        
+        logger.info(f"  Interpolated to {len(physio_interp)} timepoints @ 4s resolution")
+        
+        # Standardize column names for merging
+        tet_df = tet_df.rename(columns={'state': 'state_tet'})
+        tet_df['state'] = tet_df['state_tet'].str.upper()  # Ensure uppercase
+        
+        # Map dose names
+        dose_map = {'Alta': 'High', 'Baja': 'Low'}
+        tet_df['dose'] = tet_df['dose'].map(dose_map)
+        
+        # Round t_sec to avoid floating point issues
+        tet_df['t_sec'] = tet_df['t_sec'].round(0).astype(int)
+        physio_interp['t_sec'] = physio_interp['t_sec'].round(0).astype(int)
+        
+        # Merge on (subject, state, dose, t_sec)
+        logger.info("\nMerging TET and interpolated physiological data...")
+        merged_df = pd.merge(
+            tet_df,
+            physio_interp,
+            on=['subject', 'state', 'dose', 't_sec'],
+            how='inner'
+        )
+        
+        # Drop rows with missing values
+        n_before = len(merged_df)
+        merged_df = merged_df.dropna(subset=[
+            'HR_z', 'SMNA_AUC_z', 'RVT_z', 'ArousalIndex',
+            'pleasantness_z', 'unpleasantness_z', 'emotional_intensity_z',
+            'interoception_z', 'bliss_z', 'anxiety_z'
+        ])
+        n_after = len(merged_df)
+        n_dropped = n_before - n_after
+        
+        # Log merge statistics
+        logger.info(f"\nMerge complete:")
+        logger.info(f"  Total observations: {len(merged_df)}")
+        logger.info(f"  Subjects: {merged_df['subject'].nunique()}")
+        logger.info(f"  Rows dropped (missing data): {n_dropped}")
+        logger.info(f"  Time resolution: 4 seconds")
+        logger.info(f"  Time range: 0-{merged_df['t_sec'].max()}s")
+        
+        # Log distribution by state and dose
+        logger.info(f"\nDistribution by condition:")
+        for state in merged_df['state'].unique():
+            for dose in merged_df['dose'].unique():
+                n = len(merged_df[(merged_df['state'] == state) & (merged_df['dose'] == dose)])
+                logger.info(f"  {state} × {dose}: {n} timepoints")
+        
+        # Store merged data
+        self.merged_data = merged_df
+        
+        return merged_df
+    
     def export_merged_data(self, output_path: str) -> str:
         """
         Export merged dataset to CSV.

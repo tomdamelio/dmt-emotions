@@ -21,6 +21,14 @@ This document specifies the requirements for implementing a comprehensive analys
 - **AUC**: Area Under the Curve, integral of a time series
 - **PCA_Component**: Principal component from dimensionality reduction
 - **Cluster_State**: Discrete experiential state identified by clustering algorithm
+- **CCA**: Canonical Correlation Analysis, multivariate technique identifying linear combinations of two variable sets that maximize correlation
+- **Canonical_Variate**: Linear combination of variables from one set that maximally correlates with a linear combination from another set
+- **Canonical_Correlation**: Correlation coefficient between paired canonical variates
+- **Canonical_Loading**: Weight showing how each original variable contributes to a canonical variate
+- **Subject_Level_Permutation**: Permutation test that shuffles entire subject blocks while preserving within-subject temporal structure
+- **LOSO_Cross_Validation**: Leave-One-Subject-Out cross-validation where each subject serves as test set once
+- **Redundancy_Index**: Proportion of variance in one variable set explained by canonical variates from the other set
+- **Temporal_Autocorrelation**: Statistical dependency between observations at different time points within the same time series
 
 ## Requirements
 
@@ -364,3 +372,23 @@ This document specifies the requirements for implementing a comprehensive analys
 21. THE TET_Analysis_System SHALL include a Physiological-Affective Integration section in the comprehensive results document summarizing key findings, including whether arousal shows stronger physiological coupling than valence, which specific affective dimensions correlate most strongly with autonomic measures, and whether CCA reveals meaningful shared latent dimensions.
 
 22. THE TET_Analysis_System SHALL document in the Methods section the temporal alignment procedure, correlation analysis approach, regression model specifications, CCA algorithm parameters, and multiple comparison correction strategy used for physiological-affective integration analyses.
+
+23. THE TET_Analysis_System SHALL validate the temporal resolution and data structure of CCA input matrices before analysis, confirming that data are aggregated to 30-second windows (approximately 18 bins per 9-minute session) rather than raw 0.25 Hz sampling to avoid artificially inflated sample sizes and reduce temporal autocorrelation.
+
+24. THE TET_Analysis_System SHALL verify that CCA analysis uses only the intersection of subjects with complete data in both physiological and TET modalities, explicitly documenting the final sample size (N subjects) and total number of observations (N subjects × 18 windows per session × sessions).
+
+25. THE TET_Analysis_System SHALL implement subject-level permutation testing with 1000 iterations to validate CCA canonical correlation significance, where each permutation randomly pairs the physiological matrix of Subject i with the affective TET matrix of Subject j (i ≠ j) while preserving within-subject temporal structure.
+
+26. THE TET_Analysis_System SHALL compute empirical p-values for each canonical correlation by calculating the proportion of permuted correlations that exceed the observed correlation, providing robust significance testing that accounts for subject-level dependencies.
+
+27. THE TET_Analysis_System SHALL perform Leave-One-Subject-Out (LOSO) cross-validation to assess CCA generalization, where for each fold the model is trained on N-1 subjects and canonical weights are applied to the held-out subject's data to compute out-of-sample canonical correlations.
+
+28. THE TET_Analysis_System SHALL report the mean and standard deviation of out-of-sample canonical correlations across LOSO folds, providing evidence for model stability and generalizability beyond the training sample.
+
+29. THE TET_Analysis_System SHALL compute the Redundancy Index for each canonical variate pair, quantifying the percentage of variance in the affective TET matrix explained by the physiological canonical variate and vice versa, ensuring that CCA captures meaningful shared variance rather than noise.
+
+30. THE TET_Analysis_System SHALL export CCA validation results as CSV files at results/tet/physio_correlation/cca_validation.csv with columns for state, canonical_variate, observed_correlation, permutation_p_value, loso_mean_correlation, loso_sd_correlation, redundancy_physio_to_tet, redundancy_tet_to_physio.
+
+31. THE TET_Analysis_System SHALL generate diagnostic plots showing: (a) permutation null distributions with observed correlations marked, (b) LOSO cross-validation correlation distributions, and (c) redundancy index bar charts for each canonical variate pair.
+
+32. THE TET_Analysis_System SHALL include a CCA Validation subsection in the comprehensive results document reporting permutation test results, cross-validation performance, and redundancy indices with interpretation of whether canonical correlations represent robust physiological-affective coupling or potential overfitting.
