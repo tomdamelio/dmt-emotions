@@ -186,13 +186,14 @@ class TETPhysioVisualizer:
         merged_data: pd.DataFrame,
         pc1_scores: pd.DataFrame,
         regression_df: pd.DataFrame,
-        output_dir: str
+        output_dir: str,
+        pc2_scores: Optional[pd.DataFrame] = None
     ) -> List[str]:
         """
-        Generate scatter plots for TET vs physiological PC1.
+        Generate scatter plots for TET vs physiological PC1 and PC2.
         
-        Creates two figures showing relationships between TET dimensions
-        (arousal and valence) and the first principal component of physiological signals.
+        Creates figures showing relationships between TET dimensions
+        (arousal and valence) and the principal components of physiological signals.
         
         Args:
             merged_data: Merged physio-TET dataset with columns:
@@ -206,6 +207,7 @@ class TETPhysioVisualizer:
                 - r_squared: R² value
                 - p_value: Significance of beta
             output_dir: Directory to save figures
+            pc2_scores: Optional DataFrame with physiological PC2 scores
         
         Returns:
             List of generated figure paths
@@ -221,6 +223,14 @@ class TETPhysioVisualizer:
         Figure 2: Valence vs Physio PC1
             - Same layout as Figure 1
             - Y-axis: Valence index (z-scored)
+        
+        Figure 3: Arousal vs Physio PC2 (if pc2_scores provided)
+            - Same layout as Figure 1
+            - X-axis: Physiological PC2
+        
+        Figure 4: Valence vs Physio PC2 (if pc2_scores provided)
+            - Same layout as Figure 2
+            - X-axis: Physiological PC2
         
         Figure specifications:
             - Figure size: 12×5 inches (2 panels)
@@ -239,24 +249,175 @@ class TETPhysioVisualizer:
             how='inner'
         )
         
+        # Merge PC2 scores if provided
+        if pc2_scores is not None:
+            plot_data = plot_data.merge(
+                pc2_scores,
+                on=['subject', 'session_id', 't_bin'],
+                how='inner'
+            )
+        
         # Define outcome variables to plot
         outcomes = [
             ('emotional_intensity_z', 'Arousal (Emotional Intensity)'),
             ('valence_index_z', 'Valence Index')
         ]
         
+        # Define PC components to plot
+        pc_components = [('physio_PC1', 'PC1')]
+        if pc2_scores is not None:
+            pc_components.append(('physio_PC2', 'PC2'))
+        
         for outcome_var, outcome_label in outcomes:
-            # Create figure with subplots for each state
-            states = sorted(plot_data['state'].unique())
-            fig, axes = plt.subplots(1, len(states), figsize=(12, 5))
-            if len(states) == 1:
-                axes = [axes]
-            
-            for idx, state in enumerate(states):
+            for pc_var, pc_label in pc_components:
+                # Create figure with subplots for each state
+                states = sorted(plot_data['state'].unique())
+                fig, axes = plt.subplots(1, len(states), figsize=(12, 5))
+                if len(states) == 1:
+                    axes = [axes]
+                
+                for idx, state in enumerate(states):
+                    # Filter data for this state
+                    state_data = plot_data[plot_data['state'] == state].copy()
+                    
+                    # Limit points if too many (for clarity)
+                    if len(state_data) > 5000:
+                        state_data = state_data.sample(n=5000, random_state=42)
+                    
+                    # Get regression statistics (only available for PC1)
+                    if pc_var == 'physio_PC1':
+                        reg_stats = regression_df[
+                            (regression_df['outcome_variable'] == outcome_var) &
+                            (regression_df['state'] == state)
+                        ]
+                        
+                        if len(reg_stats) > 0:
+                            beta = reg_stats['beta'].values[0]
+                            r_squared = reg_stats['r_squared'].values[0]
+                            p_value = reg_stats['p_value'].values[0]
+                        else:
+                            beta = np.nan
+                            r_squared = np.nan
+                            p_value = np.nan
+                    else:
+                        # For PC2, compute correlation on the fly
+                        from scipy.stats import pearsonr
+                        valid_data = state_data[[pc_var, outcome_var]].dropna()
+                        if len(valid_data) > 0:
+                            r, p_value = pearsonr(valid_data[pc_var], valid_data[outcome_var])
+                            beta = r  # Use correlation as proxy for beta
+                            r_squared = r ** 2
+                        else:
+                            beta = np.nan
+                            r_squared = np.nan
+                            p_value = np.nan
+                    
+                    # Create scatter plot with regression line
+                    sns.regplot(
+                        data=state_data,
+                        x=pc_var,
+                        y=outcome_var,
+                        ax=axes[idx],
+                        scatter_kws={'alpha': 0.3, 'color': 'gray', 's': 20},
+                        line_kws={'color': 'red', 'linewidth': 2},
+                        ci=95
+                    )
+                    
+                    # Add annotations
+                    if not np.isnan(beta):
+                        p_str = f'{p_value:.3f}' if p_value >= 0.001 else '<0.001'
+                        if pc_var == 'physio_PC1':
+                            annot_text = f'β = {beta:.2f}\nR² = {r_squared:.3f}\np = {p_str}'
+                        else:
+                            annot_text = f'r = {beta:.2f}\nR² = {r_squared:.3f}\np = {p_str}'
+                        
+                        # Position annotation in upper left or upper right depending on correlation
+                        x_pos = 0.05 if beta > 0 else 0.95
+                        axes[idx].text(
+                            x_pos, 0.95,
+                            annot_text,
+                            transform=axes[idx].transAxes,
+                            verticalalignment='top',
+                            horizontalalignment='left' if beta > 0 else 'right',
+                            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8),
+                            fontsize=9
+                        )
+                    
+                    axes[idx].set_title(f'{state} State', fontweight='bold')
+                    axes[idx].set_xlabel(f'Physiological {pc_label}')
+                    axes[idx].set_ylabel(f'{outcome_label} (z-scored)' if idx == 0 else '')
+                    axes[idx].grid(True, alpha=0.3, linestyle='--')
+                
+                plt.tight_layout()
+                
+                # Save figure
+                figure_name = outcome_var.replace('_z', '').replace('_', '_')
+                pc_suffix = pc_label.lower()
+                figure_path = output_path / f'{figure_name}_vs_{pc_suffix}_scatter.png'
+                plt.savefig(figure_path, dpi=300, bbox_inches='tight')
+                plt.close()
+                
+                self.figure_paths.append(str(figure_path))
+                generated_figures.append(str(figure_path))
+                self.logger.info(f"Generated regression scatter plot: {figure_path}")
+        
+        return generated_figures
+    
+    def plot_pc1_composite_figure(
+        self,
+        merged_data: pd.DataFrame,
+        pc1_scores: pd.DataFrame,
+        regression_df: pd.DataFrame,
+        output_dir: str
+    ) -> str:
+        """
+        Generate composite 4-panel figure with PC1 scatter plots.
+        
+        Creates a 2x2 grid showing:
+        - Panel A (top-left): Emotional Intensity vs PC1 - RS
+        - Panel B (top-right): Emotional Intensity vs PC1 - DMT
+        - Panel C (bottom-left): Valence Index vs PC1 - RS
+        - Panel D (bottom-right): Valence Index vs PC1 - DMT
+        
+        Args:
+            merged_data: Merged physio-TET dataset
+            pc1_scores: DataFrame with physiological PC1 scores
+            regression_df: DataFrame with regression results
+            output_dir: Directory to save figure
+        
+        Returns:
+            Path to generated composite figure
+        """
+        output_path = Path(output_dir) / 'figures'
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        # Merge PC1 scores with merged data
+        plot_data = merged_data.merge(
+            pc1_scores,
+            on=['subject', 'session_id', 't_bin'],
+            how='inner'
+        )
+        
+        # Define outcome variables
+        outcomes = [
+            ('emotional_intensity_z', 'Emotional Intensity (z)'),
+            ('valence_index_z', 'Valence Index (z)')
+        ]
+        
+        # Create 2x2 figure
+        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+        panel_labels = ['A', 'B', 'C', 'D']
+        states = ['RS', 'DMT']
+        
+        panel_idx = 0
+        for row_idx, (outcome_var, outcome_label) in enumerate(outcomes):
+            for col_idx, state in enumerate(states):
+                ax = axes[row_idx, col_idx]
+                
                 # Filter data for this state
                 state_data = plot_data[plot_data['state'] == state].copy()
                 
-                # Limit points if too many (for clarity)
+                # Limit points if too many
                 if len(state_data) > 5000:
                     state_data = state_data.sample(n=5000, random_state=42)
                 
@@ -280,7 +441,7 @@ class TETPhysioVisualizer:
                     data=state_data,
                     x='physio_PC1',
                     y=outcome_var,
-                    ax=axes[idx],
+                    ax=ax,
                     scatter_kws={'alpha': 0.3, 'color': 'gray', 's': 20},
                     line_kws={'color': 'red', 'linewidth': 2},
                     ci=95
@@ -291,36 +452,47 @@ class TETPhysioVisualizer:
                     p_str = f'{p_value:.3f}' if p_value >= 0.001 else '<0.001'
                     annot_text = f'β = {beta:.2f}\nR² = {r_squared:.3f}\np = {p_str}'
                     
-                    # Position annotation in upper left or upper right depending on correlation
+                    # Position annotation
                     x_pos = 0.05 if beta > 0 else 0.95
-                    axes[idx].text(
+                    ax.text(
                         x_pos, 0.95,
                         annot_text,
-                        transform=axes[idx].transAxes,
+                        transform=ax.transAxes,
                         verticalalignment='top',
                         horizontalalignment='left' if beta > 0 else 'right',
                         bbox=dict(boxstyle='round', facecolor='white', alpha=0.8),
-                        fontsize=9
+                        fontsize=10
                     )
                 
-                axes[idx].set_title(f'{state} State', fontweight='bold')
-                axes[idx].set_xlabel('Physiological PC1')
-                axes[idx].set_ylabel(f'{outcome_label} (z-scored)' if idx == 0 else '')
-                axes[idx].grid(True, alpha=0.3, linestyle='--')
-            
-            plt.tight_layout()
-            
-            # Save figure
-            figure_name = outcome_var.replace('_z', '').replace('_', '_')
-            figure_path = output_path / f'{figure_name}_vs_pc1_scatter.png'
-            plt.savefig(figure_path, dpi=300, bbox_inches='tight')
-            plt.close()
-            
-            self.figure_paths.append(str(figure_path))
-            generated_figures.append(str(figure_path))
-            self.logger.info(f"Generated regression scatter plot: {figure_path}")
+                # Add panel label
+                ax.text(
+                    -0.1, 1.05,
+                    panel_labels[panel_idx],
+                    transform=ax.transAxes,
+                    fontsize=16,
+                    fontweight='bold',
+                    va='top'
+                )
+                
+                # Set labels and title
+                ax.set_title(f'{state} State', fontweight='bold', fontsize=13)
+                ax.set_xlabel('Physiological PC1 (Arousal Index)', fontsize=11)
+                ax.set_ylabel(outcome_label if col_idx == 0 else '', fontsize=11)
+                ax.grid(True, alpha=0.3, linestyle='--')
+                
+                panel_idx += 1
         
-        return generated_figures
+        plt.tight_layout()
+        
+        # Save figure
+        figure_path = output_path / 'pc1_composite_4panel.png'
+        plt.savefig(figure_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        self.figure_paths.append(str(figure_path))
+        self.logger.info(f"Generated PC1 composite figure: {figure_path}")
+        
+        return str(figure_path)
     
     def plot_cca_loadings(
         self,

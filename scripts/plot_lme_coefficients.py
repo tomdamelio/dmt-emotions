@@ -32,20 +32,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Plot aesthetics
+# Nature Human Behaviour style configuration
+AXES_TITLE_SIZE = 24
+AXES_LABEL_SIZE = 22
+TICK_LABEL_SIZE = 18
+LEGEND_FONTSIZE = 18
+
 plt.style.use('seaborn-v0_8-whitegrid')
 plt.rcParams.update({
-    'figure.dpi': 300,
-    'savefig.dpi': 300,
-    'axes.titlesize': 12,
-    'axes.labelsize': 10,
-    'legend.fontsize': 9,
-    'xtick.labelsize': 9,
-    'ytick.labelsize': 9,
+    'figure.dpi': 110,
+    'savefig.dpi': 400,
+    'axes.titlesize': AXES_TITLE_SIZE,
+    'axes.labelsize': AXES_LABEL_SIZE,
+    'axes.linewidth': 1.5,
     'axes.spines.top': False,
     'axes.spines.right': False,
     'legend.frameon': False,
+    'legend.fontsize': LEGEND_FONTSIZE,
+    'xtick.labelsize': TICK_LABEL_SIZE,
+    'ytick.labelsize': TICK_LABEL_SIZE,
 })
+
+# TET uses purple/violet color scheme from tab20c palette
+# tab20c has 20 colors in 5 groups of 4 gradients each
+# Purple group: indices 12-15 (darkest to lightest)
+tab20c_colors = plt.cm.tab20c.colors
+COLOR_STATE = tab20c_colors[12]      # Darkest purple for State effect
+COLOR_DOSE = tab20c_colors[13]       # Medium purple for Dose effect
+COLOR_INTERACTION = tab20c_colors[14]  # Lighter purple for Interaction
 
 
 def load_lme_results(input_path: str) -> pd.DataFrame:
@@ -105,17 +119,21 @@ def prepare_plotting_data(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     # Add significance marker
     df_filtered['significant'] = df_filtered['p_fdr'] < 0.05
     
-    # Get State effect strength for ordering
-    state_effects = df_filtered[df_filtered['effect'] == 'state[T.DMT]'].copy()
-    state_effects['abs_beta'] = state_effects['beta'].abs()
-    state_order = state_effects.sort_values('abs_beta', ascending=False)['dimension'].tolist()
-    
-    # Create dimension ordering
-    dimension_order = {dim: i for i, dim in enumerate(state_order)}
+    # Fixed order: Arousal first (top), Valence second (bottom)
+    # In matplotlib, y=0 is at bottom, so we reverse: Valence=0, Arousal=1
+    # This way Arousal appears at top and Valence at bottom
+    dimension_order = {
+        'emotional_intensity_z': 1,  # Arousal at top (higher y position)
+        'valence_index_z': 0         # Valence at bottom (lower y position)
+    }
     df_filtered['dim_order'] = df_filtered['dimension'].map(dimension_order)
     
-    # Clean dimension names (remove _z suffix)
-    df_filtered['dimension_clean'] = df_filtered['dimension'].str.replace('_z', '')
+    # Clean dimension names and map to publication names
+    dimension_name_map = {
+        'emotional_intensity_z': 'Arousal',
+        'valence_index_z': 'Valence'
+    }
+    df_filtered['dimension_clean'] = df_filtered['dimension'].map(dimension_name_map)
     
     # Define effect types and their display names
     effect_types = {
@@ -144,7 +162,7 @@ def prepare_plotting_data(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 def plot_coefficient_forest(
     plot_data: Dict[str, pd.DataFrame],
     output_path: str,
-    figsize: tuple = (14, 2.5)
+    figsize: tuple = (18, 3.5)
 ) -> None:
     """
     Create forest plot showing LME coefficients with 95% CIs.
@@ -153,6 +171,7 @@ def plot_coefficient_forest(
         plot_data (Dict[str, pd.DataFrame]): Prepared plotting data by effect type
         output_path (str): Path to save figure
         figsize (tuple): Figure size in inches (width, height)
+            Width=18 for consistency with pca_timeseries.png and timeseries_all_dimensions.png
     """
     logger.info("Creating coefficient forest plot...")
     
@@ -160,19 +179,21 @@ def plot_coefficient_forest(
     n_effects = len(plot_data)
     
     # Create figure with subplots
-    fig, axes = plt.subplots(1, n_effects, figsize=figsize, sharey=True)
+    # Width=18 for consistency with other TET figures
+    STANDARD_WIDTH = 18
+    fig, axes = plt.subplots(1, n_effects, figsize=(STANDARD_WIDTH, figsize[1]), sharey=True)
     
     # Handle single panel case
     if n_effects == 1:
         axes = [axes]
     
-    # Color palette for effect types
+    # Color palette for effect types (using tab20c purple scheme)
     effect_colors = {
-        'State': '#2E8B57',        # Sea green
-        'Dose': '#4169E1',         # Royal blue
-        'State:Dose': '#DC143C',   # Crimson
-        'State:Time': '#FF8C00',   # Dark orange
-        'Dose:Time': '#9370DB'     # Medium purple
+        'State': COLOR_STATE,           # Darkest purple
+        'Dose': COLOR_DOSE,             # Medium purple
+        'State:Dose': COLOR_INTERACTION,  # Lighter purple
+        'State:Time': tab20c_colors[13],  # Medium purple
+        'Dose:Time': tab20c_colors[14]    # Lighter purple
     }
     
     # Plot each effect type
@@ -188,19 +209,12 @@ def plot_coefficient_forest(
         for i, (idx, row) in enumerate(effect_df.iterrows()):
             y_pos = y_positions[i]
             
-            # Style based on significance
-            if row['significant']:
-                marker = 'o'  # Filled circle
-                alpha = 1.0
-                linewidth = 2.0
-                markersize = 6
-            else:
-                marker = 'o'  # Open circle
-                alpha = 0.6
-                linewidth = 1.5
-                markersize = 5
+            # Style based on significance - uniform size for all
+            linewidth = 6.5
+            alpha = 1.0
+            marker_size = 200
             
-            # Plot CI as horizontal line
+            # Plot CI as thick horizontal line
             ax.plot(
                 [row['ci_lower'], row['ci_upper']],
                 [y_pos, y_pos],
@@ -210,59 +224,34 @@ def plot_coefficient_forest(
                 zorder=2
             )
             
-            # Plot point estimate
+            # Plot point estimate as large circle
             ax.scatter(
                 row['beta'],
                 y_pos,
-                color=color if row['significant'] else 'white',
-                edgecolors=color,
-                s=markersize**2,
+                color=color,
+                s=marker_size,
                 alpha=alpha,
-                linewidths=1.5,
+                edgecolors=color,
+                linewidths=3.5,
                 zorder=3
             )
         
         # Add vertical line at zero
-        ax.axvline(x=0, color='black', linestyle='--', alpha=0.3, linewidth=1, zorder=1)
+        ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=2.0, zorder=1)
         
         # Customize axes
         ax.set_yticks(y_positions)
-        ax.set_yticklabels(effect_df['dimension_clean'])
-        ax.set_xlabel('β coefficient', fontsize=10)
-        ax.set_title(effect_name, fontsize=11, fontweight='bold', color=color)
-        ax.grid(True, axis='x', alpha=0.2, linestyle='-', linewidth=0.5)
+        ax.set_yticklabels(effect_df['dimension_clean'], fontsize=TICK_LABEL_SIZE+2)
+        ax.set_xlabel('β coefficient', fontweight='bold')
+        ax.set_title(effect_name, fontweight='bold', color=color)
+        ax.grid(True, axis='x', alpha=0.25, linestyle='-', linewidth=0.5)
         ax.set_axisbelow(True)
     
-    # Overall title
-    fig.suptitle(
-        'LME Fixed Effects: TET Dimensions\nCoefficient Estimates with 95% Confidence Intervals',
-        fontsize=13,
-        fontweight='bold',
-        y=0.98
-    )
-    
-    # Add legend
-    from matplotlib.lines import Line2D
-    legend_elements = [
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='gray',
-               markersize=6, label='p_fdr < 0.05', markeredgecolor='gray', markeredgewidth=1.5),
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='white',
-               markersize=5, label='p_fdr ≥ 0.05', markeredgecolor='gray', markeredgewidth=1.5, alpha=0.6)
-    ]
-    
-    fig.legend(
-        handles=legend_elements,
-        loc='lower center',
-        ncol=2,
-        bbox_to_anchor=(0.5, -0.02),
-        frameon=False
-    )
-    
     # Adjust layout
-    plt.tight_layout(rect=[0, 0.02, 1, 0.96])
+    plt.tight_layout()
     
     # Save figure
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.savefig(output_path, dpi=400, bbox_inches='tight')
     plt.close()
     
     logger.info(f"Forest plot saved to: {output_path}")

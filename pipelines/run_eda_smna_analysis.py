@@ -1292,11 +1292,11 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
         ax1.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
     # Convert window indices to time in minutes for x-axis
     time_minutes = (x - 0.5) * WINDOW_SIZE_SEC / 60.0  # Center of each window
-    l1 = ax1.plot(time_minutes, rs_mean_h, color=COLOR_RS_HIGH, lw=2.0, label='High')[0]
+    l1 = ax1.plot(time_minutes, rs_mean_h, color=COLOR_RS_HIGH, lw=2.0, label='High dose (40mg)')[0]
     ax1.fill_between(time_minutes, rs_mean_h - rs_sem_h, rs_mean_h + rs_sem_h, color=COLOR_RS_HIGH, alpha=0.25)
-    l2 = ax1.plot(time_minutes, rs_mean_l, color=COLOR_RS_LOW, lw=2.0, label='Low')[0]
+    l2 = ax1.plot(time_minutes, rs_mean_l, color=COLOR_RS_LOW, lw=2.0, label='Low dose (20mg)')[0]
     ax1.fill_between(time_minutes, rs_mean_l - rs_sem_l, rs_mean_l + rs_sem_l, color=COLOR_RS_LOW, alpha=0.25)
-    leg1 = ax1.legend([l1, l2], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
+    leg1 = ax1.legend([l1, l2], ['High dose (40mg)', 'Low dose (20mg)'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg1.get_frame().set_facecolor('white'); leg1.get_frame().set_alpha(0.9)
     ax1.set_xlabel('Time (minutes)')
     # Use blue color from tab20c for Electrodermal Activity (EDA/SMNA modality) - only first line colored
@@ -1314,11 +1314,11 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
         t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
         t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
         ax2.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
-    l3 = ax2.plot(time_minutes, dmt_mean_h, color=COLOR_DMT_HIGH, lw=2.0, label='High')[0]
+    l3 = ax2.plot(time_minutes, dmt_mean_h, color=COLOR_DMT_HIGH, lw=2.0, label='High dose (40mg)')[0]
     ax2.fill_between(time_minutes, dmt_mean_h - dmt_sem_h, dmt_mean_h + dmt_sem_h, color=COLOR_DMT_HIGH, alpha=0.25)
-    l4 = ax2.plot(time_minutes, dmt_mean_l, color=COLOR_DMT_LOW, lw=2.0, label='Low')[0]
+    l4 = ax2.plot(time_minutes, dmt_mean_l, color=COLOR_DMT_LOW, lw=2.0, label='Low dose (20mg)')[0]
     ax2.fill_between(time_minutes, dmt_mean_l - dmt_sem_l, dmt_mean_l + dmt_sem_l, color=COLOR_DMT_LOW, alpha=0.25)
-    leg2 = ax2.legend([l3, l4], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
+    leg2 = ax2.legend([l3, l4], ['High dose (40mg)', 'Low dose (20mg)'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg2.get_frame().set_facecolor('white'); leg2.get_frame().set_alpha(0.9)
     ax2.set_xlabel('Time (minutes)')
     ax2.set_title('DMT', fontweight='bold')
@@ -1430,11 +1430,11 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
         t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
         t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
         ax.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
-    l1 = ax.plot(time_minutes, mean_h, color=COLOR_DMT_HIGH, lw=2.0, label='High')[0]
+    l1 = ax.plot(time_minutes, mean_h, color=COLOR_DMT_HIGH, lw=2.0, label='High dose (40mg)')[0]
     ax.fill_between(time_minutes, mean_h - sem_h, mean_h + sem_h, color=COLOR_DMT_HIGH, alpha=0.25)
-    l2 = ax.plot(time_minutes, mean_l, color=COLOR_DMT_LOW, lw=2.0, label='Low')[0]
+    l2 = ax.plot(time_minutes, mean_l, color=COLOR_DMT_LOW, lw=2.0, label='Low dose (20mg)')[0]
     ax.fill_between(time_minutes, mean_l - sem_l, mean_l + sem_l, color=COLOR_DMT_LOW, alpha=0.25)
-    leg = ax.legend([l1, l2], ['High', 'Low'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
+    leg = ax.legend([l1, l2], ['High dose (40mg)', 'Low dose (20mg)'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg.get_frame().set_facecolor('white'); leg.get_frame().set_alpha(0.9)
     ax.set_xlabel('Time (minutes)')
     # Use blue color from tab20c for Electrodermal Activity (EDA/SMNA modality) - only first line colored
@@ -1615,8 +1615,8 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         ax_rs.grid(True, which='major', axis='y', alpha=0.25)
         ax_rs.grid(False, which='major', axis='x')
         legend_rs = ax_rs.legend(handles=[
-            Line2D([0], [0], color=COLOR_RS_HIGH, lw=1.8, marker='o', markersize=4, label='RS High'),
-            Line2D([0], [0], color=COLOR_RS_LOW, lw=1.8, marker='o', markersize=4, label='RS Low'),
+            Line2D([0], [0], color=COLOR_RS_HIGH, lw=1.8, marker='o', markersize=4, label='High dose (40mg)'),
+            Line2D([0], [0], color=COLOR_RS_LOW, lw=1.8, marker='o', markersize=4, label='Low dose (20mg)'),
         ], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE_SMALL, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
         legend_rs.get_frame().set_facecolor('white')
         legend_rs.get_frame().set_alpha(0.9)
@@ -1633,8 +1633,8 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
         ax_dmt.grid(True, which='major', axis='y', alpha=0.25)
         ax_dmt.grid(False, which='major', axis='x')
         legend_dmt = ax_dmt.legend(handles=[
-            Line2D([0], [0], color=COLOR_DMT_HIGH, lw=1.8, marker='o', markersize=4, label='DMT High'),
-            Line2D([0], [0], color=COLOR_DMT_LOW, lw=1.8, marker='o', markersize=4, label='DMT Low'),
+            Line2D([0], [0], color=COLOR_DMT_HIGH, lw=1.8, marker='o', markersize=4, label='High dose (40mg)'),
+            Line2D([0], [0], color=COLOR_DMT_LOW, lw=1.8, marker='o', markersize=4, label='Low dose (20mg)'),
         ], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE_SMALL, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD)
         legend_dmt.get_frame().set_facecolor('white')
         legend_dmt.get_frame().set_alpha(0.9)
@@ -1728,6 +1728,102 @@ def generate_captions_file(output_dir: str, n_subjects: int) -> None:
         f.write('\n\n'.join(captions))
 
 
+def prepare_extended_long_data_smna() -> pd.DataFrame:
+    """Build long-format per-30-second window SMNA AUC table for extended DMT (~19 min = 38 windows).
+    
+    This function exports DMT-only data for extended time range, used by composite analysis.
+    Uses same z-scoring approach as prepare_long_data().
+    """
+    limit_sec = 1150.0
+    total_windows = int(np.floor(limit_sec / WINDOW_SIZE_SEC))  # ~38 windows
+    rows: List[Dict] = []
+    qc_log: List[str] = []
+    
+    for subject in SUJETOS_VALIDADOS_EDA:
+        high_session, low_session = determine_sessions(subject)
+        dmt_high_path, dmt_low_path = build_cvx_paths(subject, high_session, low_session)
+        rs_high_path = build_rs_cvx_path(subject, high_session)
+        rs_low_path = build_rs_cvx_path(subject, low_session)
+
+        dmt_high = load_cvx_smna(dmt_high_path)
+        dmt_low = load_cvx_smna(dmt_low_path)
+        rs_high = load_cvx_smna(rs_high_path)
+        rs_low = load_cvx_smna(rs_low_path)
+        
+        if None in (dmt_high, dmt_low, rs_high, rs_low):
+            continue
+
+        t_dmt_high, smna_dmt_high_abs = dmt_high
+        t_dmt_low, smna_dmt_low_abs = dmt_low
+        t_rs_high, smna_rs_high_abs = rs_high
+        t_rs_low, smna_rs_low_abs = rs_low
+
+        if USE_RS_ZSCORE:
+            if ZSCORE_BY_SUBJECT:
+                smna_rs_high_z, smna_dmt_high_z, smna_rs_low_z, smna_dmt_low_z, diag = zscore_with_subject_baseline(
+                    t_rs_high, smna_rs_high_abs, t_dmt_high, smna_dmt_high_abs,
+                    t_rs_low, smna_rs_low_abs, t_dmt_low, smna_dmt_low_abs
+                )
+                if not diag['scalable']:
+                    qc_log.append(f"{subject}: Not scalable: {diag['reason']}")
+                    continue
+                smna_dmt_high_z_use, smna_dmt_low_z_use = smna_dmt_high_z, smna_dmt_low_z
+            else:
+                smna_rs_high_z, smna_dmt_high_z, diag_high = zscore_with_session_baseline(
+                    t_rs_high, smna_rs_high_abs, t_dmt_high, smna_dmt_high_abs
+                )
+                smna_rs_low_z, smna_dmt_low_z, diag_low = zscore_with_session_baseline(
+                    t_rs_low, smna_rs_low_abs, t_dmt_low, smna_dmt_low_abs
+                )
+                if not (diag_high['scalable'] and diag_low['scalable']):
+                    continue
+                smna_dmt_high_z_use, smna_dmt_low_z_use = smna_dmt_high_z, smna_dmt_low_z
+            
+            # Process extended windows (DMT only)
+            for window_idx in range(total_windows):
+                window_label = window_idx + 1
+                auc_dmt_h_z = compute_auc_window(t_dmt_high, smna_dmt_high_z_use, window_idx)
+                auc_dmt_l_z = compute_auc_window(t_dmt_low, smna_dmt_low_z_use, window_idx)
+                
+                if auc_dmt_h_z is not None and auc_dmt_l_z is not None:
+                    rows.extend([
+                        {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'DMT', 'Dose': 'High', 'AUC': auc_dmt_h_z, 'Scale': 'z'},
+                        {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'DMT', 'Dose': 'Low', 'AUC': auc_dmt_l_z, 'Scale': 'z'},
+                    ])
+                    if EXPORT_ABSOLUTE_SCALE:
+                        auc_dmt_h_abs = compute_auc_window(t_dmt_high, smna_dmt_high_abs, window_idx)
+                        auc_dmt_l_abs = compute_auc_window(t_dmt_low, smna_dmt_low_abs, window_idx)
+                        if auc_dmt_h_abs is not None and auc_dmt_l_abs is not None:
+                            rows.extend([
+                                {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'DMT', 'Dose': 'High', 'AUC': auc_dmt_h_abs, 'Scale': 'abs'},
+                                {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'DMT', 'Dose': 'Low', 'AUC': auc_dmt_l_abs, 'Scale': 'abs'},
+                            ])
+        else:
+            for window_idx in range(total_windows):
+                window_label = window_idx + 1
+                auc_dmt_h_abs = compute_auc_window(t_dmt_high, smna_dmt_high_abs, window_idx)
+                auc_dmt_l_abs = compute_auc_window(t_dmt_low, smna_dmt_low_abs, window_idx)
+                if auc_dmt_h_abs is not None and auc_dmt_l_abs is not None:
+                    rows.extend([
+                        {'subject': subject, 'session': high_session, 'window': window_label, 'State': 'DMT', 'Dose': 'High', 'AUC': auc_dmt_h_abs, 'Scale': 'abs'},
+                        {'subject': subject, 'session': low_session, 'window': window_label, 'State': 'DMT', 'Dose': 'Low', 'AUC': auc_dmt_l_abs, 'Scale': 'abs'},
+                    ])
+
+    if not rows:
+        raise ValueError('No valid extended SMNA data found!')
+    
+    if qc_log:
+        print(f"  Warning: {len(qc_log)} subjects excluded from extended data")
+
+    df = pd.DataFrame(rows)
+    df['State'] = pd.Categorical(df['State'], categories=['RS', 'DMT'], ordered=True)
+    df['Dose'] = pd.Categorical(df['Dose'], categories=['Low', 'High'], ordered=True)
+    df['Scale'] = pd.Categorical(df['Scale'], categories=['z', 'abs'], ordered=True)
+    df['subject'] = pd.Categorical(df['subject'])
+    df['window_c'] = df['window'] - df['window'].mean()
+    return df
+
+
 def main() -> bool:
     out_dir = os.path.join('results', 'eda', 'smna')
     plots_dir = os.path.join(out_dir, 'plots')
@@ -1750,6 +1846,15 @@ def main() -> bool:
         df_primary.to_csv(os.path.join(out_dir, scale_filename), index=False)
         scale_desc = "z-scored" if USE_RS_ZSCORE else "absolute"
         print(f"  ✓ Saved {scale_desc} data: {len(df_primary)} rows from {len(df_primary['subject'].unique())} subjects")
+        
+        # Export extended DMT data (~19 minutes)
+        print("Preparing extended DMT data (~19 minutes)...")
+        df_extended = prepare_extended_long_data_smna()
+        df_extended.to_csv(os.path.join(out_dir, 'smna_extended_dmt_all_scales.csv'), index=False)
+        df_ext_primary = df_extended[df_extended['Scale'] == scale_to_use]
+        ext_filename = 'smna_extended_dmt_z.csv' if USE_RS_ZSCORE else 'smna_extended_dmt_abs.csv'
+        df_ext_primary.to_csv(os.path.join(out_dir, ext_filename), index=False)
+        print(f"  ✓ Saved extended DMT data: {len(df_ext_primary)} rows from {len(df_ext_primary['subject'].unique())} subjects")
         
         # QC check: RS by dose
         rs_qc = df_primary[df_primary['State'] == 'RS'].groupby('Dose', observed=False)['AUC'].agg(['count', 'mean', 'std']).round(4)

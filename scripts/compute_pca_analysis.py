@@ -192,7 +192,8 @@ def main():
         pca_analyzer = TETPCAAnalyzer(
             data=data,
             dimensions=z_dims,
-            variance_threshold=args.variance_threshold
+            variance_threshold=args.variance_threshold,
+            n_components=5  # Fixed: always compute 5 components
         )
         
         # =====================================================================

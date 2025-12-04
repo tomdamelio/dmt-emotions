@@ -24,8 +24,18 @@ def plot_scree(variance_df, output_path, dpi=300):
     
     fig, ax = plt.subplots(figsize=(8, 6))
     
-    # Create color array: first 2 components in dark blue, rest in light gray
-    colors = ['#2E5090' if i < 2 else '#B0B0B0' for i in range(len(variance_df))]
+    # Create color array using violet gradient from tab20c
+    tab20c_colors = plt.cm.tab20c.colors
+    colors = []
+    for i in range(len(variance_df)):
+        if i < 2:
+            colors.append(tab20c_colors[12])  # PC1-PC2: darkest violet
+        elif i == 2:
+            colors.append(tab20c_colors[13])  # PC3: medium violet
+        elif i == 3:
+            colors.append(tab20c_colors[14])  # PC4: lighter violet
+        else:
+            colors.append(tab20c_colors[15])  # PC5+: lightest violet
     
     # Individual variance
     bars = ax.bar(variance_df['component'], variance_df['variance_explained'] * 100, 

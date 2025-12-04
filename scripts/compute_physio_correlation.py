@@ -702,13 +702,48 @@ def main():
         pc1_scores = pc1_scores.rename(columns={'ArousalIndex': 'physio_PC1'})
         pc1_scores['t_bin'] = merged_df['window']  # Use window as t_bin for merging
         
+        # Compute PC2 on-the-fly from the physiological data
+        logger.info("\nComputing PC2 for additional scatter plots...")
+        from sklearn.decomposition import PCA
+        
+        # Extract physiological signals (z-scored)
+        physio_signals = ['HR_z', 'SMNA_AUC_z', 'RVT_z']
+        X_physio = merged_df[physio_signals].dropna()
+        
+        if len(X_physio) > 0:
+            # Fit PCA with 2 components
+            pca = PCA(n_components=2, random_state=22)
+            pc_scores = pca.fit_transform(X_physio)
+            
+            # Create PC2 scores DataFrame
+            pc2_data = merged_df.loc[X_physio.index, ['subject', 'session_id', 't_bin']].copy()
+            pc2_data['physio_PC2'] = pc_scores[:, 1]  # Second component
+            pc2_data['t_bin'] = merged_df.loc[X_physio.index, 'window']
+            
+            logger.info(f"  PC2 computed for {len(pc2_data)} observations")
+            logger.info(f"  PC2 variance explained: {pca.explained_variance_ratio_[1]:.3f}")
+        else:
+            pc2_data = None
+            logger.warning("  Could not compute PC2 - no valid physiological data")
+        
         scatter_paths = visualizer.plot_regression_scatter(
+            merged_df,
+            pc1_scores,
+            reg_results,
+            str(output_dir),
+            pc2_scores=pc2_data
+        )
+        logger.info(f"  Generated {len(scatter_paths)} scatter plot(s)")
+        
+        # Generate PC1 composite 4-panel figure
+        logger.info("\nGenerating PC1 composite 4-panel figure...")
+        composite_path = visualizer.plot_pc1_composite_figure(
             merged_df,
             pc1_scores,
             reg_results,
             str(output_dir)
         )
-        logger.info(f"  Generated {len(scatter_paths)} scatter plot(s)")
+        logger.info(f"  Generated composite figure: {composite_path}")
         
         # Generate CCA loading plots
         logger.info("\nGenerating CCA loading plots...")

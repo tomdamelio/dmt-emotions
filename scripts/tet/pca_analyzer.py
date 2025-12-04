@@ -63,7 +63,7 @@ class TETPCAAnalyzer:
     """
     
     def __init__(self, data: pd.DataFrame, dimensions: List[str], 
-                 variance_threshold: float = 0.75):
+                 variance_threshold: float = 0.75, n_components: int = None):
         """
         Initialize PCA analyzer.
         
@@ -71,10 +71,12 @@ class TETPCAAnalyzer:
             data: Preprocessed TET data with z-scored dimensions
             dimensions: List of z-scored dimension column names (e.g., ['pleasantness_z', ...])
             variance_threshold: Target cumulative variance (default: 0.75 = 75%)
+            n_components: Fixed number of components to retain (default: None, use variance_threshold)
         """
         self.data = data.copy()
         self.dimensions = dimensions
         self.variance_threshold = variance_threshold
+        self.n_components_fixed = n_components  # Fixed number if specified
         self.pca_model = None  # Single PCA model for all data
         self.n_components = None  # Number of components retained
         self.pc_scores = None  # DataFrame with PC scores
@@ -83,8 +85,12 @@ class TETPCAAnalyzer:
         self.group_mean = None  # Group-level mean for standardization
         self.group_std = None  # Group-level std for standardization
         
-        logger.info(f"Initialized TETPCAAnalyzer with {len(data)} observations, "
-                   f"{len(dimensions)} dimensions, variance_threshold={variance_threshold}")
+        if n_components is not None:
+            logger.info(f"Initialized TETPCAAnalyzer with {len(data)} observations, "
+                       f"{len(dimensions)} dimensions, n_components={n_components} (fixed)")
+        else:
+            logger.info(f"Initialized TETPCAAnalyzer with {len(data)} observations, "
+                       f"{len(dimensions)} dimensions, variance_threshold={variance_threshold}")
     
     def fit_pca(self) -> PCA:
         """
@@ -128,21 +134,33 @@ class TETPCAAnalyzer:
         logger.info(f"  Mean per dimension after standardization: {np.mean(X, axis=0).round(6)}")  # Should be ~0
         logger.info(f"  Std per dimension after standardization: {np.std(X, axis=0, ddof=1).round(6)}")  # Should be ~1
         
-        # Fit initial PCA with all components to determine variance structure
-        pca_full = PCA(n_components=None)
-        pca_full.fit(X)
-        
-        # Calculate cumulative variance explained
-        cumsum_var = np.cumsum(pca_full.explained_variance_ratio_)
-        
-        # Find n_components for target variance
-        n_components = np.argmax(cumsum_var >= self.variance_threshold) + 1
-        n_components = max(2, n_components)  # Ensure at least PC1 and PC2
-        
-        # Log variance information
-        logger.info(f"Variance threshold: {self.variance_threshold:.2%}")
-        logger.info(f"Selected n_components: {n_components}")
-        logger.info(f"Cumulative variance explained: {cumsum_var[n_components-1]:.2%}")
+        # Determine number of components
+        if self.n_components_fixed is not None:
+            # Use fixed number of components
+            n_components = self.n_components_fixed
+            logger.info(f"Using fixed n_components: {n_components}")
+            
+            # Fit PCA to get variance info
+            pca_full = PCA(n_components=None)
+            pca_full.fit(X)
+            cumsum_var = np.cumsum(pca_full.explained_variance_ratio_)
+            logger.info(f"Cumulative variance explained with {n_components} components: {cumsum_var[n_components-1]:.2%}")
+        else:
+            # Fit initial PCA with all components to determine variance structure
+            pca_full = PCA(n_components=None)
+            pca_full.fit(X)
+            
+            # Calculate cumulative variance explained
+            cumsum_var = np.cumsum(pca_full.explained_variance_ratio_)
+            
+            # Find n_components for target variance
+            n_components = np.argmax(cumsum_var >= self.variance_threshold) + 1
+            n_components = max(2, n_components)  # Ensure at least PC1 and PC2
+            
+            # Log variance information
+            logger.info(f"Variance threshold: {self.variance_threshold:.2%}")
+            logger.info(f"Selected n_components: {n_components}")
+            logger.info(f"Cumulative variance explained: {cumsum_var[n_components-1]:.2%}")
         
         # Refit with selected n_components for efficiency
         self.pca_model = PCA(n_components=n_components)

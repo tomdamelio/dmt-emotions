@@ -20,6 +20,41 @@ from scipy import stats
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 import config
 
+# Nature Human Behaviour style configuration
+AXES_TITLE_SIZE = 24
+AXES_LABEL_SIZE = 22
+TICK_LABEL_SIZE = 18
+LEGEND_FONTSIZE = 18
+LEGEND_MARKERSCALE = 1.6
+LEGEND_BORDERPAD = 0.6
+LEGEND_LABELSPACING = 0.5
+LEGEND_HANDLELENGTH = 2.0
+LEGEND_BORDERAXESPAD = 0.5
+
+plt.style.use('seaborn-v0_8-whitegrid')
+plt.rcParams.update({
+    'figure.dpi': 110,
+    'savefig.dpi': 400,
+    'axes.titlesize': AXES_TITLE_SIZE,
+    'axes.labelsize': AXES_LABEL_SIZE,
+    'axes.linewidth': 1.5,
+    'axes.spines.top': False,
+    'axes.spines.right': False,
+    'legend.frameon': False,
+    'legend.fontsize': LEGEND_FONTSIZE,
+    'legend.borderpad': LEGEND_BORDERPAD,
+    'legend.handlelength': LEGEND_HANDLELENGTH,
+    'xtick.labelsize': TICK_LABEL_SIZE,
+    'ytick.labelsize': TICK_LABEL_SIZE,
+})
+
+# TET uses purple/violet color scheme from tab20c palette
+# tab20c has 20 colors in 5 groups of 4 gradients each
+# Purple group: indices 12-15 (darkest to lightest)
+tab20c_colors = plt.cm.tab20c.colors
+COLOR_HIGH_DOSE = tab20c_colors[12]  # Darkest purple for High dose (40mg)
+COLOR_LOW_DOSE = tab20c_colors[14]   # Lighter purple for Low dose (20mg)
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -217,15 +252,40 @@ class TETTimeSeriesVisualizer:
         
         return annotations_df
     
+    def _benjamini_hochberg_correction(self, p_values: List[float]) -> List[float]:
+        """
+        Apply Benjamini-Hochberg FDR correction to p-values.
+        
+        Args:
+            p_values (List[float]): List of raw p-values
+            
+        Returns:
+            List[float]: FDR-corrected p-values
+        """
+        p_array = np.array(p_values, dtype=float)
+        n = len(p_array)
+        order = np.argsort(p_array)
+        sorted_p = p_array[order]
+        adjusted = np.zeros(n)
+        
+        for i in range(n - 1, -1, -1):
+            if i == n - 1:
+                adjusted[order[i]] = sorted_p[i]
+            else:
+                adjusted[order[i]] = min(sorted_p[i] * n / (i + 1), adjusted[order[i + 1]])
+        
+        return np.minimum(adjusted, 1.0).tolist()
+    
     def _identify_dose_interactions(self) -> pd.DataFrame:
         """
         Identify time bins with significant dose differences (High vs Low) during DMT.
+        Uses Benjamini-Hochberg FDR correction across all time bins per dimension.
         
         Returns:
             pd.DataFrame: Dose interaction annotations with columns:
-                - dimension, t_bin, dose_effect_sig
+                - dimension, t_bin, p_raw, p_fdr, dose_effect_sig
         """
-        logger.info("Identifying time bins with dose differences...")
+        logger.info("Identifying time bins with dose differences (with FDR correction)...")
         
         annotations = []
         
@@ -233,7 +293,12 @@ class TETTimeSeriesVisualizer:
         dmt_data = self.data[self.data['state'] == 'DMT']
         
         for dimension in self.dimensions:
-            for t_bin in sorted(dmt_data['t_bin'].unique()):
+            # Collect all p-values for this dimension across time bins
+            time_bins = sorted(dmt_data['t_bin'].unique())
+            p_values = []
+            t_stats = []
+            
+            for t_bin in time_bins:
                 # Get data for this time bin
                 bin_data = dmt_data[dmt_data['t_bin'] == t_bin]
                 
@@ -245,27 +310,40 @@ class TETTimeSeriesVisualizer:
                 # H0: mean(High) = mean(Low)
                 try:
                     t_stat, p_value = stats.ttest_ind(high_dose, low_dose)
-                    dose_effect_sig = p_value < 0.05
+                    p_values.append(p_value)
+                    t_stats.append(t_stat)
                 except:
-                    dose_effect_sig = False
-                
+                    p_values.append(1.0)  # Non-significant if test fails
+                    t_stats.append(0.0)
+            
+            # Apply BH-FDR correction across all time bins for this dimension
+            p_fdr = self._benjamini_hochberg_correction(p_values)
+            
+            # Store results
+            for t_bin, p_raw, p_adj, t_stat in zip(time_bins, p_values, p_fdr, t_stats):
                 annotations.append({
                     'dimension': dimension,
                     't_bin': t_bin,
-                    'dose_effect_sig': dose_effect_sig
+                    'p_raw': p_raw,
+                    'p_fdr': p_adj,
+                    't_stat': t_stat,
+                    'dose_effect_sig': p_adj < 0.05
                 })
         
         annotations_df = pd.DataFrame(annotations)
         
-        n_sig = annotations_df['dose_effect_sig'].sum()
-        logger.info(f"Found {n_sig} time bins with significant dose differences (p<0.05)")
+        n_sig_raw = (annotations_df['p_raw'] < 0.05).sum()
+        n_sig_fdr = annotations_df['dose_effect_sig'].sum()
+        logger.info(f"Found {n_sig_raw} time bins with p<0.05 (uncorrected)")
+        logger.info(f"Found {n_sig_fdr} time bins with p_FDR<0.05 (BH-corrected)")
         
         return annotations_df
     
     def _plot_dimension(
         self,
         ax: plt.Axes,
-        dimension: str
+        dimension: str,
+        show_ylabel: bool = True
     ):
         """
         Plot a single dimension panel.
@@ -273,6 +351,7 @@ class TETTimeSeriesVisualizer:
         Args:
             ax (plt.Axes): Matplotlib axes to plot on
             dimension (str): Dimension name
+            show_ylabel (bool): Whether to show y-axis label (default: True)
         """
         # Get time course data for this dimension
         tc_dim = self.time_courses[
@@ -289,78 +368,106 @@ class TETTimeSeriesVisualizer:
         time_high = tc_high['t_sec'].values / 60
         
         # Plot DMT time series with SEM shading (without RS baseline points)
-        ax.plot(time_low, tc_low['mean'], color='#4472C4', linewidth=2, label='20mg', zorder=2)
-        ax.fill_between(
-            time_low,
-            tc_low['mean'] - tc_low['sem'],
-            tc_low['mean'] + tc_low['sem'],
-            color='#4472C4',
-            alpha=0.3,
-            zorder=1
-        )
-        
-        ax.plot(time_high, tc_high['mean'], color='#C44444', linewidth=2, label='40mg', zorder=2)
+        # Plot High dose FIRST so it appears first in legend (inverted order)
+        ax.plot(time_high, tc_high['mean'], color=COLOR_HIGH_DOSE, linewidth=3, 
+                label='High dose (40mg)', marker='o', markersize=3, zorder=2)
         ax.fill_between(
             time_high,
             tc_high['mean'] - tc_high['sem'],
             tc_high['mean'] + tc_high['sem'],
-            color='#C44444',
-            alpha=0.3,
+            color=COLOR_HIGH_DOSE,
+            alpha=0.25,
             zorder=1
         )
         
-        # Add grey background for significant main effects
+        # Plot Low dose SECOND so it appears second in legend
+        ax.plot(time_low, tc_low['mean'], color=COLOR_LOW_DOSE, linewidth=3, 
+                label='Low dose (20mg)', marker='o', markersize=3, zorder=2)
+        ax.fill_between(
+            time_low,
+            tc_low['mean'] - tc_low['sem'],
+            tc_low['mean'] + tc_low['sem'],
+            color=COLOR_LOW_DOSE,
+            alpha=0.25,
+            zorder=1
+        )
+        
+        # Add grey background shading for significant main effects (DMT vs RS)
+        # Group consecutive bins to create continuous shaded regions
         sig_bins = self.significance_annotations[
             (self.significance_annotations['dimension'] == dimension) &
             (self.significance_annotations['main_effect_sig'] == True)
         ]['t_bin'].values
         
-        for t_bin in sig_bins:
-            t_start = t_bin * 4 / 60  # Convert to minutes
-            t_end = (t_bin + 1) * 4 / 60
-            ax.axvspan(t_start, t_end, color='grey', alpha=0.2, zorder=0)
+        if len(sig_bins) > 0:
+            # Group consecutive bins
+            main_effect_groups = []
+            current_group = [sig_bins[0]]
+            
+            for i in range(1, len(sig_bins)):
+                if sig_bins[i] == current_group[-1] + 1:
+                    current_group.append(sig_bins[i])
+                else:
+                    main_effect_groups.append(current_group)
+                    current_group = [sig_bins[i]]
+            main_effect_groups.append(current_group)
+            
+            # Draw grey shaded regions for main effects (DMT vs RS)
+            for group in main_effect_groups:
+                t_start = group[0] * 4 / 60  # Convert to minutes
+                t_end = (group[-1] + 1) * 4 / 60
+                # Use grey shading for main effects
+                ax.axvspan(t_start, t_end, color='0.85', alpha=0.35, zorder=0)
         
-        # Add black bars at top for significant dose differences at specific time bins
+        # Add black horizontal bars at top for significant dose differences (High vs Low, FDR-corrected)
+        # Similar to ECG analysis style
         dose_sig_bins = self.dose_interaction_bins[
             (self.dose_interaction_bins['dimension'] == dimension) &
             (self.dose_interaction_bins['dose_effect_sig'] == True)
         ]['t_bin'].values
         
         if len(dose_sig_bins) > 0:
-            y_max = 3  # Fixed y-axis max
-            y_bar = y_max * 0.95
-            
             # Group consecutive bins to create continuous bars
-            bin_groups = []
+            dose_effect_groups = []
             current_group = [dose_sig_bins[0]]
             
             for i in range(1, len(dose_sig_bins)):
                 if dose_sig_bins[i] == current_group[-1] + 1:
                     current_group.append(dose_sig_bins[i])
                 else:
-                    bin_groups.append(current_group)
+                    dose_effect_groups.append(current_group)
                     current_group = [dose_sig_bins[i]]
-            bin_groups.append(current_group)
+            dose_effect_groups.append(current_group)
             
-            # Draw bars for each group
-            for group in bin_groups:
+            # Draw black horizontal bars at top for dose effects (FDR-corrected)
+            y_max = 3  # Fixed y-axis max
+            y_bar = y_max * 0.95  # Position at 95% of y-axis height
+            
+            for group in dose_effect_groups:
                 t_start = group[0] * 4 / 60  # Convert to minutes
                 t_end = (group[-1] + 1) * 4 / 60
                 ax.plot([t_start, t_end], [y_bar, y_bar], 
-                       color='black', linewidth=3, solid_capstyle='butt', zorder=3)
+                       color='black', linewidth=4, solid_capstyle='butt', zorder=3)
         
         # Add dashed line at DMT onset
-        ax.axvline(x=0, color='grey', linestyle='--', linewidth=1, alpha=0.5, zorder=0)
+        ax.axvline(x=0, color='grey', linestyle='--', linewidth=2, alpha=0.6, zorder=0)
         
         # Formatting
         dim_name = dimension.replace('_z', '').replace('_', ' ').title()
-        ax.set_title(dim_name, fontsize=10, fontweight='bold')
-        ax.set_xlabel('Time (minutes)', fontsize=8)
-        ax.set_ylabel('Z-scored Intensity', fontsize=8)
-        ax.tick_params(labelsize=7)
+        ax.set_title(dim_name, fontweight='bold')
+        ax.set_xlabel('Time (minutes)', fontweight='bold')
+        
+        # Only show ylabel for first two dimensions (Arousal and Interoception)
+        if show_ylabel:
+            ax.set_ylabel('Intensity (Z-scored)', fontweight='bold')
+        else:
+            ax.set_ylabel('')
+        
         ax.set_xlim(-1, 20)
         ax.set_ylim(-3, 3)  # Fixed y-axis range for all subplots
-        ax.grid(True, alpha=0.3, linestyle=':', linewidth=0.5)
+        ax.grid(True, which='major', axis='y', alpha=0.25, linestyle='-', linewidth=0.5)
+        ax.grid(False, which='major', axis='x')
+        ax.set_axisbelow(True)
     
     def generate_figure(self) -> plt.Figure:
         """
@@ -389,53 +496,171 @@ class TETTimeSeriesVisualizer:
         ]
         
         # Create figure with GridSpec for custom layout
-        fig = plt.figure(figsize=(20, 8), dpi=300)
+        # Increased hspace to separate rows more
+        # Width=18 for consistency with pca_timeseries.png and lme_coefficients_forest.png
+        STANDARD_WIDTH = 18
+        fig = plt.figure(figsize=(STANDARD_WIDTH, 8), dpi=300)
         import matplotlib.gridspec as gridspec
-        gs = gridspec.GridSpec(2, 10, figure=fig, hspace=0.35, wspace=0.4)
-        
-        fig.suptitle('TET Time Series: Dose Effects with Statistical Annotations', 
-                    fontsize=16, fontweight='bold', y=0.98)
+        gs = gridspec.GridSpec(2, 10, figure=fig, hspace=0.50, wspace=0.4)
         
         # Row 1: Large panels (Arousal and Valence)
-        # Arousal: columns 0-4
+        # Arousal: columns 0-4 (show ylabel)
         ax_arousal = fig.add_subplot(gs[0, 0:5])
         if 'emotional_intensity_z' in self.dimensions:
-            self._plot_dimension(ax_arousal, 'emotional_intensity_z')
-            ax_arousal.set_title('Arousal (Emotional Intensity)', fontsize=14, fontweight='bold')
-            ax_arousal.legend(loc='upper right', fontsize=10, framealpha=0.9)
+            self._plot_dimension(ax_arousal, 'emotional_intensity_z', show_ylabel=True)
+            # Two-line title: bold main term, regular subtitle
+            ax_arousal.set_title('Arousal\n(Emotional Intensity)', 
+                                fontsize=16, fontweight='bold', 
+                                linespacing=1.2)
+            # Make subtitle (second line) not bold by using text annotation
+            # Get title position and replace with custom formatting
+            title_obj = ax_arousal.title
+            title_obj.set_text('')  # Clear default title
+            ax_arousal.text(0.5, 1.08, 'Arousal', 
+                          transform=ax_arousal.transAxes,
+                          fontsize=18, fontweight='bold', 
+                          ha='center', va='bottom')
+            ax_arousal.text(0.5, 1.02, '(Emotional Intensity)', 
+                          transform=ax_arousal.transAxes,
+                          fontsize=14, fontweight='normal', 
+                          ha='center', va='bottom')
+            # Larger legend with bigger font and frame (like pca_timeseries)
+            legend_arousal = ax_arousal.legend(loc='upper right', fontsize=14, frameon=True, 
+                                              fancybox=True, framealpha=0.9, 
+                                              markerscale=1.5, handlelength=2.5)
+            legend_arousal.get_frame().set_facecolor('white')
+            legend_arousal.get_frame().set_alpha(0.9)
         
-        # Valence: columns 5-9
+        # Valence: columns 5-9 (no ylabel)
         ax_valence = fig.add_subplot(gs[0, 5:10])
         if 'valence_index_z' in self.dimensions:
-            self._plot_dimension(ax_valence, 'valence_index_z')
-            ax_valence.set_title('Valence (Pleasantness-Unpleasantness)', fontsize=14, fontweight='bold')
+            self._plot_dimension(ax_valence, 'valence_index_z', show_ylabel=False)
+            # Clear the default title generated by _plot_dimension
+            ax_valence.set_title('')
+            # Two-line title: bold main term, regular subtitle
+            # Note: Title says "Valence" not "Valence Index"
+            ax_valence.text(0.5, 1.08, 'Valence', 
+                          transform=ax_valence.transAxes,
+                          fontsize=18, fontweight='bold', 
+                          ha='center', va='bottom')
+            ax_valence.text(0.5, 1.02, '(Pleasantness-Unpleasantness)', 
+                          transform=ax_valence.transAxes,
+                          fontsize=14, fontweight='normal', 
+                          ha='center', va='bottom')
+            # Add legend to Valence panel in lower right position with frame (like pca_timeseries)
+            legend_valence = ax_valence.legend(loc='lower right', fontsize=14, frameon=True, 
+                                              fancybox=True, framealpha=0.9, 
+                                              markerscale=1.5, handlelength=2.5)
+            legend_valence.get_frame().set_facecolor('white')
+            legend_valence.get_frame().set_alpha(0.9)
         
         # Row 2: Small panels (5 dimensions, 2 columns each)
         secondary_positions = [
-            (1, 0, 2),   # Interoception: columns 0-1
-            (1, 2, 4),   # Anxiety: columns 2-3
-            (1, 4, 6),   # Unpleasantness: columns 4-5
-            (1, 6, 8),   # Pleasantness: columns 6-7
-            (1, 8, 10),  # Bliss: columns 8-9
+            (1, 0, 2),   # Interoception: columns 0-1 (show ylabel)
+            (1, 2, 4),   # Anxiety: columns 2-3 (no ylabel)
+            (1, 4, 6),   # Unpleasantness: columns 4-5 (no ylabel)
+            (1, 6, 8),   # Pleasantness: columns 6-7 (no ylabel)
+            (1, 8, 10),  # Bliss: columns 8-9 (no ylabel)
         ]
         
         for idx, (dimension, (row, col_start, col_end)) in enumerate(zip(secondary_dimensions, secondary_positions)):
             if dimension in self.dimensions:
                 ax = fig.add_subplot(gs[row, col_start:col_end])
-                self._plot_dimension(ax, dimension)
+                # Only show ylabel for first dimension (Interoception, idx=0)
+                show_ylabel = (idx == 0)
+                self._plot_dimension(ax, dimension, show_ylabel=show_ylabel)
                 
-                # Format title
+                # Format title - larger and bold for secondary panels
                 dim_name = dimension.replace('_z', '').replace('_', ' ').title()
-                ax.set_title(dim_name, fontsize=11, fontweight='bold')
+                ax.set_title(dim_name, fontsize=14, fontweight='bold')
         
         logger.info("Figure generation complete")
         
         return fig
     
+    def export_fdr_report(self, output_path: str) -> str:
+        """
+        Export FDR analysis report showing significant dose difference segments.
+        
+        Args:
+            output_path (str): Output file path for report
+            
+        Returns:
+            str: Path to exported report
+        """
+        lines = [
+            'FDR COMPARISON: High (40mg) vs Low (20mg) Dose Effects Over Time',
+            'Benjamini-Hochberg FDR correction applied per dimension across all time bins',
+            'Alpha = 0.05',
+            '',
+        ]
+        
+        for dimension in self.ordered_dimensions:
+            # Get significant bins for this dimension
+            dose_sig = self.dose_interaction_bins[
+                (self.dose_interaction_bins['dimension'] == dimension) &
+                (self.dose_interaction_bins['dose_effect_sig'] == True)
+            ].sort_values('t_bin')
+            
+            dim_name = dimension.replace('_z', '').replace('_', ' ').title()
+            lines.append(f'DIMENSION: {dim_name}')
+            lines.append('-' * 60)
+            
+            if len(dose_sig) == 0:
+                lines.append('  No significant dose differences (p_FDR < 0.05)')
+            else:
+                # Group consecutive bins
+                sig_bins = dose_sig['t_bin'].values
+                bin_groups = []
+                current_group = [sig_bins[0]]
+                
+                for i in range(1, len(sig_bins)):
+                    if sig_bins[i] == current_group[-1] + 1:
+                        current_group.append(sig_bins[i])
+                    else:
+                        bin_groups.append(current_group)
+                        current_group = [sig_bins[i]]
+                bin_groups.append(current_group)
+                
+                lines.append(f'  Significant segments (count={len(bin_groups)}):')
+                for group in bin_groups:
+                    t_start_sec = group[0] * 4
+                    t_end_sec = (group[-1] + 1) * 4
+                    t_start_min = t_start_sec / 60
+                    t_end_min = t_end_sec / 60
+                    
+                    # Get min p_FDR in this segment
+                    segment_data = dose_sig[dose_sig['t_bin'].isin(group)]
+                    min_p_fdr = segment_data['p_fdr'].min()
+                    
+                    lines.append(
+                        f'    - Bins {group[0]}-{group[-1]}: '
+                        f'{t_start_min:.2f}-{t_end_min:.2f} min '
+                        f'({t_start_sec}-{t_end_sec}s), '
+                        f'min p_FDR={min_p_fdr:.4f}'
+                    )
+                
+                # Summary statistics
+                lines.append(f'  Total significant bins: {len(dose_sig)}')
+                lines.append(f'  Min p_FDR: {dose_sig["p_fdr"].min():.6f}')
+                lines.append(f'  Median p_FDR: {dose_sig["p_fdr"].median():.6f}')
+            
+            lines.append('')
+        
+        # Write report
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(lines))
+        
+        logger.info(f"Exported FDR report to: {output_path}")
+        
+        return output_path
+    
     def export_figure(
         self,
         output_path: str,
-        dpi: int = 300
+        dpi: int = 300,
+        export_fdr_report: bool = True
     ) -> str:
         """
         Generate and export figure to file.
@@ -443,6 +668,7 @@ class TETTimeSeriesVisualizer:
         Args:
             output_path (str): Output file path
             dpi (int): Resolution in dots per inch (default: 300)
+            export_fdr_report (bool): Whether to export FDR report (default: True)
             
         Returns:
             str: Path to exported file
@@ -458,5 +684,10 @@ class TETTimeSeriesVisualizer:
         plt.close(fig)
         
         logger.info(f"Exported figure to: {output_path}")
+        
+        # Export FDR report if requested
+        if export_fdr_report:
+            report_path = output_path.replace('.png', '_fdr_report.txt')
+            self.export_fdr_report(report_path)
         
         return output_path

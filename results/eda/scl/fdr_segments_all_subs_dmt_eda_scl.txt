@@ -1,7 +1,0 @@
-FDR COMPARISON: High vs Low (All Subjects, DMT only - Extended 19min)
-Alpha = 0.05
-Temporal resolution: 0.5s
-
-Significant segments (count=0):
-  - None
-Min p_FDR: 0.999940; Median p_FDR: 0.999940

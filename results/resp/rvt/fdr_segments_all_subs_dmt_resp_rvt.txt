@@ -1,7 +1,5 @@
-FDR COMPARISON: High vs Low (All Subjects, DMT only - Extended 19min)
+FDR COMPARISON: RVT High vs Low (DMT only)
 Alpha = 0.05
-Temporal resolution: 1.0s (coarser for better statistical power)
 
-Significant segments (count=0):
+Significant window ranges (count=0):
   - None
-Min p_FDR: 0.593441; Median p_FDR: 0.844117

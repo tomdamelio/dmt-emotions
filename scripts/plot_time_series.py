@@ -22,7 +22,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from tet.time_series_visualizer import TETTimeSeriesVisualizer
+from scripts.tet.time_series_visualizer import TETTimeSeriesVisualizer
 import pandas as pd
 
 # Configure logging

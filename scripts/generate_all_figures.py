@@ -237,6 +237,7 @@ def generate_pca_figures(
     """
     figure_type_scree = "PCA Scree Plot (Req 8.4)"
     figure_type_loadings = "PCA Loadings Heatmap (Req 8.5)"
+    figure_type_timeseries = "PCA Time Series (PC1 & PC2)"
     
     try:
         # Check required files
@@ -251,18 +252,16 @@ def generate_pca_figures(
         if not all_exist:
             report.add_skipped(figure_type_scree, f"Missing files: {', '.join([Path(f).name for f in missing])}")
             report.add_skipped(figure_type_loadings, f"Missing files: {', '.join([Path(f).name for f in missing])}")
+            report.add_skipped(figure_type_timeseries, f"Missing files: {', '.join([Path(f).name for f in missing])}")
             return
         
-        # Run plot_pca_results.py script
+        # Run plot_pca_simple.py script (generates scree plot + loadings heatmap)
         import subprocess
         
-        script_path = os.path.join(os.path.dirname(__file__), 'plot_pca_results.py')
+        script_path = os.path.join(os.path.dirname(__file__), 'plot_pca_simple.py')
         cmd = [
             sys.executable,
-            script_path,
-            '--input-dir', pca_dir,
-            '--output-dir', output_dir,
-            '--dpi', str(dpi)
+            script_path
         ]
         
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -284,6 +283,33 @@ def generate_pca_figures(
         else:
             error_msg = result.stderr if result.stderr else "Script execution failed"
             report.add_failed("PCA Figures (Req 8.4, 8.5)", error_msg)
+        
+        # Generate PCA time series figure
+        pca_scores_path = os.path.join(pca_dir, 'pca_scores.csv')
+        if os.path.exists(pca_scores_path):
+            try:
+                from plot_pca_timeseries import compute_pc_time_courses, plot_pc_timeseries
+                import pandas as pd
+                
+                # Load PC scores
+                pc_scores = pd.read_csv(pca_scores_path)
+                
+                # Compute time courses
+                time_courses = compute_pc_time_courses(pc_scores)
+                
+                # Generate figure
+                timeseries_output = os.path.join(output_dir, 'pca_timeseries.png')
+                plot_pc_timeseries(time_courses, timeseries_output, dpi=dpi)
+                
+                if os.path.exists(timeseries_output):
+                    report.add_generated(figure_type_timeseries, timeseries_output)
+                else:
+                    report.add_failed(figure_type_timeseries, "Output file not created")
+                    
+            except Exception as e:
+                report.add_failed(figure_type_timeseries, f"Error generating time series: {str(e)}")
+        else:
+            report.add_skipped(figure_type_timeseries, f"Missing file: pca_scores.csv")
         
     except Exception as e:
         report.add_failed("PCA Figures (Req 8.4, 8.5)", str(e))

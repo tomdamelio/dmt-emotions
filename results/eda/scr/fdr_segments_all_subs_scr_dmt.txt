@@ -1,6 +1,0 @@
-FDR COMPARISON: DMT High vs Low (SCR rate)
-Alpha = 0.05
-
-Significant segments (count=1):
-  - 5.0–5.0 min
-Min p_FDR: 0.020304; Median p_FDR: 0.481370

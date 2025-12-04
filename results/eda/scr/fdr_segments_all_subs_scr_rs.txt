@@ -1,6 +1,0 @@
-FDR COMPARISON: RS High vs Low (SCR rate)
-Alpha = 0.05
-
-Significant segments (count=0):
-  - None
-Min p_FDR: 0.756578; Median p_FDR: 0.756578

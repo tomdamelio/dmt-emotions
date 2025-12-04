@@ -2,7 +2,7 @@
 COMPOSITE AUTONOMIC AROUSAL INDEX (PCA-PC1) + LME ANALYSIS
 ================================================================================
 
-Analysis date: 2025-11-11 19:13:24
+Analysis date: 2025-12-03 21:48:06
 Dataset: 504 observations from 7 subjects
 Subjects: S04, S06, S07, S16, S18, S19, S20
 
@@ -26,40 +26,6 @@ PCA RESULTS:
   ✓ All loadings are POSITIVE - PC1 reflects coherent autonomic activation
     Higher ArousalIndex = greater HR, SMNA, and RVT simultaneously
 
-
-CROSS-CORRELATIONS BETWEEN SIGNALS:
-  Within-subject Pearson correlations (window-by-window):
-
-  RS:
-    HR–SMNA: r̄ = 0.166 ± 0.427 (N=7)
-    HR–RVT: r̄ = 0.305 ± 0.770 (N=7)
-    SMNA–RVT: r̄ = -0.042 ± 0.292 (N=7)
-
-  DMT:
-    HR–SMNA: r̄ = 0.376 ± 0.404 (N=7)
-    HR–RVT: r̄ = 0.159 ± 0.410 (N=7)
-    SMNA–RVT: r̄ = 0.282 ± 0.214 (N=7)
-
-  Interpretation: Positive correlations across all signal pairs indicate
-  coherent autonomic responses. Higher correlations under DMT suggest
-  increased physiological coupling during the psychedelic state.
-
-DYNAMIC AUTONOMIC COHERENCE:
-  Sliding-window correlations (2-minute retrospective window):
-
-  RS - Peak correlations:
-    HR–SMNA: max r̄ = 0.714 at 3.8 min (window 8, Low)
-    HR–RVT: max r̄ = 1.000 at 5.8 min (window 12, High)
-    SMNA–RVT: max r̄ = 0.714 at 2.8 min (window 6, Low)
-
-  DMT - Peak correlations:
-    HR–SMNA: max r̄ = 0.714 at 0.8 min (window 2, High)
-    HR–RVT: max r̄ = 0.714 at 5.8 min (window 12, Low)
-    SMNA–RVT: max r̄ = 1.000 at 5.2 min (window 11, High)
-
-  Interpretation: Correlations increase in the first minutes post-t0
-  and are generally higher in High dose, suggesting coordinated
-  upregulation of autonomic activity.
 
 MODEL SPECIFICATION:
   Fixed effects: ArousalIndex ~ State*Dose + window_c + State:window_c + Dose:window_c

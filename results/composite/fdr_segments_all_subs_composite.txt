@@ -1,6 +1,6 @@
 FDR COMPARISON: High vs Low (Composite Arousal Index, RS and DMT)
 Alpha = 0.05
-Time resolution: 30-second windows (windows 1-18, 0-9 minutes)
+Time resolution: 30-second windows (windows 1-18, 0-9.0 minutes)
 
 PANEL RS:
   Significant window ranges (count=0):

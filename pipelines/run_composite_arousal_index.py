@@ -57,17 +57,29 @@ OUT_DIR = './results/composite/'
 PLOTS_DIR = os.path.join(OUT_DIR, 'plots')
 
 # Input paths (using z-scored data)
-SMNA_PATH = './results/eda/smna/smna_auc_long_data_z.csv'  # Changed from SMNA to SMNA
+SMNA_PATH = './results/eda/smna/smna_auc_long_data_z.csv'
 HR_PATH = './results/ecg/hr/hr_minute_long_data_z.csv'
 RVT_PATH = './results/resp/rvt/resp_rvt_minute_long_data_z.csv'
+
+# Extended DMT data paths (~19 minutes)
+SMNA_EXTENDED_PATH = './results/eda/smna/smna_extended_dmt_z.csv'
+HR_EXTENDED_PATH = './results/ecg/hr/hr_extended_dmt_z.csv'
+RVT_EXTENDED_PATH = './results/resp/rvt/resp_rvt_extended_dmt_z.csv'
 
 
 #############################
 # Data loading and preparation
 #############################
 
-def load_and_prepare() -> pd.DataFrame:
-    """Load HR, SMNA_AUC, and RVT data; merge on complete cases; filter subjects and windows."""
+def load_and_prepare(limit_to_9min: bool = True) -> pd.DataFrame:
+    """Load HR, SMNA_AUC, and RVT data; merge on complete cases; filter subjects and windows.
+    
+    Parameters
+    ----------
+    limit_to_9min : bool
+        If True, limit to first 9 minutes (18 windows) for LME analysis.
+        If False, load all available windows.
+    """
     print("Loading physiological data...")
     
     # Load SMNA (z-scored AUC per 30-second window)
@@ -91,16 +103,19 @@ def load_and_prepare() -> pd.DataFrame:
     print(f"  Loaded RVT: {len(df_rvt)} rows")
     
     # Filter subjects and windows
-    def base_filter(df: pd.DataFrame) -> pd.DataFrame:
+    def base_filter(df: pd.DataFrame, limit_windows: bool = True) -> pd.DataFrame:
         df = df[df['subject'].isin(SUBJECTS_INTERSECTION)].copy()
-        df = df[(df['window'] >= 1) & (df['window'] <= N_WINDOWS)].copy()
+        if limit_windows:
+            df = df[(df['window'] >= 1) & (df['window'] <= N_WINDOWS)].copy()
+        else:
+            df = df[df['window'] >= 1].copy()  # Only ensure window >= 1
         df['State'] = pd.Categorical(df['State'], categories=['RS', 'DMT'], ordered=True)
         df['Dose'] = pd.Categorical(df['Dose'], categories=['Low', 'High'], ordered=True)
         return df
     
-    df_smna = base_filter(df_smna)[['subject', 'window', 'State', 'Dose', 'SMNA_AUC']]
-    df_hr = base_filter(df_hr)[['subject', 'window', 'State', 'Dose', 'HR']]
-    df_rvt = base_filter(df_rvt)[['subject', 'window', 'State', 'Dose', 'RVT']]
+    df_smna = base_filter(df_smna, limit_to_9min)[['subject', 'window', 'State', 'Dose', 'SMNA_AUC']]
+    df_hr = base_filter(df_hr, limit_to_9min)[['subject', 'window', 'State', 'Dose', 'HR']]
+    df_rvt = base_filter(df_rvt, limit_to_9min)[['subject', 'window', 'State', 'Dose', 'RVT']]
     
     print(f"  After filtering: SMNA={len(df_smna)}, HR={len(df_hr)}, RVT={len(df_rvt)}")
     
@@ -120,8 +135,73 @@ def load_and_prepare() -> pd.DataFrame:
     
     # Save merged data
     os.makedirs(OUT_DIR, exist_ok=True)
-    df.to_csv(os.path.join(OUT_DIR, 'merged_minute_data_complete_cases.csv'), index=False)
-    print(f"  ✓ Saved: {os.path.join(OUT_DIR, 'merged_minute_data_complete_cases.csv')}")
+    suffix = '_9min' if limit_to_9min else '_all'
+    df.to_csv(os.path.join(OUT_DIR, f'merged_minute_data_complete_cases{suffix}.csv'), index=False)
+    print(f"  ✓ Saved: {os.path.join(OUT_DIR, f'merged_minute_data_complete_cases{suffix}.csv')}")
+    
+    return df
+
+
+def load_extended_dmt_data() -> Optional[pd.DataFrame]:
+    """Load extended DMT data (~19 minutes) from individual modality files.
+    
+    Returns merged DataFrame with HR, SMNA_AUC, RVT for DMT only, or None if files missing.
+    """
+    # Check if extended files exist
+    if not all(os.path.exists(p) for p in [HR_EXTENDED_PATH, SMNA_EXTENDED_PATH, RVT_EXTENDED_PATH]):
+        print("  Warning: Extended DMT data files not found. Run individual scripts first.")
+        print(f"    Expected: {HR_EXTENDED_PATH}")
+        print(f"    Expected: {SMNA_EXTENDED_PATH}")
+        print(f"    Expected: {RVT_EXTENDED_PATH}")
+        return None
+    
+    print("Loading extended DMT data (~19 minutes)...")
+    
+    # Load extended data
+    df_hr = pd.read_csv(HR_EXTENDED_PATH)
+    df_smna = pd.read_csv(SMNA_EXTENDED_PATH)
+    df_rvt = pd.read_csv(RVT_EXTENDED_PATH)
+    
+    # Rename columns for consistency
+    if 'AUC' in df_smna.columns:
+        df_smna = df_smna.rename(columns={'AUC': 'SMNA_AUC'})
+    if 'RSP_RVT' in df_rvt.columns:
+        df_rvt = df_rvt.rename(columns={'RSP_RVT': 'RVT'})
+    
+    print(f"  Loaded extended HR: {len(df_hr)} rows, max window={df_hr['window'].max()}")
+    print(f"  Loaded extended SMNA: {len(df_smna)} rows, max window={df_smna['window'].max()}")
+    print(f"  Loaded extended RVT: {len(df_rvt)} rows, max window={df_rvt['window'].max()}")
+    
+    # Filter to intersection subjects
+    df_hr = df_hr[df_hr['subject'].isin(SUBJECTS_INTERSECTION)].copy()
+    df_smna = df_smna[df_smna['subject'].isin(SUBJECTS_INTERSECTION)].copy()
+    df_rvt = df_rvt[df_rvt['subject'].isin(SUBJECTS_INTERSECTION)].copy()
+    
+    # Select columns for merge
+    df_hr = df_hr[['subject', 'window', 'State', 'Dose', 'HR']]
+    df_smna = df_smna[['subject', 'window', 'State', 'Dose', 'SMNA_AUC']]
+    df_rvt = df_rvt[['subject', 'window', 'State', 'Dose', 'RVT']]
+    
+    # Merge on complete cases
+    df = df_hr.merge(df_smna, on=['subject', 'window', 'State', 'Dose'], how='inner')
+    df = df.merge(df_rvt, on=['subject', 'window', 'State', 'Dose'], how='inner')
+    
+    # Drop NAs
+    df = df.dropna(subset=['HR', 'SMNA_AUC', 'RVT']).copy()
+    
+    # Set categorical types
+    df['State'] = pd.Categorical(df['State'], categories=['RS', 'DMT'], ordered=True)
+    df['Dose'] = pd.Categorical(df['Dose'], categories=['Low', 'High'], ordered=True)
+    
+    # Add window_c
+    df['window_c'] = df['window'] - df['window'].mean()
+    
+    print(f"  After merge: {len(df)} observations from {df['subject'].nunique()} subjects")
+    print(f"  Window range: {df['window'].min()} to {df['window'].max()}")
+    
+    # Save extended merged data
+    df.to_csv(os.path.join(OUT_DIR, 'merged_extended_dmt_complete_cases.csv'), index=False)
+    print(f"  ✓ Saved: {os.path.join(OUT_DIR, 'merged_extended_dmt_complete_cases.csv')}")
     
     return df
 
@@ -217,8 +297,8 @@ def compute_pca_and_index(df: pd.DataFrame) -> Tuple[pd.DataFrame, float, np.nda
     # Dimensions: half width and half height of all_subs_composite (16x6) = 8x3, then 10% narrower = 7.2x3
     var_ratio = pca.explained_variance_ratio_
     plt.figure(figsize=(7.2, 3))
-    # Use violet color from tab20c
-    plt.plot([1, 2, 3], var_ratio, 'o-', linewidth=2, markersize=8, color=tab20c_colors[12])
+    # Use yellow/camel color from tab20b
+    plt.plot([1, 2, 3], var_ratio, 'o-', linewidth=2, markersize=8, color=tab20b_colors[8])
     plt.xlabel('Principal Component', fontsize=20)
     plt.ylabel('Explained Variance\nRatio', fontsize=18)
     plt.xticks([1, 2, 3], fontsize=16)
@@ -236,8 +316,8 @@ def compute_pca_and_index(df: pd.DataFrame) -> Tuple[pd.DataFrame, float, np.nda
     signal_names = ['ECG', 'EDA', 'Resp']
     x_pos = np.arange(len(signal_names))
     
-    # Use violet colors from tab20c (indices 12-14)
-    bar_colors = [tab20c_colors[12], tab20c_colors[13], tab20c_colors[14]]
+    # Use yellow/beige colors from tab20b (indices 8-10)
+    bar_colors = [tab20b_colors[8], tab20b_colors[9], tab20b_colors[10]]
     
     # Bar plot without edge color
     ax.bar(x_pos, loadings_pc1, color=bar_colors, width=0.6)
@@ -310,14 +390,14 @@ def create_pca_3d_plot(df: pd.DataFrame, pca, loadings_pc1: np.ndarray) -> None:
     # Extract z-scored data
     X_sample = df_sample[['HR_z', 'SMNA_AUC_z', 'RVT_z']].to_numpy()
     
-    # Convert tab20c colors to RGB strings for Plotly
+    # Convert tab20b colors to RGB strings for Plotly
     def rgb_to_plotly(color_tuple):
         """Convert matplotlib color tuple to plotly RGB string."""
         r, g, b = [int(c * 255) for c in color_tuple[:3]]
         return f'rgb({r},{g},{b})'
     
-    color_light = rgb_to_plotly(tab20c_colors[14])  # Light violet for points
-    color_dark = rgb_to_plotly(tab20c_colors[12])   # Dark violet for PC1 vector
+    color_light = rgb_to_plotly(tab20b_colors[10])  # Light yellow/beige for points
+    color_dark = rgb_to_plotly(tab20b_colors[8])    # Dark yellow/camel for PC1 vector
     
     # Create scatter plot of data points
     scatter = go.Scatter3d(
@@ -788,10 +868,10 @@ def compute_and_plot_dynamic_coherence(df: pd.DataFrame, window: int = 2) -> str
                 
                 # Color based on dose
                 if dose == 'High':
-                    color = tab20c_colors[12]  # Dark violet
+                    color = tab20b_colors[8]   # Dark yellow/camel
                     linestyle = '-'
                 else:
-                    color = tab20c_colors[14]  # Light violet
+                    color = tab20b_colors[10]  # Light yellow/beige
                     linestyle = '--'
                 
                 # Plot line
@@ -1259,13 +1339,14 @@ plt.rcParams.update({
     'ytick.labelsize': TICK_LABEL_SIZE_SMALL,
 })
 
-# Composite index uses violet/purple color scheme from tab20c
-tab20c_colors = plt.cm.tab20c.colors
-# Violet group: indices 12-15 (darkest to lightest)
-COLOR_RS_HIGH = tab20c_colors[12]   # Dark violet for High
-COLOR_RS_LOW = tab20c_colors[14]    # Light violet for Low
-COLOR_DMT_HIGH = tab20c_colors[12]  # Same dark violet for High
-COLOR_DMT_LOW = tab20c_colors[14]   # Same light violet for Low
+# Composite index uses yellow/beige/camel color scheme from tab20b
+tab20b_colors = plt.cm.tab20b.colors
+tab20c_colors = plt.cm.tab20c.colors  # Keep for other modalities compatibility
+# Yellow/beige group from tab20b: indices 8-11 (darkest to lightest)
+COLOR_RS_HIGH = tab20b_colors[8]    # Dark yellow/camel for High
+COLOR_RS_LOW = tab20b_colors[10]    # Light yellow/beige for Low
+COLOR_DMT_HIGH = tab20b_colors[8]   # Same dark yellow/camel for High
+COLOR_DMT_LOW = tab20b_colors[10]   # Same light yellow/beige for Low
 
 
 #############################
@@ -1354,12 +1435,12 @@ def prepare_coefficient_data(coefficients: Dict) -> pd.DataFrame:
         'State[T.DMT]:Dose[T.High]': 'State × Dose'
     }
     
-    # Use violet color scheme for composite index (aligned with tab20c)
-    # Violet group: indices 12-15
+    # Use yellow/beige color scheme for composite index (aligned with tab20b)
+    # Yellow/beige group: indices 8-10
     fam_colors = {
-        'State': tab20c_colors[12],      # Dark violet
-        'Dose': tab20c_colors[13],       # Medium violet
-        'Interaction': tab20c_colors[14], # Light violet
+        'State': tab20b_colors[8],       # Dark yellow/camel
+        'Dose': tab20b_colors[9],        # Medium yellow/beige
+        'Interaction': tab20b_colors[10], # Light yellow/beige
     }
     
     rows: List[Dict] = []
@@ -1525,15 +1606,18 @@ def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha
 
 
 def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
-    """Create combined RS+DMT summary plot (9 minutes) for composite arousal index.
+    """Create combined RS+DMT summary plot (all available windows) for composite arousal index.
     
     Saves results/composite/plots/all_subs_composite.png
     """
     print("Creating combined summary plot...")
     
-    # Common grid: 0..540s (9 minutes), using 30-second windows
-    # Since we have window-level data, create grid at window centers
-    window_grid = np.arange(1, N_WINDOWS + 1)  # windows 1-18
+    # Determine max window across all data
+    max_window = int(df['window'].max())
+    print(f"  Max window in data: {max_window} ({max_window * WINDOW_SIZE_SEC / 60:.1f} minutes)")
+    
+    # Create window grid for all available windows
+    window_grid = np.arange(1, max_window + 1)
     
     state_data: Dict[str, Dict[str, np.ndarray]] = {}
     
@@ -1544,17 +1628,33 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
         # Get unique subjects
         subjects = sorted(state_df['subject'].unique())
         
-        # Build matrices: rows = subjects, cols = minutes
+        # Build matrices: rows = subjects, cols = windows
         high_mat = []
         low_mat = []
         
         for subject in subjects:
             subj_df = state_df[state_df['subject'] == subject].sort_values('window')
             
-            high_vals = subj_df[subj_df['Dose'] == 'High']['ArousalIndex'].values
-            low_vals = subj_df[subj_df['Dose'] == 'Low']['ArousalIndex'].values
+            # Create arrays for all windows (fill with NaN if missing)
+            high_vals = np.full(max_window, np.nan)
+            low_vals = np.full(max_window, np.nan)
             
-            if len(high_vals) == N_WINDOWS and len(low_vals) == N_WINDOWS:
+            # Fill in available data
+            high_data = subj_df[subj_df['Dose'] == 'High']
+            low_data = subj_df[subj_df['Dose'] == 'Low']
+            
+            for _, row in high_data.iterrows():
+                window_idx = int(row['window']) - 1  # Convert to 0-based index
+                if 0 <= window_idx < max_window:
+                    high_vals[window_idx] = row['ArousalIndex']
+            
+            for _, row in low_data.iterrows():
+                window_idx = int(row['window']) - 1  # Convert to 0-based index
+                if 0 <= window_idx < max_window:
+                    low_vals[window_idx] = row['ArousalIndex']
+            
+            # Only include if we have some data
+            if not np.all(np.isnan(high_vals)) and not np.all(np.isnan(low_vals)):
                 high_mat.append(high_vals)
                 low_mat.append(low_vals)
         
@@ -1614,15 +1714,15 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
         ax1.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
     
     line_h1 = ax1.plot(time_grid, rs['mean_h'], color=COLOR_RS_HIGH, lw=2.0, 
-                       marker='o', markersize=5, label='High')[0]
+                       marker='o', markersize=5, label='High dose (40mg)')[0]
     ax1.fill_between(time_grid, rs['mean_h'] - rs['sem_h'], rs['mean_h'] + rs['sem_h'], 
                      color=COLOR_RS_HIGH, alpha=0.25)
     line_l1 = ax1.plot(time_grid, rs['mean_l'], color=COLOR_RS_LOW, lw=2.0, 
-                       marker='o', markersize=5, label='Low')[0]
+                       marker='o', markersize=5, label='Low dose (20mg)')[0]
     ax1.fill_between(time_grid, rs['mean_l'] - rs['sem_l'], rs['mean_l'] + rs['sem_l'], 
                      color=COLOR_RS_LOW, alpha=0.25)
     
-    legend1 = ax1.legend([line_h1, line_l1], ['High', 'Low'], loc='upper right', 
+    legend1 = ax1.legend([line_h1, line_l1], ['High dose (40mg)', 'Low dose (20mg)'], loc='upper right', 
                         frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, 
                         markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, 
                         labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
@@ -1630,9 +1730,9 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
     legend1.get_frame().set_alpha(0.9)
     
     ax1.set_xlabel('Time (minutes)', fontsize=24)
-    # Use violet color from tab20c for Composite Arousal Index
+    # Use yellow/camel color from tab20b for Composite Arousal Index
     ax1.text(-0.20, 0.5, 'Composite Arousal', transform=ax1.transAxes, 
-             fontsize=24, fontweight='bold', color=tab20c_colors[12],
+             fontsize=24, fontweight='bold', color=tab20b_colors[8],
              rotation=90, va='center', ha='center')
     ax1.text(-0.12, 0.5, 'Index (PC1)', transform=ax1.transAxes, 
              fontsize=24, fontweight='normal', color='black', 
@@ -1655,15 +1755,15 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
         ax2.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
     
     line_h2 = ax2.plot(time_grid, dmt['mean_h'], color=COLOR_DMT_HIGH, lw=2.0, 
-                       marker='o', markersize=5, label='High')[0]
+                       marker='o', markersize=5, label='High dose (40mg)')[0]
     ax2.fill_between(time_grid, dmt['mean_h'] - dmt['sem_h'], dmt['mean_h'] + dmt['sem_h'], 
                      color=COLOR_DMT_HIGH, alpha=0.25)
     line_l2 = ax2.plot(time_grid, dmt['mean_l'], color=COLOR_DMT_LOW, lw=2.0, 
-                       marker='o', markersize=5, label='Low')[0]
+                       marker='o', markersize=5, label='Low dose (20mg)')[0]
     ax2.fill_between(time_grid, dmt['mean_l'] - dmt['sem_l'], dmt['mean_l'] + dmt['sem_l'], 
                      color=COLOR_DMT_LOW, alpha=0.25)
     
-    legend2 = ax2.legend([line_h2, line_l2], ['High', 'Low'], loc='upper right', 
+    legend2 = ax2.legend([line_h2, line_l2], ['High dose (40mg)', 'Low dose (20mg)'], loc='upper right', 
                         frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, 
                         markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, 
                         labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
@@ -1675,12 +1775,13 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
     ax2.grid(True, which='major', axis='y', alpha=0.25)
     ax2.grid(False, which='major', axis='x')
     
-    # X ticks: minutes 1-9
+    # X ticks: dynamic based on max window
+    max_time_min = max_window * WINDOW_SIZE_SEC / 60.0
+    max_tick = int(np.ceil(max_time_min))
     for ax in (ax1, ax2):
-        # Convert window grid to time in minutes for x-axis
-        time_ticks = np.arange(0, 10)  # 0-9 minutes
+        time_ticks = list(range(0, max_tick + 1))
         ax.set_xticks(time_ticks)
-        ax.set_xlim(-0.2, 9.2)
+        ax.set_xlim(-0.2, max_time_min + 0.2)
         ax.tick_params(axis='both', labelsize=20)
     
     plt.tight_layout()
@@ -1693,7 +1794,7 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
         report_lines: List[str] = [
             'FDR COMPARISON: High vs Low (Composite Arousal Index, RS and DMT)',
             f"Alpha = {rs_fdr.get('alpha', 0.05)}",
-            f"Time resolution: 30-second windows (windows 1-{N_WINDOWS}, 0-9 minutes)",
+            f"Time resolution: 30-second windows (windows 1-{max_window}, 0-{max_time_min:.1f} minutes)",
             '',
         ]
         
@@ -1720,6 +1821,395 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
             f.write('\n'.join(report_lines))
     except Exception as e:
         print(f"Warning: Could not write FDR report: {e}")
+    
+    print(f"  ✓ Saved: {out_path}")
+    return out_path
+
+
+def create_dmt_only_extended_plot_from_saved() -> Optional[str]:
+    """Create DMT-only extended plot from pre-saved extended data."""
+    # Load pre-saved extended DMT data
+    hr_path = os.path.join(OUT_DIR, 'extended_dmt_hr_z.csv')
+    smna_path = os.path.join(OUT_DIR, 'extended_dmt_smna_z.csv')
+    rvt_path = os.path.join(OUT_DIR, 'extended_dmt_rvt_z.csv')
+    
+    df_hr = pd.read_csv(hr_path)
+    df_smna = pd.read_csv(smna_path)
+    df_rvt = pd.read_csv(rvt_path)
+    
+    # Merge on complete cases
+    df = df_hr.merge(df_smna, on=['subject', 'window', 'Dose'], how='inner')
+    df = df.merge(df_rvt, on=['subject', 'window', 'Dose'], how='inner')
+    
+    # Filter to subjects in intersection
+    df = df[df['subject'].isin(SUBJECTS_INTERSECTION)].copy()
+    
+    if len(df) == 0:
+        print("  No data after filtering to intersection subjects")
+        return None
+    
+    # Z-score within subject
+    for col in ['SMNA_AUC', 'HR', 'RVT']:
+        df[f'{col}_z'] = df.groupby('subject')[col].transform(
+            lambda x: (x - x.mean()) / x.std()
+        )
+    
+    # Load PCA loadings
+    loadings_path = os.path.join(OUT_DIR, 'pca_loadings_pc1.csv')
+    if os.path.exists(loadings_path):
+        loadings_df = pd.read_csv(loadings_path)
+        loadings = loadings_df['loading_pc1'].values
+        print(f"  Using saved PCA loadings: HR_z={loadings[0]:.3f}, SMNA_AUC_z={loadings[1]:.3f}, RVT_z={loadings[2]:.3f}")
+    else:
+        print("  Warning: PCA loadings not found, computing new PCA")
+        from sklearn.decomposition import PCA
+        X = df[['HR_z', 'SMNA_AUC_z', 'RVT_z']].to_numpy()
+        pca = PCA(n_components=1, random_state=22)
+        pca.fit(X)
+        loadings = pca.components_[0]
+        if loadings[1] < 0:
+            loadings = -loadings
+    
+    # Project onto PC1
+    X = df[['HR_z', 'SMNA_AUC_z', 'RVT_z']].to_numpy()
+    df['ArousalIndex'] = np.dot(X, loadings)
+    
+    # Get unique subjects and max window
+    subjects = sorted(df['subject'].unique())
+    max_window = int(df['window'].max())
+    print(f"  Max window: {max_window} ({max_window * WINDOW_SIZE_SEC / 60:.1f} minutes)")
+    
+    # Build matrices
+    high_mat = []
+    low_mat = []
+    
+    for subject in subjects:
+        subj_df = df[df['subject'] == subject].sort_values('window')
+        
+        high_vals = np.full(max_window, np.nan)
+        low_vals = np.full(max_window, np.nan)
+        
+        high_data = subj_df[subj_df['Dose'] == 'High']
+        low_data = subj_df[subj_df['Dose'] == 'Low']
+        
+        for _, row in high_data.iterrows():
+            window_idx = int(row['window']) - 1
+            if 0 <= window_idx < max_window:
+                high_vals[window_idx] = row['ArousalIndex']
+        
+        for _, row in low_data.iterrows():
+            window_idx = int(row['window']) - 1
+            if 0 <= window_idx < max_window:
+                low_vals[window_idx] = row['ArousalIndex']
+        
+        if not np.all(np.isnan(high_vals)) and not np.all(np.isnan(low_vals)):
+            high_mat.append(high_vals)
+            low_mat.append(low_vals)
+    
+    if not high_mat or not low_mat:
+        print("  No valid data for extended plot")
+        return None
+    
+    H = np.array(high_mat)
+    L = np.array(low_mat)
+    
+    print(f"  Data shape: {H.shape[0]} subjects × {H.shape[1]} windows")
+    
+    # Compute means and SEMs
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        mean_h = np.nanmean(H, axis=0)
+        mean_l = np.nanmean(L, axis=0)
+        
+        n_valid_h = np.sum(~np.isnan(H), axis=0)
+        n_valid_l = np.sum(~np.isnan(L), axis=0)
+        
+        sem_h = np.nanstd(H, axis=0, ddof=1) / np.sqrt(n_valid_h)
+        sem_l = np.nanstd(L, axis=0, ddof=1) / np.sqrt(n_valid_l)
+    
+    # Create window grid
+    window_grid = np.arange(1, max_window + 1)
+    
+    # Compute FDR
+    print(f"  Computing FDR for DMT High vs Low...")
+    fdr_results = _compute_fdr_results(H, L, window_grid)
+    segments = fdr_results.get('segments', [])
+    print(f"  Found {len(segments)} significant segments")
+    
+    # Create plot
+    fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+    
+    time_grid = (window_grid - 0.5) * WINDOW_SIZE_SEC / 60.0
+    
+    # Shade significant segments
+    for w0, w1 in segments:
+        t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0
+        t1 = w1 * WINDOW_SIZE_SEC / 60.0
+        ax.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
+    
+    # Plot
+    l1 = ax.plot(time_grid, mean_h, color=COLOR_DMT_HIGH, lw=2.0, 
+                 marker='o', markersize=4, label='High dose (40mg)')[0]
+    ax.fill_between(time_grid, mean_h - sem_h, mean_h + sem_h, 
+                    color=COLOR_DMT_HIGH, alpha=0.25)
+    
+    l2 = ax.plot(time_grid, mean_l, color=COLOR_DMT_LOW, lw=2.0, 
+                 marker='o', markersize=4, label='Low dose (20mg)')[0]
+    ax.fill_between(time_grid, mean_l - sem_l, mean_l + sem_l, 
+                    color=COLOR_DMT_LOW, alpha=0.25)
+    
+    # Legend
+    leg = ax.legend([l1, l2], ['High dose (40mg)', 'Low dose (20mg)'], loc='upper right', 
+                   frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, 
+                   markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, 
+                   labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
+    leg.get_frame().set_facecolor('white')
+    leg.get_frame().set_alpha(0.9)
+    
+    # Labels
+    ax.set_xlabel('Time (minutes)', fontsize=24)
+    ax.text(-0.20, 0.5, 'Composite Arousal', transform=ax.transAxes, 
+            fontsize=24, fontweight='bold', color=tab20b_colors[8],
+            rotation=90, va='center', ha='center')
+    ax.text(-0.12, 0.5, 'Index (PC1)', transform=ax.transAxes, 
+            fontsize=24, fontweight='normal', color='black', 
+            rotation=90, va='center', ha='center')
+    ax.set_title('DMT', fontweight='bold')
+    
+    # Grid
+    ax.grid(True, which='major', axis='y', alpha=0.25)
+    ax.grid(False, which='major', axis='x')
+    
+    # X-axis
+    max_time_min = max_window * WINDOW_SIZE_SEC / 60.0
+    max_tick = int(np.ceil(max_time_min))
+    time_ticks = list(range(0, max_tick + 1))
+    ax.set_xticks(time_ticks)
+    ax.set_xlim(-0.2, max_time_min + 0.2)
+    ax.tick_params(axis='both', labelsize=20)
+    
+    plt.tight_layout()
+    
+    # Save
+    out_path = os.path.join(PLOTS_DIR, 'all_subs_dmt_composite.png')
+    plt.savefig(out_path, dpi=400, bbox_inches='tight')
+    plt.close()
+    
+    # Write FDR report
+    try:
+        report_lines: List[str] = [
+            'FDR COMPARISON: High vs Low (Composite Arousal Index, DMT only)',
+            f"Alpha = {fdr_results.get('alpha', 0.05)}",
+            f"Time resolution: 30-second windows (windows 1-{max_window}, 0-{max_time_min:.1f} minutes)",
+            '',
+            f"Significant window ranges (count={len(segments)}):",
+        ]
+        
+        if len(segments) == 0:
+            report_lines.append('  - None')
+        else:
+            for w0, w1 in segments:
+                t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0
+                t1 = w1 * WINDOW_SIZE_SEC / 60.0
+                report_lines.append(f"  - Window {int(w0)} to {int(w1)} ({t0:.1f}-{t1:.1f} min)")
+        
+        p_adj = [v for v in fdr_results.get('pvals_adj', []) if isinstance(v, (int, float)) and not np.isnan(v)]
+        if p_adj:
+            report_lines.append('')
+            report_lines.append(f"Min p_FDR: {np.nanmin(p_adj):.6f}")
+            report_lines.append(f"Median p_FDR: {np.nanmedian(p_adj):.6f}")
+        
+        with open(os.path.join(OUT_DIR, 'fdr_segments_all_subs_dmt_composite.txt'), 'w', encoding='utf-8') as f:
+            f.write('\n'.join(report_lines))
+        
+        print(f"  ✓ Saved FDR report")
+    
+    except Exception as e:
+        print(f"  Warning: Could not write FDR report: {e}")
+    
+    print(f"  ✓ Saved: {out_path}")
+    return out_path
+
+
+def create_dmt_only_extended_plot(df: pd.DataFrame) -> Optional[str]:
+    """Create DMT-only extended plot using all available windows for composite arousal index.
+    
+    Similar to all_subs_dmt_ecg_hr.png but for PC1 (ArousalIndex).
+    Uses the provided dataframe which should already have ArousalIndex computed.
+    
+    Saves results/composite/plots/all_subs_dmt_composite.png
+    """
+    print("Creating DMT-only extended plot...")
+    
+    # Extract DMT data only
+    dmt_df = df[df['State'] == 'DMT'].copy()
+    
+    if len(dmt_df) == 0:
+        print("Warning: No DMT data found")
+        return None
+    
+    # Get unique subjects
+    subjects = sorted(dmt_df['subject'].unique())
+    
+    # Determine max window across all subjects
+    max_window = int(dmt_df['window'].max())
+    print(f"  Max window in DMT data: {max_window} ({max_window * WINDOW_SIZE_SEC / 60:.1f} minutes)")
+    
+    # Build matrices: rows = subjects, cols = windows
+    high_mat = []
+    low_mat = []
+    
+    for subject in subjects:
+        subj_df = dmt_df[dmt_df['subject'] == subject].sort_values('window')
+        
+        # Create arrays for all windows (fill with NaN if missing)
+        high_vals = np.full(max_window, np.nan)
+        low_vals = np.full(max_window, np.nan)
+        
+        # Fill in available data
+        high_data = subj_df[subj_df['Dose'] == 'High']
+        low_data = subj_df[subj_df['Dose'] == 'Low']
+        
+        for _, row in high_data.iterrows():
+            window_idx = int(row['window']) - 1  # Convert to 0-based index
+            if 0 <= window_idx < max_window:
+                high_vals[window_idx] = row['ArousalIndex']
+        
+        for _, row in low_data.iterrows():
+            window_idx = int(row['window']) - 1  # Convert to 0-based index
+            if 0 <= window_idx < max_window:
+                low_vals[window_idx] = row['ArousalIndex']
+        
+        # Only include if we have some data
+        if not np.all(np.isnan(high_vals)) and not np.all(np.isnan(low_vals)):
+            high_mat.append(high_vals)
+            low_mat.append(low_vals)
+    
+    if not high_mat or not low_mat:
+        print("Warning: No valid DMT data for extended plot")
+        return None
+    
+    H = np.array(high_mat)
+    L = np.array(low_mat)
+    
+    print(f"  Data shape: {H.shape[0]} subjects × {H.shape[1]} windows")
+    
+    # Compute means and SEMs
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        mean_h = np.nanmean(H, axis=0)
+        mean_l = np.nanmean(L, axis=0)
+        
+        # Count valid subjects per window for proper SEM
+        n_valid_h = np.sum(~np.isnan(H), axis=0)
+        n_valid_l = np.sum(~np.isnan(L), axis=0)
+        
+        sem_h = np.nanstd(H, axis=0, ddof=1) / np.sqrt(n_valid_h)
+        sem_l = np.nanstd(L, axis=0, ddof=1) / np.sqrt(n_valid_l)
+    
+    # Create window grid
+    window_grid = np.arange(1, max_window + 1)
+    
+    # Compute FDR for High vs Low
+    print(f"  Computing FDR for DMT High vs Low...")
+    fdr_results = _compute_fdr_results(H, L, window_grid)
+    segments = fdr_results.get('segments', [])
+    print(f"  Found {len(segments)} significant segments")
+    
+    # Create plot
+    fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+    
+    # Convert window grid to time in minutes for plotting
+    time_grid = (window_grid - 0.5) * WINDOW_SIZE_SEC / 60.0
+    
+    # Shade significant window ranges
+    for w0, w1 in segments:
+        t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
+        t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
+        ax.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
+    
+    # Plot High and Low
+    l1 = ax.plot(time_grid, mean_h, color=COLOR_DMT_HIGH, lw=2.0, 
+                 marker='o', markersize=4, label='High dose (40mg)')[0]
+    ax.fill_between(time_grid, mean_h - sem_h, mean_h + sem_h, 
+                    color=COLOR_DMT_HIGH, alpha=0.25)
+    
+    l2 = ax.plot(time_grid, mean_l, color=COLOR_DMT_LOW, lw=2.0, 
+                 marker='o', markersize=4, label='Low dose (20mg)')[0]
+    ax.fill_between(time_grid, mean_l - sem_l, mean_l + sem_l, 
+                    color=COLOR_DMT_LOW, alpha=0.25)
+    
+    # Legend
+    leg = ax.legend([l1, l2], ['High dose (40mg)', 'Low dose (20mg)'], loc='upper right', 
+                   frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, 
+                   markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, 
+                   labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
+    leg.get_frame().set_facecolor('white')
+    leg.get_frame().set_alpha(0.9)
+    
+    # Labels
+    ax.set_xlabel('Time (minutes)', fontsize=24)
+    # Use yellow/camel color from tab20b for Composite Arousal Index
+    ax.text(-0.20, 0.5, 'Composite Arousal', transform=ax.transAxes, 
+            fontsize=24, fontweight='bold', color=tab20b_colors[8],
+            rotation=90, va='center', ha='center')
+    ax.text(-0.12, 0.5, 'Index (PC1)', transform=ax.transAxes, 
+            fontsize=24, fontweight='normal', color='black', 
+            rotation=90, va='center', ha='center')
+    ax.set_title('DMT', fontweight='bold')
+    
+    # Grid
+    ax.grid(True, which='major', axis='y', alpha=0.25)
+    ax.grid(False, which='major', axis='x')
+    
+    # X-axis: set ticks based on max time
+    max_time_min = max_window * WINDOW_SIZE_SEC / 60.0
+    # Round up to nearest minute
+    max_tick = int(np.ceil(max_time_min))
+    time_ticks = list(range(0, max_tick + 1))
+    ax.set_xticks(time_ticks)
+    ax.set_xlim(-0.2, max_time_min + 0.2)
+    ax.tick_params(axis='both', labelsize=20)
+    
+    plt.tight_layout()
+    
+    # Save figure
+    out_path = os.path.join(PLOTS_DIR, 'all_subs_dmt_composite.png')
+    plt.savefig(out_path, dpi=400, bbox_inches='tight')
+    plt.close()
+    
+    # Write FDR report
+    try:
+        report_lines: List[str] = [
+            'FDR COMPARISON: High vs Low (Composite Arousal Index, DMT only)',
+            f"Alpha = {fdr_results.get('alpha', 0.05)}",
+            f"Time resolution: 30-second windows (windows 1-{max_window}, 0-{max_time_min:.1f} minutes)",
+            '',
+            f"Significant window ranges (count={len(segments)}):",
+        ]
+        
+        if len(segments) == 0:
+            report_lines.append('  - None')
+        else:
+            for w0, w1 in segments:
+                t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0
+                t1 = w1 * WINDOW_SIZE_SEC / 60.0
+                report_lines.append(f"  - Window {int(w0)} to {int(w1)} ({t0:.1f}-{t1:.1f} min)")
+        
+        # Summary of p-values
+        p_adj = [v for v in fdr_results.get('pvals_adj', []) if isinstance(v, (int, float)) and not np.isnan(v)]
+        if p_adj:
+            report_lines.append('')
+            report_lines.append(f"Min p_FDR: {np.nanmin(p_adj):.6f}")
+            report_lines.append(f"Median p_FDR: {np.nanmedian(p_adj):.6f}")
+        
+        with open(os.path.join(OUT_DIR, 'fdr_segments_all_subs_dmt_composite.txt'), 'w', encoding='utf-8') as f:
+            f.write('\n'.join(report_lines))
+        
+        print(f"  ✓ Saved FDR report: {os.path.join(OUT_DIR, 'fdr_segments_all_subs_dmt_composite.txt')}")
+    
+    except Exception as e:
+        print(f"  Warning: Could not write FDR report: {e}")
     
     print(f"  ✓ Saved: {out_path}")
     return out_path
@@ -1792,8 +2282,8 @@ def create_stacked_subjects_plot(df: pd.DataFrame) -> Optional[str]:
         ax_rs.grid(False, which='major', axis='x')
         
         legend_rs = ax_rs.legend(handles=[
-            Line2D([0], [0], color=COLOR_RS_HIGH, lw=1.4, label='RS High'),
-            Line2D([0], [0], color=COLOR_RS_LOW, lw=1.4, label='RS Low'),
+            Line2D([0], [0], color=COLOR_RS_HIGH, lw=1.4, label='High dose (40mg)'),
+            Line2D([0], [0], color=COLOR_RS_LOW, lw=1.4, label='Low dose (20mg)'),
         ], loc='upper right', frameon=True, fancybox=False, 
            fontsize=LEGEND_FONTSIZE_SMALL, markerscale=LEGEND_MARKERSCALE, 
            borderpad=LEGEND_BORDERPAD)
@@ -1824,8 +2314,8 @@ def create_stacked_subjects_plot(df: pd.DataFrame) -> Optional[str]:
         ax_dmt.grid(False, which='major', axis='x')
         
         legend_dmt = ax_dmt.legend(handles=[
-            Line2D([0], [0], color=COLOR_DMT_HIGH, lw=1.4, label='DMT High'),
-            Line2D([0], [0], color=COLOR_DMT_LOW, lw=1.4, label='DMT Low'),
+            Line2D([0], [0], color=COLOR_DMT_HIGH, lw=1.4, label='High dose (40mg)'),
+            Line2D([0], [0], color=COLOR_DMT_LOW, lw=1.4, label='Low dose (20mg)'),
         ], loc='upper right', frameon=True, fancybox=False, 
            fontsize=LEGEND_FONTSIZE_SMALL, markerscale=LEGEND_MARKERSCALE, 
            borderpad=LEGEND_BORDERPAD)
@@ -1935,11 +2425,11 @@ def main() -> bool:
         # 3. Compute PCA and arousal index
         df, var_exp, loadings, sign_flip_info = compute_pca_and_index(df)
         
-        # 4. Compute cross-correlations between signals
-        compute_and_plot_cross_correlations(df)
+        # 4. Compute cross-correlations between signals (DISABLED)
+        # compute_and_plot_cross_correlations(df)
         
-        # 5. Compute dynamic autonomic coherence
-        compute_and_plot_dynamic_coherence(df, window=2)
+        # 5. Compute dynamic autonomic coherence (DISABLED)
+        # compute_and_plot_dynamic_coherence(df, window=2)
         
         # 6. Fit LME model
         fitted, diagnostics = fit_lme_model(df)
@@ -1962,11 +2452,55 @@ def main() -> bool:
         coef_df = prepare_coefficient_data(coefficients)
         create_coefficient_plot(coef_df, os.path.join(PLOTS_DIR, 'lme_coefficient_plot.png'))
         
-        # Combined summary plot (RS + DMT panels with FDR)
-        create_combined_summary_plot(df)
+        # Load extended DMT data for plots (~19 minutes)
+        print("\nLoading extended DMT data for visualization...")
+        df_extended_dmt = load_extended_dmt_data()
         
-        # Stacked per-subject plot
-        create_stacked_subjects_plot(df)
+        if df_extended_dmt is not None and len(df_extended_dmt) > 0:
+            print(f"  Extended DMT data loaded: {len(df_extended_dmt)} observations, max window: {int(df_extended_dmt['window'].max())}")
+            
+            # Z-score within subject for extended DMT data
+            print("  Z-scoring extended DMT data within subject...")
+            for col in ['SMNA_AUC', 'HR', 'RVT']:
+                df_extended_dmt[f'{col}_z'] = df_extended_dmt.groupby('subject')[col].transform(
+                    lambda x: (x - x.mean()) / x.std() if x.std() > 0 else 0
+                )
+            
+            # Use saved PCA loadings to compute ArousalIndex on extended DMT data
+            loadings_path = os.path.join(OUT_DIR, 'pca_loadings_pc1.csv')
+            if os.path.exists(loadings_path):
+                loadings_df = pd.read_csv(loadings_path)
+                loadings_extended = loadings_df['loading_pc1'].values
+                X_extended = df_extended_dmt[['HR_z', 'SMNA_AUC_z', 'RVT_z']].to_numpy()
+                df_extended_dmt['ArousalIndex'] = np.dot(X_extended, loadings_extended)
+                print(f"  ✓ Applied saved PCA loadings to extended DMT data")
+            else:
+                print("  Warning: Could not find saved PCA loadings, using raw z-scores")
+                df_extended_dmt['ArousalIndex'] = df_extended_dmt[['HR_z', 'SMNA_AUC_z', 'RVT_z']].mean(axis=1)
+            
+            # For combined plot (RS + DMT), use 9-min data since RS doesn't have extended data
+            df_extended = df.copy()
+        else:
+            print("  Warning: Extended DMT data not available")
+            print("  Run individual scripts first to generate extended data:")
+            print("    python pipelines/run_ecg_hr_analysis.py")
+            print("    python pipelines/run_eda_smna_analysis.py")
+            print("    python pipelines/run_resp_rvt_analysis.py")
+            print("  Using 9-min data for all plots")
+            df_extended = df.copy()
+            df_extended_dmt = None
+        
+        # Combined summary plot (RS + DMT panels with FDR) - using 9-min data (RS doesn't have extended)
+        create_combined_summary_plot(df_extended)
+        
+        # DMT-only extended plot (~19 minutes) - using extended DMT data if available
+        if df_extended_dmt is not None and len(df_extended_dmt) > 0:
+            create_dmt_only_extended_plot(df_extended_dmt)
+        else:
+            print("  Skipping extended DMT plot (no extended data available)")
+        
+        # Stacked per-subject plot - using 9-min data
+        create_stacked_subjects_plot(df_extended)
         
         print("\n" + "=" * 80)
         print("ANALYSIS COMPLETE")
@@ -1975,19 +2509,15 @@ def main() -> bool:
         print(f"  - arousal_index_long.csv: Long-format data with ArousalIndex")
         print(f"  - pca_loadings_pc1.csv: PC1 loadings for each signal")
         print(f"  - pca_variance_explained.txt: Variance explained by each PC")
-        print(f"  - corr_within_subject_pearson.csv: Within-subject Pearson correlations")
-        print(f"  - corr_within_subject_spearman.csv: Within-subject Spearman correlations")
-        print(f"  - dynamic_coherence_window2.csv: Dynamic sliding-window correlations")
         print(f"  - lme_analysis_report.txt: Full LME analysis report")
         print(f"  - model_summary.txt: Compact model summary")
         print(f"  - fdr_segments_all_subs_composite.txt: FDR analysis report")
         print(f"  - plots/pca_scree.png: Scree plot")
         print(f"  - plots/pca_pc1_loadings.png: PC1 loadings bar plot")
-        print(f"  - plots/corr_heatmap_RS_vs_DMT.png: Cross-correlation heatmaps")
-        print(f"  - plots/dynamic_autonomic_coherence_window2.png: Dynamic coherence over time")
         print(f"  - plots/pca_3d_loadings_interactive.html: 3D PCA space (interactive, open in browser)")
         print(f"  - plots/lme_coefficient_plot.png: LME coefficients with CIs")
-        print(f"  - plots/all_subs_composite.png: Combined RS+DMT summary with FDR")
+        print(f"  - plots/all_subs_composite.png: Combined RS+DMT summary with FDR (all windows)")
+        print(f"  - plots/all_subs_dmt_composite.png: DMT-only extended timecourse with FDR (all windows)")
         print(f"  - plots/stacked_subs_composite.png: Stacked per-subject timecourses")
         print()
         

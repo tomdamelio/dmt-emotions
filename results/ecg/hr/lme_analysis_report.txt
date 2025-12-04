@@ -2,7 +2,7 @@
 LME ANALYSIS REPORT: HR (Heart Rate) by 30-second Windows (first 9 minutes)
 ================================================================================
 
-Analysis date: 2025-11-11 18:08:37
+Analysis date: 2025-12-03 21:44:02
 Dataset: 1584 observations from 11 subjects
 
 DESIGN:
