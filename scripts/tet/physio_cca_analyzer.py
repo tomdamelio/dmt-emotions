@@ -2013,3 +2013,876 @@ class TETPhysioCCAAnalyzer:
         self.logger.info(f"Saved redundancy indices plot to {fig_path}")
         
         return str(fig_path)
+
+    # =========================================================================
+    # STEPWISE PERMUTATION TESTING (Winkler et al., 2020)
+    # =========================================================================
+    
+    def _generate_all_derangements(self, n: int):
+        """
+        Generate all derangements (permutations with no fixed points) of n elements.
+        
+        A derangement is a permutation where no element appears in its original position.
+        For n=7, there are exactly 1854 derangements.
+        
+        Uses itertools to generate all permutations and filters for derangements.
+        
+        Args:
+            n: Number of elements
+        
+        Yields:
+            Tuple representing a derangement (permutation indices)
+        
+        Example:
+            For n=3: yields (1,2,0), (2,0,1) - the only 2 derangements
+        """
+        from itertools import permutations
+        
+        original = tuple(range(n))
+        for perm in permutations(original):
+            # Check if it's a derangement (no fixed points)
+            if all(perm[i] != i for i in range(n)):
+                yield perm
+    
+    def _count_derangements(self, n: int) -> int:
+        """
+        Count the number of derangements of n elements using subfactorial formula.
+        
+        !n = n! * sum_{k=0}^{n} (-1)^k / k!
+        
+        For n=7: !7 = 1854
+        
+        Args:
+            n: Number of elements
+        
+        Returns:
+            Number of derangements (subfactorial of n)
+        """
+        from math import factorial
+        
+        if n == 0:
+            return 1
+        if n == 1:
+            return 0
+        
+        # Subfactorial formula: !n = (n-1) * (!(n-1) + !(n-2))
+        # Or: !n = n! * sum_{k=0}^{n} (-1)^k / k!
+        result = 0
+        for k in range(n + 1):
+            result += ((-1) ** k) / factorial(k)
+        return round(factorial(n) * result)
+    
+    def _apply_derangement(
+        self,
+        X: np.ndarray,
+        Y: np.ndarray,
+        subject_ids: np.ndarray,
+        derangement: Tuple[int, ...]
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Apply a specific derangement to shuffle Y at subject level.
+        
+        Args:
+            X: Physiological matrix (n_obs × p)
+            Y: TET affective matrix (n_obs × q)
+            subject_ids: Subject identifiers for each observation
+            derangement: Tuple of indices representing the derangement
+        
+        Returns:
+            X_perm: Original X (unchanged)
+            Y_perm: Shuffled Y according to derangement
+        """
+        unique_subjects = np.unique(subject_ids)
+        n_subjects = len(unique_subjects)
+        
+        # Create mapping: subject i gets Y data from subject derangement[i]
+        Y_perm = np.zeros_like(Y)
+        
+        for i, subject in enumerate(unique_subjects):
+            # Get indices for this subject's data
+            subject_mask = subject_ids == subject
+            
+            # Get the subject this one is paired with
+            paired_idx = derangement[i]
+            paired_subject = unique_subjects[paired_idx]
+            paired_mask = subject_ids == paired_subject
+            
+            # Copy paired subject's Y data to this subject's position
+            Y_perm[subject_mask] = Y[paired_mask]
+        
+        return X.copy(), Y_perm
+    
+    def _compute_theil_residuals(
+        self,
+        Y: np.ndarray,
+        X: np.ndarray,
+        Z: np.ndarray,
+        subject_ids: np.ndarray,
+        rows_to_remove: Optional[np.ndarray] = None
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Compute BLUS residuals using Theil's method (Winkler et al., 2020, Section 2.7).
+        
+        The Theil method computes Best Linear Unbiased residuals with Scalar covariance
+        (BLUS) that respect the block structure of the data. Unlike Huh-Jhun, this method
+        maintains a one-to-one mapping between original observations and residuals,
+        preserving exchangeability within blocks.
+        
+        Formula (adapted for CCA):
+            Q_Z = R_Z @ S' @ (S @ R_Z @ S')^(-1/2)
+        
+        Where:
+            R_Z = I - Z @ (Z'Z)^(-1) @ Z'  (residual-forming matrix)
+            S = selection matrix (identity with some rows removed)
+            ^(-1/2) = positive definite matrix square root inverse
+        
+        The BLUS residuals are: Y_tilde = Q_Z' @ Y
+        
+        Args:
+            Y: Left-side matrix (n_obs × q) - TET affective dimensions
+            X: Right-side matrix (n_obs × p) - Physiological measures
+            Z: Nuisance/confound matrix (n_obs × r) - e.g., subject means
+               If None, uses subject indicator matrix for block structure
+            subject_ids: Subject identifiers for each observation
+            rows_to_remove: Indices of rows to remove for selection matrix S
+                           If None, removes one observation per subject
+        
+        Returns:
+            Y_blus: BLUS residuals for Y (n_selected × q)
+            X_blus: BLUS residuals for X (n_selected × p)  
+            selected_subject_ids: Subject IDs for selected observations
+        
+        References:
+            Theil, H. (1965). The analysis of disturbances in regression analysis.
+            Theil, H. (1968). A simplification of the BLUS procedure.
+            Magnus, J. R., & Sinha, A. K. (2005). On Theil's errors.
+            Winkler et al. (2020). NeuroImage, Section 2.7.
+        """
+        n_obs = Y.shape[0]
+        unique_subjects = np.unique(subject_ids)
+        n_subjects = len(unique_subjects)
+        
+        # If Z is None, create subject indicator matrix (block structure)
+        if Z is None:
+            # Create dummy coding for subjects (nuisance = subject means)
+            Z = np.zeros((n_obs, n_subjects))
+            for i, subj in enumerate(unique_subjects):
+                Z[subject_ids == subj, i] = 1
+        
+        r = Z.shape[1]  # Number of nuisance variables
+        
+        # Determine rows to remove
+        # Strategy: remove one observation per subject to maintain block balance
+        if rows_to_remove is None:
+            # Remove first observation from each subject
+            rows_to_remove = []
+            for subj in unique_subjects:
+                subj_indices = np.where(subject_ids == subj)[0]
+                rows_to_remove.append(subj_indices[0])
+            rows_to_remove = np.array(rows_to_remove)
+        
+        # Ensure we remove at least r rows (rank of Z)
+        n_to_remove = max(r, len(rows_to_remove))
+        if len(rows_to_remove) < n_to_remove:
+            # Add more rows to remove if needed
+            all_indices = np.arange(n_obs)
+            available = np.setdiff1d(all_indices, rows_to_remove)
+            additional = available[:n_to_remove - len(rows_to_remove)]
+            rows_to_remove = np.concatenate([rows_to_remove, additional])
+        
+        rows_to_remove = rows_to_remove[:n_to_remove]
+        
+        # Create selection matrix S (N' × N where N' = N - n_to_remove)
+        rows_to_keep = np.setdiff1d(np.arange(n_obs), rows_to_remove)
+        n_selected = len(rows_to_keep)
+        
+        # S is implemented as index selection rather than explicit matrix
+        # S @ A is equivalent to A[rows_to_keep, :]
+        
+        # Compute residual-forming matrix R_Z = I - Z @ (Z'Z)^(-1) @ Z'
+        ZtZ_inv = np.linalg.pinv(Z.T @ Z)
+        R_Z = np.eye(n_obs) - Z @ ZtZ_inv @ Z.T
+        
+        # Compute S @ R_Z @ S' (selected rows and columns of R_Z)
+        S_RZ_St = R_Z[np.ix_(rows_to_keep, rows_to_keep)]
+        
+        # Compute (S @ R_Z @ S')^(-1/2) using eigendecomposition
+        # For positive semi-definite matrix, use eigenvalue decomposition
+        eigenvalues, eigenvectors = np.linalg.eigh(S_RZ_St)
+        
+        # Handle numerical issues: set small/negative eigenvalues to small positive
+        eigenvalues = np.maximum(eigenvalues, 1e-10)
+        
+        # Compute inverse square root: V @ diag(1/sqrt(lambda)) @ V'
+        sqrt_inv = eigenvectors @ np.diag(1.0 / np.sqrt(eigenvalues)) @ eigenvectors.T
+        
+        # Compute Q_Z = R_Z @ S' @ (S @ R_Z @ S')^(-1/2)
+        # R_Z @ S' selects columns of R_Z corresponding to kept rows
+        RZ_St = R_Z[:, rows_to_keep]
+        Q_Z = RZ_St @ sqrt_inv
+        
+        # Compute BLUS residuals: Y_tilde = Q_Z' @ Y
+        Y_blus = Q_Z.T @ Y
+        X_blus = Q_Z.T @ X
+        
+        # Get subject IDs for selected observations
+        # The BLUS residuals correspond to the selected rows
+        selected_subject_ids = subject_ids[rows_to_keep]
+        
+        self.logger.debug(
+            f"Theil BLUS: {n_obs} obs -> {n_selected} residuals, "
+            f"removed {n_to_remove} rows (r={r} nuisance vars)"
+        )
+        
+        return Y_blus, X_blus, selected_subject_ids
+    
+    def _compute_theil_residuals_for_blocks(
+        self,
+        Y: np.ndarray,
+        X: np.ndarray,
+        subject_ids: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Simplified Theil residuals for block-structured data (repeated measures).
+        
+        For data with repeated measures within subjects, this method:
+        1. Removes subject-level means (nuisance)
+        2. Maintains one-to-one mapping to preserve block exchangeability
+        3. Removes one observation per subject to achieve BLUS properties
+        
+        This is the recommended approach for CCA with repeated measures
+        when permuting at the subject level.
+        
+        Args:
+            Y: Left-side matrix (n_obs × q)
+            X: Right-side matrix (n_obs × p)
+            subject_ids: Subject identifiers
+        
+        Returns:
+            Y_blus: BLUS residuals for Y
+            X_blus: BLUS residuals for X
+            block_ids: Block (subject) IDs for each residual observation
+        """
+        unique_subjects = np.unique(subject_ids)
+        n_subjects = len(unique_subjects)
+        
+        # Create subject indicator matrix Z
+        n_obs = Y.shape[0]
+        Z = np.zeros((n_obs, n_subjects))
+        for i, subj in enumerate(unique_subjects):
+            Z[subject_ids == subj, i] = 1
+        
+        # For balanced designs, remove first observation from each subject
+        rows_to_remove = []
+        for subj in unique_subjects:
+            subj_indices = np.where(subject_ids == subj)[0]
+            rows_to_remove.append(subj_indices[0])
+        rows_to_remove = np.array(rows_to_remove)
+        
+        return self._compute_theil_residuals(
+            Y, X, Z, subject_ids, rows_to_remove
+        )
+    
+    def _compute_wilks_lambda(
+        self,
+        X: np.ndarray,
+        Y: np.ndarray,
+        start_mode: int = 0
+    ) -> float:
+        """
+        Compute Wilks' Lambda statistic for CCA.
+        
+        Wilks' Lambda = product of (1 - r_i²) for canonical correlations i >= start_mode
+        
+        For stepwise testing, we compute Lambda only for modes from start_mode onwards,
+        effectively testing the residual association after removing earlier modes.
+        
+        Args:
+            X: Physiological matrix (n_obs × p), standardized
+            Y: TET affective matrix (n_obs × q), standardized
+            start_mode: Starting mode index (0-based). For mode k, use start_mode=k-1
+        
+        Returns:
+            Wilks' Lambda statistic (smaller = stronger association)
+        """
+        n_obs = X.shape[0]
+        p = X.shape[1]  # Number of physio variables
+        q = Y.shape[1]  # Number of TET variables
+        
+        # Maximum number of canonical correlations
+        n_components = min(p, q)
+        
+        # Fit CCA
+        cca = CCA(n_components=n_components)
+        cca.fit(X, Y)
+        
+        # Transform to canonical variates
+        U, V = cca.transform(X, Y)
+        
+        # Compute canonical correlations
+        canonical_corrs = np.array([
+            np.corrcoef(U[:, i], V[:, i])[0, 1]
+            for i in range(n_components)
+        ])
+        
+        # Compute Wilks' Lambda for modes from start_mode onwards
+        # Lambda = product of (1 - r_i²) for i >= start_mode
+        wilks_lambda = np.prod([
+            1 - r**2 for r in canonical_corrs[start_mode:]
+        ])
+        
+        return wilks_lambda
+    
+    def _compute_roys_largest_root(
+        self,
+        X: np.ndarray,
+        Y: np.ndarray,
+        mode: int = 0
+    ) -> float:
+        """
+        Compute Roy's Largest Root statistic for a specific CCA mode.
+        
+        Roy's Largest Root = r_k² / (1 - r_k²) for mode k
+        This is the eigenvalue of the canonical correlation matrix.
+        
+        Args:
+            X: Physiological matrix (n_obs × p), standardized
+            Y: TET affective matrix (n_obs × q), standardized
+            mode: Mode index (0-based) to compute statistic for
+        
+        Returns:
+            Roy's Largest Root statistic (larger = stronger association)
+        """
+        n_components = min(X.shape[1], Y.shape[1])
+        
+        if mode >= n_components:
+            return 0.0
+        
+        # Fit CCA
+        cca = CCA(n_components=n_components)
+        cca.fit(X, Y)
+        
+        # Transform to canonical variates
+        U, V = cca.transform(X, Y)
+        
+        # Compute canonical correlation for this mode
+        r = np.corrcoef(U[:, mode], V[:, mode])[0, 1]
+        
+        # Roy's Largest Root = r² / (1 - r²)
+        if abs(r) >= 1.0:
+            return np.inf
+        
+        roys_root = (r**2) / (1 - r**2)
+        
+        return roys_root
+    
+    def _deflate_matrices(
+        self,
+        X: np.ndarray,
+        Y: np.ndarray,
+        n_modes_to_remove: int
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Deflate matrices by removing variance explained by first k modes.
+        
+        This implements the stepwise approach from Winkler 2020:
+        For testing mode k, we first remove the variance explained by modes 1 to k-1.
+        
+        The correct approach (per Winkler 2020) is to:
+        1. Fit CCA to get canonical variates U and V
+        2. Regress out U from X and V from Y
+        3. Use residuals for testing subsequent modes
+        
+        Args:
+            X: Physiological matrix (n_obs × p)
+            Y: TET affective matrix (n_obs × q)
+            n_modes_to_remove: Number of modes to deflate (k-1 for testing mode k)
+        
+        Returns:
+            X_deflated: Deflated physiological matrix
+            Y_deflated: Deflated TET matrix
+        """
+        if n_modes_to_remove == 0:
+            return X.copy(), Y.copy()
+        
+        # Fit CCA with modes to remove
+        cca = CCA(n_components=n_modes_to_remove)
+        cca.fit(X, Y)
+        
+        # Get canonical variates
+        U, V = cca.transform(X, Y)
+        
+        # Deflate X by regressing out U (canonical variates from X side)
+        # X_deflated = X - U @ (U.T @ U)^-1 @ U.T @ X
+        # Since U columns are orthogonal: X_deflated = X - U @ U.T @ X / n
+        # More robust: use least squares projection
+        
+        # For each column of X, regress out U
+        X_deflated = np.zeros_like(X)
+        for j in range(X.shape[1]):
+            # Regress X[:, j] on U
+            coeffs, _, _, _ = np.linalg.lstsq(U, X[:, j], rcond=None)
+            X_deflated[:, j] = X[:, j] - U @ coeffs
+        
+        # For each column of Y, regress out V
+        Y_deflated = np.zeros_like(Y)
+        for j in range(Y.shape[1]):
+            # Regress Y[:, j] on V
+            coeffs, _, _, _ = np.linalg.lstsq(V, Y[:, j], rcond=None)
+            Y_deflated[:, j] = Y[:, j] - V @ coeffs
+        
+        return X_deflated, Y_deflated
+    
+    def stepwise_permutation_test(
+        self,
+        state: str,
+        n_permutations: int = 5000,
+        statistic: str = 'wilks',
+        permutation_type: str = 'row',
+        use_theil: bool = True,
+        random_state: int = 42
+    ) -> pd.DataFrame:
+        """
+        Perform Stepwise Permutation Testing for CCA (Winkler et al., 2020).
+        
+        This method implements Algorithm 1 from Winkler et al. (2020) for
+        rigorous significance testing of canonical correlations with FWER control.
+        
+        Key features:
+        - Tests each mode sequentially after deflating previous modes
+        - Supports both row-wise and subject-level permutation
+        - Uses Theil's method for BLUS residuals (Section 2.7) to respect block structure
+        - Applies cumulative max correction for FWER control
+        
+        Algorithm (with Theil method for subject-level permutation):
+        1. Compute Theil BLUS residuals to remove nuisance (subject means)
+           while preserving block exchangeability
+        2. Compute observed statistics on BLUS residuals
+        3. For each derangement (exact enumeration for n=7):
+           a. Permute BLUS residuals at subject level
+           b. For each mode k = 1 to K:
+              - Deflate matrices by removing modes 1 to k-1
+              - Compute test statistic on deflated permuted data
+        4. Compute raw p-values: p_k = (count + 1) / (n_derangements + 1)
+        5. Apply cumulative max correction: p_corrected_k = max(p_1, ..., p_k)
+        
+        Args:
+            state: 'RS' or 'DMT'
+            n_permutations: Number of permutation iterations (default: 5000)
+                For subject-level, uses all exact derangements instead
+            statistic: Test statistic to use ('wilks' or 'roys')
+                - 'wilks': Wilks' Lambda (tests all remaining modes jointly)
+                - 'roys': Roy's Largest Root (tests single mode)
+            permutation_type: Type of permutation ('row' or 'subject')
+                - 'row': Permute rows of Y independently (standard approach)
+                - 'subject': Permute subject pairings with Theil BLUS residuals
+            use_theil: Whether to use Theil's method for BLUS residuals (default: True)
+                Only applies when permutation_type='subject'
+                Recommended for repeated measures / block designs
+            random_state: Random seed for reproducibility
+        
+        Returns:
+            DataFrame with columns:
+            - mode: Canonical mode (1, 2, ...)
+            - observed_r: Observed canonical correlation
+            - observed_statistic: Observed test statistic
+            - raw_p_value: Uncorrected permutation p-value
+            - fwer_p_value: FWER-corrected p-value (cumulative max)
+            - significant: Boolean indicating significance at alpha=0.05
+            - n_permutations: Number of permutations performed
+            - method: 'theil' or 'standard'
+        
+        References:
+            Winkler, A. M., et al. (2020). Permutation inference for canonical 
+            correlation analysis. NeuroImage, 220, 117065.
+            Theil, H. (1965). The analysis of disturbances in regression analysis.
+        """
+        self.logger.info(
+            f"Starting Stepwise Permutation Test for {state} state "
+            f"(n_permutations={n_permutations}, statistic={statistic})"
+        )
+        
+        # Prepare matrices
+        X, Y = self.prepare_matrices(state)
+        n_obs = X.shape[0]
+        p = X.shape[1]  # 3 physio measures
+        q = Y.shape[1]  # 6 TET dimensions
+        n_modes = min(p, q)  # Maximum 3 modes
+        
+        # Get subject IDs for subject-level permutation
+        state_data = self.data[self.data['state'] == state].copy()
+        subject_ids_full = state_data['subject'].values
+        X_full = state_data[self.physio_measures].values
+        Y_full = state_data[self.tet_affective].values
+        valid_mask = ~(np.isnan(X_full).any(axis=1) | np.isnan(Y_full).any(axis=1))
+        subject_ids = subject_ids_full[valid_mask]
+        
+        unique_subjects = np.unique(subject_ids)
+        n_subjects = len(unique_subjects)
+        
+        self.logger.info(f"  Data: {n_obs} observations, {n_subjects} subjects")
+        self.logger.info(f"  Testing {n_modes} canonical modes")
+        
+        # =====================================================================
+        # STEP 0: Apply Theil's method for BLUS residuals (if requested)
+        # =====================================================================
+        method_used = 'standard'
+        
+        if permutation_type == 'subject' and use_theil:
+            self.logger.info("  Applying Theil's method for BLUS residuals...")
+            self.logger.info("    (Removes subject means while preserving block exchangeability)")
+            
+            Y_blus, X_blus, blus_subject_ids = self._compute_theil_residuals_for_blocks(
+                Y, X, subject_ids
+            )
+            
+            # Update data for permutation testing
+            X_for_perm = X_blus
+            Y_for_perm = Y_blus
+            subject_ids_for_perm = blus_subject_ids
+            n_obs_perm = X_blus.shape[0]
+            method_used = 'theil'
+            
+            self.logger.info(
+                f"    BLUS residuals: {n_obs} -> {n_obs_perm} observations "
+                f"({n_obs - n_obs_perm} removed for BLUS)"
+            )
+        else:
+            X_for_perm = X
+            Y_for_perm = Y
+            subject_ids_for_perm = subject_ids
+            n_obs_perm = n_obs
+        
+        # =====================================================================
+        # STEP 1: Compute observed statistics for all modes
+        # =====================================================================
+        self.logger.info("  Computing observed statistics...")
+        
+        # Fit full CCA to get observed canonical correlations
+        # Use BLUS residuals if Theil method was applied
+        cca_full = CCA(n_components=n_modes)
+        cca_full.fit(X_for_perm, Y_for_perm)
+        U_obs, V_obs = cca_full.transform(X_for_perm, Y_for_perm)
+        
+        observed_r = np.array([
+            np.corrcoef(U_obs[:, k], V_obs[:, k])[0, 1]
+            for k in range(n_modes)
+        ])
+        
+        # Compute observed test statistics for each mode (stepwise)
+        observed_stats = np.zeros(n_modes)
+        
+        for k in range(n_modes):
+            # Deflate matrices by removing modes 0 to k-1
+            X_deflated, Y_deflated = self._deflate_matrices(
+                X_for_perm, Y_for_perm, n_modes_to_remove=k
+            )
+            
+            if statistic == 'wilks':
+                observed_stats[k] = self._compute_wilks_lambda(
+                    X_deflated, Y_deflated, start_mode=0
+                )
+            else:  # roys
+                observed_stats[k] = self._compute_roys_largest_root(
+                    X_deflated, Y_deflated, mode=0
+                )
+        
+        self.logger.info(f"  Observed canonical correlations: {observed_r}")
+        self.logger.info(f"  Observed {statistic} statistics: {observed_stats}")
+        
+        # =====================================================================
+        # STEP 2: Permutation loop
+        # =====================================================================
+        
+        if permutation_type == 'subject':
+            # Use ALL exact derangements for subject-level permutation
+            n_derangements = self._count_derangements(n_subjects)
+            self.logger.info(
+                f"  Using ALL {n_derangements} exact derangements for {n_subjects} subjects"
+            )
+            
+            # Generate all derangements
+            all_derangements = list(self._generate_all_derangements(n_subjects))
+            actual_n_permutations = len(all_derangements)
+            
+            # Storage for permuted statistics
+            permuted_stats = np.zeros((actual_n_permutations, n_modes))
+            
+            for j, derangement in enumerate(all_derangements):
+                # Apply derangement to BLUS residuals (or original data)
+                X_perm, Y_perm = self._apply_derangement(
+                    X_for_perm, Y_for_perm, subject_ids_for_perm, derangement
+                )
+                
+                # Stepwise: compute statistic for each mode on permuted data
+                for k in range(n_modes):
+                    X_perm_deflated, Y_perm_deflated = self._deflate_matrices(
+                        X_perm, Y_perm, n_modes_to_remove=k
+                    )
+                    
+                    if statistic == 'wilks':
+                        permuted_stats[j, k] = self._compute_wilks_lambda(
+                            X_perm_deflated, Y_perm_deflated, start_mode=0
+                        )
+                    else:  # roys
+                        permuted_stats[j, k] = self._compute_roys_largest_root(
+                            X_perm_deflated, Y_perm_deflated, mode=0
+                        )
+                
+                # Progress logging
+                if (j + 1) % 200 == 0:
+                    self.logger.info(
+                        f"    Completed {j + 1}/{actual_n_permutations} derangements"
+                    )
+            
+            # Update n_permutations to actual count
+            n_permutations = actual_n_permutations
+            
+        else:  # row-wise permutation
+            self.logger.info(f"  Running {n_permutations} row-wise permutations...")
+            
+            # Storage for permuted statistics
+            permuted_stats = np.zeros((n_permutations, n_modes))
+            
+            np.random.seed(random_state)
+            
+            for j in range(n_permutations):
+                # Standard row permutation
+                perm_indices = np.random.permutation(n_obs_perm)
+                X_perm = X_for_perm.copy()
+                Y_perm = Y_for_perm[perm_indices]
+                
+                # Stepwise: compute statistic for each mode on permuted data
+                for k in range(n_modes):
+                    # Deflate permuted matrices
+                    X_perm_deflated, Y_perm_deflated = self._deflate_matrices(
+                        X_perm, Y_perm, n_modes_to_remove=k
+                    )
+                    
+                    if statistic == 'wilks':
+                        permuted_stats[j, k] = self._compute_wilks_lambda(
+                            X_perm_deflated, Y_perm_deflated, start_mode=0
+                        )
+                    else:  # roys
+                        permuted_stats[j, k] = self._compute_roys_largest_root(
+                            X_perm_deflated, Y_perm_deflated, mode=0
+                        )
+                
+                # Progress logging
+                if (j + 1) % 500 == 0:
+                    self.logger.info(f"    Completed {j + 1}/{n_permutations} permutations")
+        
+        # =====================================================================
+        # STEP 3: Compute raw p-values
+        # =====================================================================
+        self.logger.info("  Computing raw p-values...")
+        
+        raw_p_values = np.zeros(n_modes)
+        
+        for k in range(n_modes):
+            if statistic == 'wilks':
+                # For Wilks' Lambda, smaller is more extreme (reject if perm <= obs)
+                count = np.sum(permuted_stats[:, k] <= observed_stats[k])
+            else:  # roys
+                # For Roy's Root, larger is more extreme (reject if perm >= obs)
+                count = np.sum(permuted_stats[:, k] >= observed_stats[k])
+            
+            raw_p_values[k] = (count + 1) / (n_permutations + 1)
+        
+        self.logger.info(f"  Raw p-values: {raw_p_values}")
+        
+        # =====================================================================
+        # STEP 4: Apply cumulative max correction (FWER control)
+        # =====================================================================
+        self.logger.info("  Applying FWER correction (cumulative max)...")
+        
+        fwer_p_values = np.zeros(n_modes)
+        
+        for k in range(n_modes):
+            # p_corrected_k = max(p_1, ..., p_k)
+            fwer_p_values[k] = np.max(raw_p_values[:k + 1])
+        
+        self.logger.info(f"  FWER-corrected p-values: {fwer_p_values}")
+        
+        # =====================================================================
+        # STEP 5: Create results DataFrame
+        # =====================================================================
+        results = []
+        
+        for k in range(n_modes):
+            results.append({
+                'state': state,
+                'mode': k + 1,
+                'observed_r': observed_r[k],
+                'observed_statistic': observed_stats[k],
+                'statistic_type': statistic,
+                'permutation_type': permutation_type,
+                'method': method_used,
+                'raw_p_value': raw_p_values[k],
+                'fwer_p_value': fwer_p_values[k],
+                'significant': fwer_p_values[k] < 0.05,
+                'n_permutations': n_permutations,
+                'n_obs_tested': n_obs_perm
+            })
+        
+        results_df = pd.DataFrame(results)
+        
+        # Store results
+        if not hasattr(self, 'stepwise_permutation_results'):
+            self.stepwise_permutation_results = {}
+        self.stepwise_permutation_results[state] = results_df
+        
+        self.logger.info(
+            f"Stepwise permutation test complete for {state}. "
+            f"Significant modes: {results_df[results_df['significant']]['mode'].tolist()}"
+        )
+        
+        return results_df
+    
+    def run_stepwise_permutation_both_states(
+        self,
+        n_permutations: int = 5000,
+        statistic: str = 'wilks',
+        permutation_type: str = 'row',
+        use_theil: bool = True,
+        random_state: int = 42,
+        output_dir: Optional[str] = None
+    ) -> pd.DataFrame:
+        """
+        Run stepwise permutation test for both RS and DMT states.
+        
+        Args:
+            n_permutations: Number of permutation iterations
+            statistic: Test statistic ('wilks' or 'roys')
+            permutation_type: Type of permutation ('row' or 'subject')
+            use_theil: Whether to use Theil's method for BLUS residuals
+            random_state: Random seed
+            output_dir: Optional directory to save results
+        
+        Returns:
+            Combined DataFrame with results for both states
+        """
+        results_list = []
+        
+        for state in ['RS', 'DMT']:
+            try:
+                state_results = self.stepwise_permutation_test(
+                    state=state,
+                    n_permutations=n_permutations,
+                    statistic=statistic,
+                    permutation_type=permutation_type,
+                    use_theil=use_theil,
+                    random_state=random_state
+                )
+                results_list.append(state_results)
+            except Exception as e:
+                self.logger.error(f"Failed stepwise permutation for {state}: {e}")
+                continue
+        
+        if not results_list:
+            raise ValueError("Stepwise permutation failed for all states")
+        
+        combined_df = pd.concat(results_list, ignore_index=True)
+        
+        # Export if output directory provided
+        if output_dir:
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
+            
+            csv_path = output_path / 'cca_stepwise_permutation_results.csv'
+            combined_df.to_csv(csv_path, index=False)
+            self.logger.info(f"Saved stepwise permutation results to {csv_path}")
+        
+        return combined_df
+    
+    def plot_stepwise_permutation_results(
+        self,
+        output_dir: str,
+        alpha: float = 0.05
+    ) -> str:
+        """
+        Generate visualization of stepwise permutation test results.
+        
+        Creates a bar plot showing raw and FWER-corrected p-values for each mode,
+        with significance threshold indicated.
+        
+        Args:
+            output_dir: Directory to save figure
+            alpha: Significance threshold (default: 0.05)
+        
+        Returns:
+            Path to saved figure
+        """
+        import matplotlib.pyplot as plt
+        
+        if not hasattr(self, 'stepwise_permutation_results'):
+            raise ValueError(
+                "Must run stepwise_permutation_test() first"
+            )
+        
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        # Combine results from both states
+        results_list = []
+        for state, df in self.stepwise_permutation_results.items():
+            results_list.append(df)
+        
+        combined_df = pd.concat(results_list, ignore_index=True)
+        
+        # Create figure
+        states = combined_df['state'].unique()
+        n_states = len(states)
+        
+        fig, axes = plt.subplots(1, n_states, figsize=(6 * n_states, 5))
+        if n_states == 1:
+            axes = [axes]
+        
+        for idx, state in enumerate(states):
+            ax = axes[idx]
+            state_df = combined_df[combined_df['state'] == state]
+            
+            modes = state_df['mode'].values
+            raw_p = state_df['raw_p_value'].values
+            fwer_p = state_df['fwer_p_value'].values
+            
+            x = np.arange(len(modes))
+            width = 0.35
+            
+            # Bar plots
+            bars1 = ax.bar(x - width/2, raw_p, width, label='Raw p-value', 
+                          color='steelblue', alpha=0.8)
+            bars2 = ax.bar(x + width/2, fwer_p, width, label='FWER p-value', 
+                          color='coral', alpha=0.8)
+            
+            # Significance threshold
+            ax.axhline(alpha, color='red', linestyle='--', linewidth=2, 
+                      label=f'α = {alpha}')
+            
+            # Annotate significant modes
+            for i, (raw, fwer) in enumerate(zip(raw_p, fwer_p)):
+                if fwer < alpha:
+                    ax.annotate('*', xy=(x[i] + width/2, fwer), 
+                               ha='center', va='bottom', fontsize=16, fontweight='bold')
+            
+            # Labels
+            ax.set_xlabel('Canonical Mode', fontsize=12)
+            ax.set_ylabel('p-value', fontsize=12)
+            ax.set_title(f'{state} State\nStepwise Permutation Test', 
+                        fontsize=13, fontweight='bold')
+            ax.set_xticks(x)
+            ax.set_xticklabels([f'Mode {m}' for m in modes])
+            ax.legend(fontsize=10)
+            ax.set_ylim(0, 1.05)
+            ax.grid(True, alpha=0.3, axis='y')
+        
+        plt.tight_layout()
+        
+        # Save figure
+        fig_path = output_path / 'cca_stepwise_permutation_results.png'
+        plt.savefig(fig_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        self.logger.info(f"Saved stepwise permutation plot to {fig_path}")
+        
+        return str(fig_path)
