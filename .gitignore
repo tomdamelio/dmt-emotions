@@ -107,6 +107,7 @@ Thumbs.db
 # IDEs
 .vscode/
 .cursor/
+.kiro/
 .idea/
 *.swp
 *.swo
