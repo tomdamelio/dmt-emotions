@@ -106,6 +106,7 @@ Thumbs.db
 
 # IDEs
 .vscode/
+.cursor/
 .idea/
 *.swp
 *.swo
@@ -126,6 +127,9 @@ Thumbs.db
 # External tools and dependencies (requested exclusions)
 BayesianAtHeart/
 julia-1.9.4/
+
+# Research diary (personal notes)
+research_diary/
 
 # MATLAB
 *.asv

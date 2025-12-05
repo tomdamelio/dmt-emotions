@@ -36,7 +36,6 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import config
 
 # Import TET PCA analyzers
-sys.path.append(os.path.join(os.path.dirname(__file__), 'tet'))
 from tet.pca_analyzer import TETPCAAnalyzer
 from tet.pca_lme_analyzer import TETPCALMEAnalyzer
 
