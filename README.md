@@ -24,7 +24,7 @@ This project analyzes the dose-dependent effects of DMT on physiological signals
 | ECG (HR) | 11 | S04, S06, S07, S08, S10, S11, S15, S16, S18, S19, S20 |
 | EDA (SMNA) | 11 | S04, S05, S06, S07, S09, S13, S16, S17, S18, S19, S20 |
 | Respiration (RVT) | 12 | S04, S05, S06, S07, S09, S13, S15, S16, S17, S18, S19, S20 |
-| TET | 18 | All except S14 |
+| TET | 18 | All except S12 |
 | Multimodal (intersection) | 7 | For CCA analysis |
 
 ## Quick Start
