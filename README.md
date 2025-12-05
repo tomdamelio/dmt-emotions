@@ -116,7 +116,7 @@ python src/preprocess_phys.py; python src/run_ecg_hr_analysis.py; python src/run
 python src/preprocess_phys.py && python src/run_ecg_hr_analysis.py && python src/run_eda_smna_analysis.py && python src/run_resp_rvt_analysis.py && python src/run_composite_arousal_index.py && python src/run_tet_analysis.py && python src/run_coupling_analysis.py && python src/run_figures.py
 ```
 
-> Note: The coupling analysis (`run_coupling_analysis.py`) runs 10,000 permutations by default and may take 30-60 minutes. Use `--n-permutations 100` for quick testing.
+> Note: The coupling analysis (`run_coupling_analysis.py`) uses exact permutation testing with all 1,854 derangements for n=7 subjects, which completes in a few minutes.
 
 #### Step-by-step execution
 
@@ -125,17 +125,17 @@ python src/preprocess_phys.py && python src/run_ecg_hr_analysis.py && python src
 python src/preprocess_phys.py
 
 # 2. Individual physiological analyses
-python src/run_ecg_hr_analysis.py      # Heart Rate (Figure 1a-b)
-python src/run_eda_smna_analysis.py    # Sympathetic Activity (Figure 1c-d)
-python src/run_resp_rvt_analysis.py    # Respiratory Volume (Figure 1e-f)
+python src/run_ecg_hr_analysis.py      # Heart Rate (Figure 2a-b)
+python src/run_eda_smna_analysis.py    # Sympathetic Activity (Figure 2c-d)
+python src/run_resp_rvt_analysis.py    # Respiratory Volume (Figure 2e-f)
 
-# 3. Composite Arousal Index (Figure 2)
+# 3. Composite Arousal Index (Figure 3)
 python src/run_composite_arousal_index.py
 
-# 4. TET Analysis (Figure 3)
+# 4. TET Analysis (Figure 4)
 python src/run_tet_analysis.py
 
-# 5. Physiology-Experience Coupling (Figure 4)
+# 5. Physiology-Experience Coupling (Figure 5)
 python src/run_coupling_analysis.py
 
 # 6. Generate publication figures
@@ -206,10 +206,10 @@ results/
 │   ├── figures/               # CCA loadings, CV boxplots
 │   └── *.csv                  # Correlations, CCA results
 └── figures/                   # Final publication figures
-    ├── figure_1.png           # Physiological signals (HR, SMNA, RVT)
-    ├── figure_2.png           # Composite Arousal Index
-    ├── figure_3.png           # TET affective dynamics
-    ├── figure_4.png           # CCA coupling analysis
+    ├── figure_2.png           # Physiological signals (HR, SMNA, RVT)
+    ├── figure_3.png           # Composite Arousal Index
+    ├── figure_4.png           # TET affective dynamics
+    ├── figure_5.png           # CCA coupling analysis
     └── figure_S*.png          # Supplementary figures
 ```
 
@@ -217,10 +217,11 @@ results/
 
 | Figure | Content | Source |
 |--------|---------|--------|
-| Figure 1 | HR, SMNA, RVT time courses + LME coefficients | Individual physio pipelines |
-| Figure 2 | PCA scree, PC1 loadings, Arousal Index time course | `run_composite_arousal_index.py` |
-| Figure 3 | TET time series, LME coefficients, PCA | `run_tet_analysis.py` |
-| Figure 4 | CCA loadings, cross-validation, in-sample scatter | `run_coupling_analysis.py` |
+| Figure 1 | Experimental setup (methods figure) | Manual creation |
+| Figure 2 | HR, SMNA, RVT time courses + LME coefficients | Individual physio pipelines |
+| Figure 3 | PCA scree, PC1 loadings, Arousal Index time course | `run_composite_arousal_index.py` |
+| Figure 4 | TET time series, LME coefficients, PCA | `run_tet_analysis.py` |
+| Figure 5 | CCA loadings, cross-validation, in-sample scatter | `run_coupling_analysis.py` |
 | Figure S1 | Stacked subject trajectories (all modalities) | Individual physio pipelines |
 | Figure S2 | Extended DMT HR time course (0-19 min) | `run_ecg_hr_analysis.py` |
 | Figure S3 | Stacked subjects composite arousal | `run_composite_arousal_index.py` |
@@ -235,7 +236,7 @@ results/
 - **Correction**: Benjamini-Hochberg FDR by hypothesis family
 
 ### Canonical Correlation Analysis (CCA)
-- **Permutation testing**: 10,000 iterations for FWER correction
+- **Permutation testing**: Exact derangement enumeration (D(7) = 1,854 permutations where no subject is paired with itself)
 - **Cross-validation**: Leave-One-Subject-Out (LOSO)
 - **Significance**: t-test on out-of-sample correlations vs. 0
 
@@ -355,11 +356,11 @@ dmt-emotions/
 If you use this pipeline in your research, please cite:
 
 ```bibtex
-@article{dmt-emotions-2024,
+@article{dmt-emotions,
   title={Dose-dependent physiological and subjective responses to DMT: A multimodal analysis pipeline},
   author={[Authors]},
   journal={[Journal]},
-  year={2024},
+  year={2025},
   doi={[DOI]}
 }
 ```

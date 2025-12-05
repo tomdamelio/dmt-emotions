@@ -172,3 +172,7 @@ research_diary/
 *.bmp
 *.tiff
 *.ico
+
+# Exceptions: README figure and publication figures
+!data_collection.png
+!results/figures/*.png
