@@ -1,35 +1,20 @@
 ---
 inclusion: always
 ---
-# .cursor/rules/git.mdc
+# .kiro/steering/git.md
 ---
-description: "Version control – Conventional Commits, trunk‑based flow & DVC (Google Drive remote)"
+description: "Git – DataLad, Commits Atómicos y 'El porqué' de los cambios"
 alwaysApply: true
------------------
-## Git Practices
+---
+## Git & Provenance Practices
 
 ### Rules
-
-* Use **Conventional Commits** (`feat: …`, `fix: …`, `docs: …`). Enforced by *commitlint* pre‑commit hook:
-
-```text
-# Examples of Conventional Commits
-feat(preprocessing): add band-pass filter for EEG
-fix(physio): correct EDA sampling rate bug
-docs(readme): add mermaid pipeline diagram
-chore(ci): pin mne==1.7 in GitHub Actions
-
-```
-
-* When you finish a consistent work block, invoke `Cursor: AI Commit` to suggest whether it is a good time to commit and generate a message according to the Conventional Commits standard.
-* Short‑lived feature branches; rebase onto `main`; fast‑forward merges only.
-* `main` stays green (tests + lint + type‑check pass in CI).
-* Tag releases with **SemVer** (`vX.Y.Z`) and generate changelog via **release‑please**.
-* Large data files should be stored externally (Google Drive, cloud storage) and referenced in documentation.
-* Keep repository lightweight by avoiding large binary files in Git history.
+- **DataLad Protocol**: **Never** commit large binary files (`.nii`, `.h5`, `.pth` > 10MB) to standard Git.
+- **Atomic Scientism**: Do not mix scientific changes (logic/params) with cosmetic changes (formatting/typos) in the same commit.
+- **The "Why" Mandate**: For commits changing scientific parameters (e.g., "Change smoothing kernel to 6mm"), the commit message body must explain the **scientific rationale**, not just the action.
+- **Format**: Use Conventional Commits (`feat:`, `fix:`, `docs:`, `exp:` for experiments).
 
 ### Checklist
-
-* [ ] Today's commits follow the Conventional Commits spec.
-* [ ] `git describe --tags --dirty --always` yields a tag or commit for every build.
-* [ ] Repository size remains manageable without large binary files.
+- [ ] No binary files in `git status`.
+- [ ] Commit messages explain *why* a change was made, especially for parameters.
+- [ ] `git describe --tags` allows tracing results to a specific code version.

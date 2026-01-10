@@ -1,61 +1,42 @@
 ---
 inclusion: always
 ---
-# .cursor/rules/structure.mdc
+# .kiro/steering/structure.md
 ---
-description: "Standard folder layout – pyproject & src-layout"
+description: "Structure – Layout BIDS, src-layout y separación de datos/código"
 alwaysApply: true
 ---
-## Project Structure
+## Project Structure & Ontology
 
-```text
-campeones_analysis/                 # ← project root (Git repo)
-├── .github/workflows/              # CI pipelines (simplificadas)
-│   └── ci.yml
-├── data/                           # ★ BIDS dataset (stored externally, .gitignored)
-│   ├── sub-01/                     # raw data in BIDS layout
-│   ├── derivatives/                # ICA, filters, features (BIDS-Derivatives)
-│   └── README                      # how to obtain full dataset (if not public)
-├── configs/                        # YAML-or TOML-based experiment configs
-│   ├── preprocessing_eeg.yaml
-│   └── model_glhmm.yaml
-├── docs/                           # ★ MkDocs-Material sources / API docs
-│   └── index.md
-├── notebooks/                      # exploratory notebooks 
-│   ├── 00_overview.ipynb
-│   ├── eeg/
-│   └── ml/
-├── src/                            # importable Python package (src-layout)
-│   ├── campeones_analysis/         # ★ package name mirrors repo
-│   │   ├── __init__.py
-│   │   ├── eeg/
-│   │   │   ├── preprocessing.py
-│   │   │   └── features.py
-│   │   ├── physio/
-│   │   │   ├── preprocessing.py
-│   │   │   └── features.py
-│   │   │   └── read_xdf.py         # Conversión de XDF a BIDS
-│   │   ├── behav/
-│   │   │   └── parsing.py
-│   │   ├── fusion/
-│   │   │   └── multimodal_dataset.py
-│   │   ├── models/
-│   │   │   ├── train_ml.py
-│   │   │   └── train_glhmm.py
-│   │   └── utils/
-│   │       └── io.py
-├── scripts/                        # Scripts útiles
-├── pyproject.toml                  # ★ PEP 621 metadata simplificada 
-├── environment.yml                 # micromamba/conda env spec
-└── README.md                       # project overview & 30-sec quick-start
+<repo>/
+├── src/<package>/                 # paquete importable
+├── tests/                         # tests automatizados
+├── configs/                       # configs (YAML/TOML/JSON) para experimentos/pipelines
+├── scripts/                       # entrypoints y utilidades (sin lógica central)
+├── docs/                          # documentación y ejemplos
+├── data/                          # datos (no versionados), con README de obtención
+├── outputs/ or results/           # derivados (gitignored), generados por pipeline
+├── pyproject.toml                 # config de tooling/paquete
+├── environment.yml                # entorno reproducible (si aplica)
+├── README.md
+├── CHANGELOG.md
+├── LICENSE
+└── CITATION.cff
 
-```
 
 ### Rules
-- PyProject-only: no setup.py; use PEP 621 metadata.
-- README.md, .gitignore, pyproject.toml, LICENSE, CHANGELOG.md always present.
-- Simplified structure to enable rapid iterations.
+- **Immutable Input Zone**: The `data/raw` (or `data/bids`) directory is **Read-Only**. Never generate code that opens these files with write permissions (`w`, `a`, `r+`).
+- **BIDS Isomorphism**: All neuroimaging data must follow BIDS.
+    - Derived data goes to `data/derivatives/<pipeline_name>`.
+    - Filenames must follow key-value pairs (e.g., `sub-01_task-rest...`).
+- **Source Layout**: All scientific logic lives in `src/<package_name>/`.
+    - Use `__init__.py` to expose a clean public API.
+- **Cookiecutter Strategy**: When creating a new module, always create the triad simultaneously:
+    1.  Implementation: `src/module.py`
+    2.  Test: `tests/test_module.py`
+    3.  Docs: `docs/api/module.md` (or docstrings)
 
 ### Checklist
-- [ ] src/project_name/__init__.py exists and exposes public API.
-- [ ] Large data and results paths are in .gitignore (allowlist with ! as needed).
+- [ ] `src/<package_name>/__init__.py` exists.
+- [ ] Large data paths (`data/`) are in `.gitignore` (except for small test samples).
+- [ ] No hardcoded absolute paths; use relative paths or config files.

@@ -1,21 +1,22 @@
 ---
 inclusion: always
 ---
-# .cursor/rules/style.mdc
+# .kiro/steering/style.md
 ---
-description: "Convenciones de estilo simplificadas para código Python científico"
+description: "Style – Ruff, Black y Naming Neuro-Semántico"
 alwaysApply: true
 ---
 ## Code Style
 
-- Recommended maximum line length = 100 characters (flexible).
-- Use descriptive variable names: snake_case for variables and functions; UPPER_SNAKE_CASE for constants; PascalCase for classes.
-- Avoid dead or commented code that is not used.
-- Commit only UTF-8 text files (`.py`, `.toml`, `.md`, etc.) - never binary notebooks.
-- Code must be readable, consistent, and functional.
-  
-### Checklist
-- [ ] No single-letter identifiers beyond trivial indexes (`i`, `j`, `k`).
-- [ ] The code is functional and does what it is intended to do.
-- [ ] The style is consistent within each module.
+### Rules
+- **Uncompromising Formatting**: Use `black` (or `ruff format`) for all Python code. No debates on style.
+- **Neuro-Semantic Naming**: Use domain-specific variable names.
+    - *Good*: `subject_id`, `bold_signal`, `repetition_time_tr`.
+    - *Bad*: `id`, `data`, `x`, `t`.
+- **Type Hints**: All function signatures must include type hints.
+- **Clean Code**: Remove dead code immediately. Do not comment out old logic; delete it (Git remembers).
 
+### Checklist
+- [ ] Code is formatted with Black.
+- [ ] No single-letter variables (except `i`, `j`, `k` in short loops).
+- [ ] Imports are sorted and clean.

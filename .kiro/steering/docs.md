@@ -1,21 +1,19 @@
 ---
 inclusion: always
 ---
-# .cursor/rules/docs.mdc
+# .kiro/steering/docs.md
 ---
-description: "Documentation – MkDocs-Material & thorough docstrings"
+description: "Documentation – MkDocs, Context Engineering y Diccionarios de Datos"
 alwaysApply: true
 ---
-## Documentation
+## Documentation & Literate Programming
 
 ### Rules
-- Auto-build docs with **MkDocs-Material** (`mkdocs.yml` in root).
-  Deploy via GitHub Pages on each push to `main`.
-- Docstrings: Google style with type hints; rendered into API pages by mkdocstrings.
-- README.md must include **TL;DR**, install snippet, and 30-second usage demo.
-- Keep tutorials / notebooks in `docs/examples/` and test them with **pytest-nb**.
-- Periodically update `CHANGELOG.md` to reflect all notable changes, following [Keep a Changelog](mdc:https:/keepachangelog.com/en/1.0.0) and SemVer best practices.
+- **Context Engineering**: Write the docstring **before** the code. The docstring must explain the scientific intent (the "Framing") so the AI can generate the implementation (the "Coding").
+    - Style: Google Style Python Docstrings.
+- **Data Dictionaries**: If code outputs tabular data (`.tsv`, `.csv`), you must generate a BIDS-compliant JSON Data Dictionary describing columns and units.
+- **Changelog**: Maintain `CHANGELOG.md` following "Keep a Changelog".
 
 ### Checklist
-- [ ] `mkdocs build --strict` succeeds locally.
-- [ ] New public symbols include docstrings prior to merge.
+- [ ] Every public function has a docstring explaining inputs, outputs, and *scientific reference* (if applicable).
+- [ ] Tabular outputs have associated JSON descriptions.
