@@ -252,26 +252,27 @@ def create_figure_3() -> str:
     ]
 
     # Use Nature Human Behaviour double column width
-    # 4 panels: A, B (left column), C (right top), D (bottom full width)
-    fig = plt.figure(figsize=(DOUBLE_COL_WIDTH, DOUBLE_COL_WIDTH * 1.1))
-    gs = fig.add_gridspec(4, 2, width_ratios=[0.5, 1.0], wspace=0.15, hspace=0.20,
-                          left=0.05, right=0.98, top=0.97, bottom=0.03)
+    # 4 panels: A (scree), C (loadings) in left column, B (coefficients) right top, D (timeseries) bottom
+    # Reduced height and tighter spacing to match Figure 2 style
+    fig = plt.figure(figsize=(DOUBLE_COL_WIDTH, DOUBLE_COL_WIDTH * 0.85))
+    gs = fig.add_gridspec(3, 2, width_ratios=[0.45, 1.0], wspace=0.08, hspace=0.08,
+                          left=0.02, right=0.99, top=0.98, bottom=0.02,
+                          height_ratios=[1, 1, 1.8])
     
-    ax_A = fig.add_subplot(gs[0, 0])
-    ax_B = fig.add_subplot(gs[1, 0])
-    ax_C = fig.add_subplot(gs[0:2, 1])
-    ax_D = fig.add_subplot(gs[2:4, :])
+    ax_A = fig.add_subplot(gs[0, 0])  # Scree plot (top-left)
+    ax_C = fig.add_subplot(gs[1, 0])  # Loadings bar (middle-left)
+    ax_B = fig.add_subplot(gs[0:2, 1])  # Coefficient plot (right, spans 2 rows)
+    ax_D = fig.add_subplot(gs[2, :])  # Timeseries (bottom, full width)
     
-    for ax, img in zip([ax_A, ax_B, ax_C, ax_D], imgs):
+    for ax, img in zip([ax_A, ax_C, ax_B, ax_D], imgs):
         ax.axis('off')
         if img is not None:
-            ax.imshow(img)
+            ax.imshow(img, aspect='auto')
     
-    for ax, label, offset in zip([ax_A, ax_B, ax_C, ax_D], 
-                                  ['A', 'C', 'B', 'D'], 
-                                  [0.02, 0.02, 0.02, 0.02]):
+    # Panel labels positioned consistently
+    for ax, label in zip([ax_A, ax_B, ax_C, ax_D], ['A', 'B', 'C', 'D']):
         pos = ax.get_position()
-        fig.text(pos.x0 - 0.02, pos.y1 + offset, label,
+        fig.text(pos.x0 - 0.01, pos.y1 + 0.01, label,
                 fontsize=PANEL_LABEL_SIZE, fontweight='bold', ha='left', va='top')
 
     out_path = str(OUT_DIR / 'figure_3.png')

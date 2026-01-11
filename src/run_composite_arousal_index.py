@@ -300,25 +300,25 @@ def compute_pca_and_index(df: pd.DataFrame) -> Tuple[pd.DataFrame, float, np.nda
         f.write(f'PC2_explained_variance_ratio = {pca.explained_variance_ratio_[1]:.4f}\n')
         f.write(f'PC3_explained_variance_ratio = {pca.explained_variance_ratio_[2]:.4f}\n')
     
-    # Scree plot
-    # Dimensions: half width and half height of all_subs_composite (16x6) = 8x3, then 10% narrower = 7.2x3
+    # Scree plot - smaller size for better text readability when assembled
     var_ratio = pca.explained_variance_ratio_
-    plt.figure(figsize=(7.2, 3))
+    fig_scree, ax_scree = plt.subplots(figsize=(3.5, 2.5))
     # Use yellow/camel color from tab20b
-    plt.plot([1, 2, 3], var_ratio, 'o-', linewidth=2, markersize=8, color=tab20b_colors[8])
-    plt.xlabel('Principal Component', fontsize=AXES_LABEL_SIZE)
-    plt.ylabel('Explained Variance\nRatio', fontsize=AXES_LABEL_SIZE)
-    plt.xticks([1, 2, 3], fontsize=TICK_LABEL_SIZE)
-    plt.yticks(fontsize=TICK_LABEL_SIZE)
-    plt.grid(True, alpha=0.3)
+    ax_scree.plot([1, 2, 3], var_ratio, 'o-', linewidth=2, markersize=8, color=tab20b_colors[8])
+    ax_scree.set_xlabel('Principal Component', fontsize=AXES_LABEL_SIZE)
+    ax_scree.set_ylabel('Explained Variance\nRatio', fontsize=AXES_LABEL_SIZE)
+    ax_scree.set_xticks([1, 2, 3])
+    ax_scree.tick_params(axis='both', labelsize=TICK_LABEL_SIZE)
+    ax_scree.grid(True, alpha=0.3)
+    ax_scree.spines['top'].set_visible(False)
+    ax_scree.spines['right'].set_visible(False)
     plt.tight_layout()
     plt.savefig(os.path.join(PLOTS_DIR, 'pca_scree.png'), dpi=300, bbox_inches='tight')
     plt.close()
     print(f"  ✓ Saved: {os.path.join(PLOTS_DIR, 'pca_scree.png')}")
     
-    # Loadings bar plot
-    # Dimensions: half width and half height of all_subs_composite (16x6) = 8x3, then 10% narrower = 7.2x3
-    fig, ax = plt.subplots(figsize=(7.2, 3))
+    # Loadings bar plot - smaller size for better text readability when assembled
+    fig_load, ax_load = plt.subplots(figsize=(3.5, 2.5))
     
     signal_names = ['ECG', 'EDA', 'Resp']
     x_pos = np.arange(len(signal_names))
@@ -327,17 +327,19 @@ def compute_pca_and_index(df: pd.DataFrame) -> Tuple[pd.DataFrame, float, np.nda
     bar_colors = [tab20b_colors[8], tab20b_colors[9], tab20b_colors[10]]
     
     # Bar plot without edge color
-    ax.bar(x_pos, loadings_pc1, color=bar_colors, width=0.6)
+    ax_load.bar(x_pos, loadings_pc1, color=bar_colors, width=0.6)
     
     # Styling
-    ax.axhline(y=0, color='black', linestyle='-', linewidth=1.0)
-    ax.set_ylabel('PC1 Loading', fontsize=AXES_LABEL_SIZE)
-    ax.set_xlabel('Physiological signal', fontsize=AXES_LABEL_SIZE)
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels(signal_names, fontsize=TICK_LABEL_SIZE)
-    ax.tick_params(axis='y', labelsize=TICK_LABEL_SIZE)
-    ax.grid(True, axis='y', alpha=0.3, linestyle='--')
-    ax.set_axisbelow(True)
+    ax_load.axhline(y=0, color='black', linestyle='-', linewidth=1.0)
+    ax_load.set_ylabel('PC1 Loading', fontsize=AXES_LABEL_SIZE)
+    ax_load.set_xlabel('Physiological signal', fontsize=AXES_LABEL_SIZE)
+    ax_load.set_xticks(x_pos)
+    ax_load.set_xticklabels(signal_names, fontsize=TICK_LABEL_SIZE)
+    ax_load.tick_params(axis='y', labelsize=TICK_LABEL_SIZE)
+    ax_load.grid(True, axis='y', alpha=0.3, linestyle='--')
+    ax_load.set_axisbelow(True)
+    ax_load.spines['top'].set_visible(False)
+    ax_load.spines['right'].set_visible(False)
     
     plt.tight_layout()
     plt.savefig(os.path.join(PLOTS_DIR, 'pca_pc1_loadings.png'), dpi=300, bbox_inches='tight')
@@ -1508,32 +1510,35 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
     """Create coefficient plot with CIs and significance asterisks."""
     print("Creating coefficient plot...")
     
-    # Dimensions: same height as all_subs_composite (6), half width (16/2 = 8)
-    fig, ax = plt.subplots(figsize=(8, 6))
+    # Smaller dimensions for better text readability when assembled
+    fig, ax = plt.subplots(figsize=(4.5, 3.5))
     coef_df = coef_df.sort_values('order')
     y_positions = np.arange(len(coef_df))
     
     for _, row in coef_df.iterrows():
         y_pos = y_positions[row['order']]
-        linewidth = 6.5
+        linewidth = 4.0
         alpha = 1.0
-        marker_size = 200
+        marker_size = 30  # Match Figure 2
         
         # CI line
         ax.plot([row['ci_lower'], row['ci_upper']], [y_pos, y_pos], 
                 color=row['color'], linewidth=linewidth, alpha=alpha)
         
-        # Point estimate
+        # Point estimate with edge color matching fill (like Figure 2)
         ax.scatter(row['beta'], y_pos, color=row['color'], s=marker_size, 
-                  alpha=alpha, edgecolors=row['color'], linewidths=3.5, zorder=3)
+                  alpha=alpha, edgecolors=row['color'], linewidths=1.5, zorder=3)
     
-    ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=2.0)
+    ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=1.0)
     ax.set_yticks(y_positions)
-    ax.set_yticklabels(coef_df['label'], fontsize=AXES_LABEL_SIZE)
+    ax.set_yticklabels(coef_df['label'], fontsize=TICK_LABEL_SIZE)
     ax.set_xlabel('Coefficient Estimate (β)\nwith 95% CI', fontsize=AXES_LABEL_SIZE)
     ax.tick_params(axis='x', labelsize=TICK_LABEL_SIZE)
+    ax.tick_params(axis='y', labelsize=TICK_LABEL_SIZE)
     ax.grid(True, axis='x', alpha=0.3, linestyle='-', linewidth=0.5)
     ax.set_axisbelow(True)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
     
     # Add significance asterisks based on FDR-corrected p-values
     x_min, x_max = ax.get_xlim()
@@ -1555,9 +1560,9 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
             ax.text(x_pos, y_pos, sig_marker, fontsize=AXES_TITLE_SIZE, fontweight='bold',
                    va='center', ha='left', color=row['color'])
     
-    plt.subplots_adjust(left=0.28, right=0.92)
+    plt.subplots_adjust(left=0.40, right=0.92)
     plt.tight_layout()
-    plt.savefig(output_path, dpi=400, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
     
     print(f"  ✓ Saved: {output_path}")
@@ -1754,8 +1759,8 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
         print("Warning: Could not create combined plot - missing state data")
         return None
     
-    # Create plot
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6), sharex=True, sharey=True)
+    # Create plot - more compact for better assembly
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 3.5), sharex=True, sharey=True)
     
     # RS (left)
     rs = state_data['RS']
@@ -1773,11 +1778,11 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
         t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
         ax1.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
     
-    line_h1 = ax1.plot(time_grid, rs['mean_h'], color=COLOR_RS_HIGH, lw=2.0, 
+    line_h1 = ax1.plot(time_grid, rs['mean_h'], color=COLOR_RS_HIGH, lw=2.5, 
                        marker='o', markersize=5, label='High dose (40mg)')[0]
     ax1.fill_between(time_grid, rs['mean_h'] - rs['sem_h'], rs['mean_h'] + rs['sem_h'], 
                      color=COLOR_RS_HIGH, alpha=0.25)
-    line_l1 = ax1.plot(time_grid, rs['mean_l'], color=COLOR_RS_LOW, lw=2.0, 
+    line_l1 = ax1.plot(time_grid, rs['mean_l'], color=COLOR_RS_LOW, lw=2.5, 
                        marker='o', markersize=5, label='Low dose (20mg)')[0]
     ax1.fill_between(time_grid, rs['mean_l'] - rs['sem_l'], rs['mean_l'] + rs['sem_l'], 
                      color=COLOR_RS_LOW, alpha=0.25)
@@ -1814,11 +1819,11 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
         t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
         ax2.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
     
-    line_h2 = ax2.plot(time_grid, dmt['mean_h'], color=COLOR_DMT_HIGH, lw=2.0, 
+    line_h2 = ax2.plot(time_grid, dmt['mean_h'], color=COLOR_DMT_HIGH, lw=2.5, 
                        marker='o', markersize=5, label='High dose (40mg)')[0]
     ax2.fill_between(time_grid, dmt['mean_h'] - dmt['sem_h'], dmt['mean_h'] + dmt['sem_h'], 
                      color=COLOR_DMT_HIGH, alpha=0.25)
-    line_l2 = ax2.plot(time_grid, dmt['mean_l'], color=COLOR_DMT_LOW, lw=2.0, 
+    line_l2 = ax2.plot(time_grid, dmt['mean_l'], color=COLOR_DMT_LOW, lw=2.5, 
                        marker='o', markersize=5, label='Low dose (20mg)')[0]
     ax2.fill_between(time_grid, dmt['mean_l'] - dmt['sem_l'], dmt['mean_l'] + dmt['sem_l'], 
                      color=COLOR_DMT_LOW, alpha=0.25)
@@ -2008,12 +2013,12 @@ def create_dmt_only_extended_plot_from_saved() -> Optional[str]:
         ax.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
     
     # Plot
-    l1 = ax.plot(time_grid, mean_h, color=COLOR_DMT_HIGH, lw=2.0, 
+    l1 = ax.plot(time_grid, mean_h, color=COLOR_DMT_HIGH, lw=2.5, 
                  marker='o', markersize=4, label='High dose (40mg)')[0]
     ax.fill_between(time_grid, mean_h - sem_h, mean_h + sem_h, 
                     color=COLOR_DMT_HIGH, alpha=0.25)
     
-    l2 = ax.plot(time_grid, mean_l, color=COLOR_DMT_LOW, lw=2.0, 
+    l2 = ax.plot(time_grid, mean_l, color=COLOR_DMT_LOW, lw=2.5, 
                  marker='o', markersize=4, label='Low dose (20mg)')[0]
     ax.fill_between(time_grid, mean_l - sem_l, mean_l + sem_l, 
                     color=COLOR_DMT_LOW, alpha=0.25)
@@ -2189,12 +2194,12 @@ def create_dmt_only_extended_plot(df: pd.DataFrame) -> Optional[str]:
         ax.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
     
     # Plot High and Low
-    l1 = ax.plot(time_grid, mean_h, color=COLOR_DMT_HIGH, lw=2.0, 
+    l1 = ax.plot(time_grid, mean_h, color=COLOR_DMT_HIGH, lw=2.5, 
                  marker='o', markersize=4, label='High dose (40mg)')[0]
     ax.fill_between(time_grid, mean_h - sem_h, mean_h + sem_h, 
                     color=COLOR_DMT_HIGH, alpha=0.25)
     
-    l2 = ax.plot(time_grid, mean_l, color=COLOR_DMT_LOW, lw=2.0, 
+    l2 = ax.plot(time_grid, mean_l, color=COLOR_DMT_LOW, lw=2.5, 
                  marker='o', markersize=4, label='Low dose (20mg)')[0]
     ax.fill_between(time_grid, mean_l - sem_l, mean_l + sem_l, 
                     color=COLOR_DMT_LOW, alpha=0.25)
