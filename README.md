@@ -110,12 +110,12 @@ Running `src/preprocess_phys.py` creates the `derivatives/` structure with:
 
 **PowerShell:**
 ```powershell
-python src/preprocess_phys.py; python src/run_ecg_hr_analysis.py; python src/run_eda_smna_analysis.py; python src/run_resp_rvt_analysis.py; python src/run_composite_arousal_index.py; python src/run_tet_analysis.py; python src/run_coupling_analysis.py; python src/run_figures.py
+python src/preprocess_phys.py; python src/run_ecg_hr_analysis.py; python src/run_eda_smna_analysis.py; python src/run_resp_rvt_analysis.py; python src/run_composite_arousal_index.py; python src/run_supplementary_analyses.py; python src/run_tet_analysis.py; python src/run_coupling_analysis.py; python src/run_figures.py
 ```
 
 **Bash:**
 ```bash
-python src/preprocess_phys.py && python src/run_ecg_hr_analysis.py && python src/run_eda_smna_analysis.py && python src/run_resp_rvt_analysis.py && python src/run_composite_arousal_index.py && python src/run_tet_analysis.py && python src/run_coupling_analysis.py && python src/run_figures.py
+python src/preprocess_phys.py && python src/run_ecg_hr_analysis.py && python src/run_eda_smna_analysis.py && python src/run_resp_rvt_analysis.py && python src/run_composite_arousal_index.py && python src/run_supplementary_analyses.py && python src/run_tet_analysis.py && python src/run_coupling_analysis.py && python src/run_figures.py
 ```
 
 > Note: The coupling analysis (`run_coupling_analysis.py`) uses exact permutation testing with all 1,854 derangements for n=7 subjects, which completes in a few minutes.
@@ -134,7 +134,10 @@ python src/run_resp_rvt_analysis.py    # Respiratory Volume (Figure 2e-f)
 # 3. Composite Arousal Index (Figure 3)
 python src/run_composite_arousal_index.py
 
-# 4. TET Analysis (Figure 4)
+# 4. Supplementary Analyses (Phase-based and Feature Extraction)
+python src/run_supplementary_analyses.py
+
+# 5. TET Analysis (Figure 4)
 python src/run_tet_analysis.py
 
 # 5. Physiology-Experience Coupling (Figure 5)
@@ -150,9 +153,10 @@ python src/run_figures.py
 
 | Script | Signal | Output | Methods |
 |--------|--------|--------|---------|
-| `run_ecg_hr_analysis.py` | ECG | Heart Rate (z-scored) | NeuroKit2, LME with FDR |
-| `run_eda_smna_analysis.py` | EDA | SMNA (sympathetic) | CVX decomposition, LME |
-| `run_resp_rvt_analysis.py` | Respiration | RVT | NeuroKit2, LME |
+| `run_ecg_hr_analysis.py` | ECG | Heart Rate (z-scored) | NeuroKit2, LME with FDR, one-tailed tests |
+| `run_eda_smna_analysis.py` | EDA | SMNA (sympathetic) | CVX decomposition, LME, one-tailed tests |
+| `run_resp_rvt_analysis.py` | Respiration | RVT | NeuroKit2, LME, one-tailed tests |
+| `run_supplementary_analyses.py` | All physio | Phase averages, features | Phase-based t-tests, feature extraction |
 
 ### Analysis Utility Modules (Supervisor Revisions)
 
@@ -181,6 +185,56 @@ The following modules in `scripts/` provide enhanced statistical analyses and vi
 - Explains ~59% of total variance
 - Loadings: HR=0.63, SMNA=0.64, RVT=0.45
 - Reveals dose-dependent autonomic activation during DMT
+
+### Supplementary Analyses
+
+`run_supplementary_analyses.py` performs additional analyses addressing temporal dynamics:
+
+**1. Phase-Based Analysis:**
+- Divides 9-minute window into temporal phases (onset: 0-3 min, recovery: 3-9 min)
+- Compares High vs Low doses within each phase using paired t-tests
+- Addresses potential temporal misalignment in pointwise comparisons
+- **Key findings:**
+  - ECG & EDA: Significant differences in recovery phase (p < 0.05)
+  - RESP: Significant differences in onset phase (p = 0.030)
+  - Reveals distinct temporal dynamics across autonomic systems
+
+**2. Feature Extraction:**
+- Extracts temporal features from each subject's time series:
+  - **Peak amplitude**: Maximum physiological response magnitude
+  - **Time-to-peak**: Speed of response onset (minutes)
+  - **Threshold crossings**: Times when signal reaches 33% and 50% of maximum
+- Compares features between doses using paired t-tests
+- **Key findings (DMT dose comparison):**
+  - ECG peak amplitude: High > Low (p = 0.042, d = 0.703)
+  - RESP peak amplitude: Trend toward High > Low (p = 0.085, d = 0.546)
+  - Characterizes magnitude and timing of dose-dependent responses
+
+**3. Baseline Comparisons:**
+- Compares DMT (doses collapsed) vs Resting State baseline
+- Uses same extracted features (peak amplitude, time-to-peak, threshold crossings)
+- Quantifies overall magnitude of DMT-induced changes independent of dose effects
+- **Key findings (DMT vs RS):**
+  - **All modalities show robust increases in peak amplitude** (p < 0.001-0.001, d = 1.2-4.3)
+  - ECG shows dramatically faster time-to-peak in DMT (1.9 vs 5.0 min, p < 0.001, d = -2.051)
+  - Provides reference for interpreting dose-dependent effects
+
+⚠️ **Important:** Baseline comparisons collapse DMT doses to increase statistical power for detecting drug effects. They do NOT address dose-dependent effects.
+
+**Scientific Rationale:**
+- Phase averaging reduces noise and captures overall trajectory
+- Feature extraction captures aspects not visible in time-aligned comparisons
+- Baseline comparisons quantify magnitude of DMT effects vs static baseline
+- Provides convergent evidence from multiple analytical perspectives
+- Results are consistent with main FDR time-to-time analyses
+
+**Outputs:**
+- `results/{modality}/supplementary/phase_*.csv` - Phase-averaged data and comparisons
+- `results/{modality}/supplementary/extracted_features.csv` - Temporal features per subject
+- `results/{modality}/supplementary/feature_comparisons.csv` - Dose comparisons (High vs Low)
+- `results/{modality}/supplementary/baseline_comparison.csv` - DMT vs RS comparisons
+- `results/{modality}/supplementary/baseline_comparison_report.txt` - Detailed statistical report
+- `results/{modality}/supplementary/*.png` - Visualizations for supplementary materials
 
 ### TET Analysis
 
@@ -217,30 +271,24 @@ The following modules in `scripts/` provide enhanced statistical analyses and vi
 results/
 ├── ecg/hr/                    # HR analysis results
 │   ├── plots/                 # Time courses, LME coefficients
-│   ├── alternative_tests/     # One-tailed and uncorrected tests
-│   ├── phase_analysis/        # Phase-averaged comparisons
-│   ├── features/              # Extracted temporal features
-│   ├── baseline_comparison/   # DMT vs RS comparisons
+│   ├── supplementary/         # Phase-based and feature extraction analyses
+│   │   ├── phase_averages.csv
+│   │   ├── phase_comparisons.csv
+│   │   ├── phase_comparison.png
+│   │   ├── extracted_features.csv
+│   │   ├── feature_comparisons.csv
+│   │   └── feature_comparison.png
 │   └── *.csv                  # Long-format data, model results
 ├── eda/smna/                  # SMNA analysis results
 │   ├── plots/
-│   ├── alternative_tests/
-│   ├── phase_analysis/
-│   ├── features/
-│   ├── baseline_comparison/
+│   ├── supplementary/         # Phase-based and feature extraction analyses
 │   └── *.csv
 ├── resp/rvt/                  # RVT analysis results
 │   ├── plots/
-│   ├── alternative_tests/
-│   ├── phase_analysis/
-│   ├── features/
-│   ├── baseline_comparison/
+│   ├── supplementary/         # Phase-based and feature extraction analyses
 │   └── *.csv
 ├── composite/                 # Arousal Index results
 │   ├── plots/                 # PCA scree, loadings, time courses
-│   ├── phase_analysis/
-│   ├── features/
-│   ├── baseline_comparison/
 │   └── *.csv
 ├── tet/                       # TET analysis results
 │   ├── figures/               # Time series, LME forest plots
@@ -277,6 +325,18 @@ results/
 - **Formula**: `Outcome ~ State * Dose + Time + State:Time + Dose:Time`
 - **Random effects**: `~ 1 | Subject`
 - **Correction**: Benjamini-Hochberg FDR by hypothesis family
+
+### Time-to-Time Comparisons
+- **Main analysis**: One-tailed paired t-tests (High > Low) with FDR correction for DMT condition
+- **Rationale**: Directional hypothesis (High dose > Low dose) justified by pharmacological expectations
+- **Control**: Two-tailed tests for Resting State (no directional hypothesis)
+- **Results**: Robust dose-dependent effects detected in all modalities (ECG, EDA, RESP, Composite)
+
+### Supplementary Analyses
+- **Phase-based**: Paired t-tests comparing doses within temporal phases (onset: 0-3 min, recovery: 3-9 min)
+- **Feature extraction**: Paired t-tests on extracted features (peak amplitude, time-to-peak, threshold crossings)
+- **Purpose**: Address potential temporal misalignment and characterize response magnitude/timing
+- **Consistency**: Results converge with main FDR time-to-time analyses
 
 ### Canonical Correlation Analysis (CCA)
 - **Permutation testing**: Exact derangement enumeration (D(7) = 1,854 permutations where no subject is paired with itself)

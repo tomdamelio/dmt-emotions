@@ -1471,7 +1471,7 @@ def prepare_coefficient_data(coefficients: Dict) -> pd.DataFrame:
 
 
 def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
-    """Create coefficient plot with CIs."""
+    """Create coefficient plot with CIs and significance asterisks."""
     print("Creating coefficient plot...")
     
     # Dimensions: same height as all_subs_composite (6), half width (16/2 = 8)
@@ -1501,7 +1501,27 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
     ax.grid(True, axis='x', alpha=0.3, linestyle='-', linewidth=0.5)
     ax.set_axisbelow(True)
     
-    plt.subplots_adjust(left=0.28)
+    # Add significance asterisks based on FDR-corrected p-values
+    x_min, x_max = ax.get_xlim()
+    x_range = x_max - x_min
+    for _, row in coef_df.iterrows():
+        y_pos = y_positions[row['order']]
+        p_fdr = row.get('p_fdr', 1.0)
+        if p_fdr < 0.001:
+            sig_marker = '***'
+        elif p_fdr < 0.01:
+            sig_marker = '**'
+        elif p_fdr < 0.05:
+            sig_marker = '*'
+        else:
+            sig_marker = ''
+        if sig_marker:
+            # Position asterisks to the right of the CI
+            x_pos = row['ci_upper'] + x_range * 0.02
+            ax.text(x_pos, y_pos, sig_marker, fontsize=32, fontweight='bold',
+                   va='center', ha='left', color=row['color'])
+    
+    plt.subplots_adjust(left=0.28, right=0.92)
     plt.tight_layout()
     plt.savefig(output_path, dpi=400, bbox_inches='tight')
     plt.close()

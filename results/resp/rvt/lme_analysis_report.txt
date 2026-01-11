@@ -2,7 +2,7 @@
 LME ANALYSIS REPORT: RSP_RVT (Respiratory Volume per Time) by 30-second Windows (first 9 minutes)
 ================================================================================
 
-Analysis date: 2026-01-11 04:37:33
+Analysis date: 2026-01-11 19:08:46
 Dataset: 864 observations from 12 subjects
 
 DESIGN:
