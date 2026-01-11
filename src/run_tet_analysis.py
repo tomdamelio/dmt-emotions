@@ -429,6 +429,136 @@ def compute_significance_masks(df):
     return significance
 
 
+def save_individual_subplots(df, time_courses, loadings, variance_explained, 
+                             lme_results, significance=None):
+    """
+    Save individual subplot PNGs for Figure 4 assembly.
+    
+    Generates separate PNG files for each panel component:
+    - panel_A_timeseries.png: Arousal, Valence, and 5 individual dimensions
+    - panel_B_lme_forest.png: LME coefficients forest plot
+    - panel_C_pc_timeseries.png: PC1 and PC2 time courses
+    - panel_D_variance.png: Variance explained bar plot
+    - panel_E_loadings.png: PCA loadings heatmap
+    
+    These are assembled by run_figures.py into the final figure_4.png.
+    """
+    print("\nSaving individual subplots for Figure 4...")
+    
+    PLOTS_DIR = FIGURES_DIR.parent / 'plots'
+    PLOTS_DIR.mkdir(parents=True, exist_ok=True)
+    
+    saved_paths = {}
+    
+    # =========================================================================
+    # Panel A: Time series (Arousal, Valence, 5 dimensions)
+    # =========================================================================
+    fig_a = plt.figure(figsize=(14, 5))
+    gs_a = fig_a.add_gridspec(2, 11, height_ratios=[1.2, 0.9], hspace=0.35, wspace=0.4)
+    
+    # Top row: Arousal and Valence
+    ax_arousal = fig_a.add_subplot(gs_a[0, :5])
+    ax_valence = fig_a.add_subplot(gs_a[0, 6:])
+    
+    _plot_timeseries_panel(ax_arousal, time_courses, 'emotional_intensity_z', 
+                           'Arousal', subtitle='(Emotional Intensity)', show_legend=True,
+                           significance=significance, show_gray_shading=True,
+                           show_ylabel=True, is_first_col=True, legend_loc='upper right')
+    _plot_timeseries_panel(ax_valence, time_courses, 'valence_index',
+                           'Valence', subtitle='(Pleasantness−Unpleasantness)', show_legend=True,
+                           significance=significance, show_gray_shading=True,
+                           show_ylabel=True, is_first_col=False, legend_loc='lower right')
+    
+    # Bottom row: 5 individual dimensions
+    dims = ['interoception_z', 'anxiety_z', 'unpleasantness_z', 'pleasantness_z', 'bliss_z']
+    dim_labels = ['Interoception', 'Anxiety', 'Unpleasantness', 'Pleasantness', 'Bliss']
+    
+    row1_bbox = gs_a[1, :].get_position(fig_a)
+    n_dims = 5
+    total_width = row1_bbox.width
+    gap_frac = 0.035
+    subplot_width = (total_width - (n_dims - 1) * gap_frac * total_width) / n_dims
+    
+    for i, (dim, label) in enumerate(zip(dims, dim_labels)):
+        left = row1_bbox.x0 + i * (subplot_width + gap_frac * total_width)
+        ax = fig_a.add_axes([left, row1_bbox.y0, subplot_width, row1_bbox.height])
+        _plot_timeseries_panel(ax, time_courses, dim, label, 
+                               show_legend=False, small=True, significance=significance,
+                               show_gray_shading=True, show_ylabel=(i == 0), is_first_col=(i == 0))
+    
+    plt.tight_layout()
+    path_a = PLOTS_DIR / 'panel_A_timeseries.png'
+    fig_a.savefig(path_a, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close(fig_a)
+    saved_paths['A'] = path_a
+    print(f"  Saved: {path_a}")
+    
+    # =========================================================================
+    # Panel B: LME Forest Plot (without label - added during assembly)
+    # =========================================================================
+    fig_b = plt.figure(figsize=(14, 2.5))
+    ax_lme = fig_b.add_subplot(1, 1, 1)
+    _plot_lme_forest_horizontal(ax_lme, lme_results, add_label=False)
+    plt.tight_layout()
+    path_b = PLOTS_DIR / 'panel_B_lme_forest.png'
+    fig_b.savefig(path_b, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close(fig_b)
+    saved_paths['B'] = path_b
+    print(f"  Saved: {path_b}")
+    
+    # =========================================================================
+    # Panel C: PC Time Courses
+    # =========================================================================
+    fig_c = plt.figure(figsize=(14, 3.5))
+    gs_c = fig_c.add_gridspec(1, 11, wspace=0.4)
+    
+    ax_pc1 = fig_c.add_subplot(gs_c[0, :5])
+    ax_pc2 = fig_c.add_subplot(gs_c[0, 6:])
+    
+    _plot_pc_timeseries(ax_pc1, time_courses, 'PC1', 'PC1', show_legend=True,
+                        significance=significance, legend_loc='upper right',
+                        show_gray_shading=True, show_ylabel=True)
+    _plot_pc_timeseries(ax_pc2, time_courses, 'PC2', 'PC2', show_legend=True,
+                        significance=significance, legend_loc='lower right',
+                        show_gray_shading=True, show_ylabel=True)
+    
+    plt.tight_layout()
+    path_c = PLOTS_DIR / 'panel_C_pc_timeseries.png'
+    fig_c.savefig(path_c, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close(fig_c)
+    saved_paths['C'] = path_c
+    print(f"  Saved: {path_c}")
+    
+    # =========================================================================
+    # Panel D: Variance Explained
+    # =========================================================================
+    fig_d = plt.figure(figsize=(5, 3.5))
+    ax_var = fig_d.add_subplot(1, 1, 1)
+    _plot_variance_explained(ax_var, variance_explained)
+    plt.tight_layout()
+    path_d = PLOTS_DIR / 'panel_D_variance.png'
+    fig_d.savefig(path_d, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close(fig_d)
+    saved_paths['D'] = path_d
+    print(f"  Saved: {path_d}")
+    
+    # =========================================================================
+    # Panel E: PCA Loadings Heatmap
+    # =========================================================================
+    fig_e = plt.figure(figsize=(8, 3.5))
+    ax_load = fig_e.add_subplot(1, 1, 1)
+    _plot_loadings_heatmap_paper_style(ax_load, loadings)
+    plt.tight_layout()
+    path_e = PLOTS_DIR / 'panel_E_loadings.png'
+    fig_e.savefig(path_e, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close(fig_e)
+    saved_paths['E'] = path_e
+    print(f"  Saved: {path_e}")
+    
+    print(f"  All subplots saved to: {PLOTS_DIR}")
+    return saved_paths
+
+
 def plot_figure3(df, time_courses, loadings, variance_explained, lme_results, 
                  significance=None):
     """
@@ -759,12 +889,17 @@ def _plot_pc_timeseries(ax, time_courses, pc_name, title, show_legend=True,
     ax.tick_params(axis='both', labelsize=10, colors='#555555')
 
 
-def _plot_lme_forest_horizontal(ax, lme_results):
+def _plot_lme_forest_horizontal(ax, lme_results, add_label: bool = True):
     """Plot LME coefficients as horizontal forest plot matching paper style.
     
     Style: horizontal layout with Arousal on top, Valence on bottom,
     each effect in its own mini-panel with shared y-axis labels on left.
     Significance markers (*, **, ***) are added based on p-values.
+    
+    Args:
+        ax: matplotlib axis (will be hidden, used for positioning)
+        lme_results: dict with LME model results
+        add_label: whether to add "B" panel label (default True)
     """
     
     # Effects to plot - using DMT and Alta as treatment levels
@@ -784,8 +919,9 @@ def _plot_lme_forest_horizontal(ax, lme_results):
     bbox = ax.get_position()
     
     # Add "B" label using figure coordinates (since ax is invisible)
-    # Align with other panel labels (same x offset as A, C, D, E)
-    fig.text(bbox.x0 - 0.035, bbox.y1 + 0.015, 'B', fontsize=18, fontweight='bold', va='bottom')
+    # Only add if add_label is True (for composite figure, not individual subplots)
+    if add_label:
+        fig.text(bbox.x0 - 0.035, bbox.y1 + 0.015, 'B', fontsize=18, fontweight='bold', va='bottom')
     
     # Create mini axes for each effect with better spacing
     total_width = bbox.width
