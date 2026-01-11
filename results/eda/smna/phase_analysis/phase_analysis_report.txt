@@ -1,0 +1,44 @@
+================================================================================
+PHASE-BASED ANALYSIS REPORT: SUDOMOTOR NERVE ACTIVITY (SMNA)
+================================================================================
+
+Data scale: z-scored
+Analysis window: 0-9 minutes (540 seconds)
+Phases defined:
+  - Phase 0: Onset (0-3 minutes, 0-180 seconds)
+  - Phase 1: Recovery (3-9 minutes, 180-540 seconds)
+
+================================================================================
+PHASE COMPARISONS (High vs Low Dose within DMT)
+================================================================================
+
+Phase_0_(0-180s)
+  High dose: M = 3.553, SEM = 0.550
+  Low dose:  M = 2.832, SEM = 0.813
+  Paired t-test: t(10) = 0.656, p = 0.5269
+  Cohen's d: 0.198
+  N subjects: 11
+  Significance: ns
+
+Phase_1_(180-540s)
+  High dose: M = 1.729, SEM = 0.539
+  Low dose:  M = -0.163, SEM = 0.316
+  Paired t-test: t(10) = 2.730, p = 0.0212
+  Cohen's d: 0.823
+  N subjects: 11
+  Significance: *
+
+================================================================================
+INTERPRETATION NOTES
+================================================================================
+
+Phase-based analysis averages signals within distinct temporal phases,
+which can detect dose differences that may not appear in time-to-time
+comparisons due to temporal misalignment across subjects.
+
+Significance markers:
+  *** p < .001
+  **  p < .01
+  *   p < .05
+  ns  p >= .05 (not significant)
+

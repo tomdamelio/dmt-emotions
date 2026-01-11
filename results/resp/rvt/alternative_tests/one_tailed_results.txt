@@ -1,0 +1,23 @@
+======================================================================
+One-Tailed Paired t-tests: High > Low (α = 0.05)
+======================================================================
+Directional hypothesis: greater
+
+Number of subjects: 12
+Number of timepoints: 18
+Significant timepoints: 5 (27.8%)
+
+Significant Segments:
+----------------------------------------------------------------------
+  Segment 1: 1.75-2.25 minutes (indices 3-4)
+  Segment 2: 3.25-3.75 minutes (indices 6-7)
+  Segment 3: 4.75-4.75 minutes (indices 9-9)
+======================================================================
+
+SCIENTIFIC RATIONALE:
+----------------------------------------------------------------------
+One-tailed tests are appropriate for RVT because:
+  1. Directional hypothesis: High dose expected to increase respiratory arousal
+  2. Greater statistical power than two-tailed tests
+  3. More principled than removing FDR correction
+  4. Effectively halves p-values compared to two-tailed tests

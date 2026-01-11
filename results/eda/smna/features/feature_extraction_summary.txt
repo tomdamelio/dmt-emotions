@@ -1,0 +1,56 @@
+FEATURE EXTRACTION SUMMARY
+============================================================
+
+Total subjects: 11
+Total observations: 44
+
+FEATURE COMPARISONS (High vs Low):
+============================================================
+
+RS - peak_amplitude:
+  t(10) = 0.512, p = 0.6199, d = 0.154
+  High: M = 47.819, SD = 49.158
+  Low: M = 42.111, SD = 33.214
+  n = 11 paired observations
+
+RS - time_to_peak:
+  t(10) = 0.435, p = 0.6730, d = 0.131
+  High: M = 3.082, SD = 3.151
+  Low: M = 2.582, SD = 1.977
+  n = 11 paired observations
+
+RS - t_33:
+  t(10) = 1.038, p = 0.3236, d = 0.313
+  High: M = 1.642, SD = 2.492
+  Low: M = 0.907, SD = 1.344
+  n = 11 paired observations
+
+RS - t_50:
+  t(10) = 0.736, p = 0.4786, d = 0.222
+  High: M = 1.909, SD = 2.574
+  Low: M = 1.302, SD = 1.298
+  n = 11 paired observations
+
+DMT - peak_amplitude:
+  t(10) = 1.603, p = 0.1400, d = 0.483
+  High: M = 158.677, SD = 105.924
+  Low: M = 95.644, SD = 53.333
+  n = 11 paired observations
+
+DMT - time_to_peak:
+  t(10) = -0.551, p = 0.5938, d = -0.166
+  High: M = 2.224, SD = 1.693
+  Low: M = 2.738, SD = 2.571
+  n = 11 paired observations
+
+DMT - t_33:
+  t(10) = -0.816, p = 0.4336, d = -0.246
+  High: M = 0.480, SD = 0.380
+  Low: M = 0.669, SD = 0.803
+  n = 11 paired observations
+
+DMT - t_50:
+  t(10) = -0.480, p = 0.6412, d = -0.145
+  High: M = 0.906, SD = 1.263
+  Low: M = 1.261, SD = 2.040
+  n = 11 paired observations

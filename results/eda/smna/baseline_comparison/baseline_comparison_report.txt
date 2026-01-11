@@ -1,0 +1,50 @@
+================================================================================
+DMT vs Resting State Baseline Comparison
+================================================================================
+⚠️  IMPORTANT: DMT doses are collapsed. This analysis does NOT address
+   dose-dependent effects. For dose comparisons, see dose-specific analyses.
+
+Resting State Baseline Summary:
+--------------------------------------------------------------------------------
+  Mean: -0.032
+  SD: 0.458
+  Median: -0.044
+  IQR: [-0.053, -0.037]
+  N samples: 2970022
+  N subjects: 11
+
+Feature Comparisons (Paired t-tests):
+--------------------------------------------------------------------------------
+
+peak_amplitude:
+  DMT (collapsed): M = 127.160, SD = 52.741
+  Resting State:   M = 44.965, SD = 37.653
+  t(10) = 4.616, p = 0.0010
+  Cohen's d = 1.392
+  N pairs = 11
+  → DMT significantly higher than RS (large effect)
+
+time_to_peak:
+  DMT (collapsed): M = 2.481, SD = 1.531
+  Resting State:   M = 2.832, SD = 1.812
+  t(10) = -0.519, p = 0.6147
+  Cohen's d = -0.157
+  N pairs = 11
+  → No significant difference
+
+t_33:
+  DMT (collapsed): M = 0.574, SD = 0.498
+  Resting State:   M = 1.274, SD = 1.621
+  t(10) = -1.656, p = 0.1287
+  Cohen's d = -0.499
+  N pairs = 11
+  → No significant difference
+
+t_50:
+  DMT (collapsed): M = 1.084, SD = 1.175
+  Resting State:   M = 1.605, SD = 1.512
+  t(10) = -1.855, p = 0.0933
+  Cohen's d = -0.559
+  N pairs = 11
+  → No significant difference
+================================================================================

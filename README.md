@@ -1,5 +1,7 @@
 # DMT-Emotions Analysis
 
+**Version**: 1.1.0 | **Last Updated**: 2026-01-11
+
 Analysis pipeline for studying dose-dependent physiological and subjective responses to N,N-Dimethyltryptamine (DMT).
 
 ![Experimental Setup](data_collection.png)
@@ -152,6 +154,27 @@ python src/run_figures.py
 | `run_eda_smna_analysis.py` | EDA | SMNA (sympathetic) | CVX decomposition, LME |
 | `run_resp_rvt_analysis.py` | Respiration | RVT | NeuroKit2, LME |
 
+### Analysis Utility Modules (Supervisor Revisions)
+
+The following modules in `scripts/` provide enhanced statistical analyses and visualization capabilities:
+
+| Module | Purpose | Key Functions |
+|--------|---------|---------------|
+| `alternative_statistics.py` | Less conservative statistical tests | `compute_one_tailed_tests()`, `compute_pointwise_uncorrected()` |
+| `phase_analyzer.py` | Temporal phase-based analysis | `define_temporal_phases()`, `compute_phase_averages()`, `compare_doses_within_phases()` |
+| `feature_extractor.py` | Extract temporal features | `extract_peak_amplitude()`, `extract_time_to_peak()`, `extract_threshold_crossings()` |
+| `baseline_comparator.py` | DMT vs RS baseline comparisons | `compare_features_to_baseline()`, `visualize_baseline_comparisons()` |
+| `enhanced_visualizer.py` | Publication-ready visualizations | `add_significance_markers()`, `apply_homogeneous_aesthetics()`, `save_figure_vector()` |
+| `statistical_reporter.py` | APA-style statistical reporting | `format_ttest_result()`, `format_lme_result()`, `format_correlation_result()` |
+
+**Scientific Rationale:**
+- **Alternative Statistics**: One-tailed tests (High > Low) and uncorrected tests provide greater power for detecting dose-dependent effects when FDR correction is overly conservative
+- **Phase Analysis**: Averaging within temporal phases (e.g., onset 0-3 min, recovery 3-9 min) detects dose differences obscured by temporal misalignment
+- **Feature Extraction**: Peak amplitude, time-to-peak, and threshold crossings capture aspects of temporal dynamics not visible in time-aligned comparisons
+- **Baseline Comparisons**: Quantify magnitude of DMT-induced changes relative to Resting State (independent of dose comparisons)
+- **Enhanced Visualization**: Significance markers (*, **, ***) and homogeneous aesthetics ensure publication-ready figures
+- **Statistical Reporting**: Complete APA-style reporting (test statistic, df, p-value, effect size) meets journal standards
+
 ### Composite Arousal Index
 
 `run_composite_arousal_index.py` computes PC1 from joint physiological space (HR, SMNA, RVT):
@@ -194,11 +217,31 @@ python src/run_figures.py
 results/
 ├── ecg/hr/                    # HR analysis results
 │   ├── plots/                 # Time courses, LME coefficients
+│   ├── alternative_tests/     # One-tailed and uncorrected tests
+│   ├── phase_analysis/        # Phase-averaged comparisons
+│   ├── features/              # Extracted temporal features
+│   ├── baseline_comparison/   # DMT vs RS comparisons
 │   └── *.csv                  # Long-format data, model results
 ├── eda/smna/                  # SMNA analysis results
+│   ├── plots/
+│   ├── alternative_tests/
+│   ├── phase_analysis/
+│   ├── features/
+│   ├── baseline_comparison/
+│   └── *.csv
 ├── resp/rvt/                  # RVT analysis results
+│   ├── plots/
+│   ├── alternative_tests/
+│   ├── phase_analysis/
+│   ├── features/
+│   ├── baseline_comparison/
+│   └── *.csv
 ├── composite/                 # Arousal Index results
-│   └── plots/                 # PCA scree, loadings, time courses
+│   ├── plots/                 # PCA scree, loadings, time courses
+│   ├── phase_analysis/
+│   ├── features/
+│   ├── baseline_comparison/
+│   └── *.csv
 ├── tet/                       # TET analysis results
 │   ├── figures/               # Time series, LME forest plots
 │   └── *.csv                  # Preprocessed data, model results
@@ -337,8 +380,14 @@ dmt-emotions/
 │   ├── pca_analyzer.py        # Principal components
 │   ├── physio_cca_analyzer.py # Canonical correlation
 │   └── ...                    # Other TET modules
-├── scripts/                   # Individual analysis scripts
-│   ├── preprocess_tet_data.py
+├── scripts/                   # Analysis utility modules
+│   ├── alternative_statistics.py    # One-tailed and uncorrected tests
+│   ├── phase_analyzer.py            # Temporal phase analysis
+│   ├── feature_extractor.py         # Peak detection, time-to-peak
+│   ├── baseline_comparator.py       # DMT vs RS comparisons
+│   ├── enhanced_visualizer.py       # Significance markers, aesthetics
+│   ├── statistical_reporter.py      # APA-style formatting
+│   ├── preprocess_tet_data.py       # TET preprocessing script
 │   ├── compute_descriptive_stats.py
 │   ├── fit_lme_models.py
 │   └── compute_pca_analysis.py

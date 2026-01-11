@@ -1,0 +1,21 @@
+======================================================================
+One-Tailed Paired t-tests: High > Low (α = 0.05)
+======================================================================
+Directional hypothesis: greater
+
+Number of subjects: 11
+Number of timepoints: 18
+Significant timepoints: 15 (83.3%)
+
+Significant Segments:
+----------------------------------------------------------------------
+  Segment 1: 1.75-8.75 minutes (indices 3-17)
+======================================================================
+
+SCIENTIFIC RATIONALE:
+----------------------------------------------------------------------
+One-tailed tests are appropriate for HR because:
+  1. Directional hypothesis: High dose expected to increase cardiac arousal
+  2. Greater statistical power than two-tailed tests
+  3. More principled than removing FDR correction
+  4. Effectively halves p-values compared to two-tailed tests

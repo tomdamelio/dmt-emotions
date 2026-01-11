@@ -1,0 +1,23 @@
+======================================================================
+Uncorrected Pointwise Paired t-tests (α = 0.05)
+======================================================================
+⚠️  Results are UNCORRECTED for multiple comparisons
+
+Number of subjects: 11
+Number of timepoints: 18
+Significant timepoints: 4 (22.2%)
+
+Significant Segments:
+----------------------------------------------------------------------
+  Segment 1: 4.75-4.75 minutes (indices 9-9)
+  Segment 2: 6.25-6.25 minutes (indices 12-12)
+  Segment 3: 8.25-8.75 minutes (indices 16-17)
+======================================================================
+
+SCIENTIFIC RATIONALE:
+----------------------------------------------------------------------
+Uncorrected tests provide exploratory insights but:
+  ⚠️  Should only be used if one-tailed tests fail
+  ⚠️  Inflated Type I error rate due to multiple comparisons
+  ⚠️  Require careful interpretation and replication
+  ⚠️  Results must be clearly labeled as "uncorrected p < .05"
