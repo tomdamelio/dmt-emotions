@@ -1317,7 +1317,7 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     ax1.grid(True, which='major', axis='y', alpha=0.25); ax1.grid(False, which='major', axis='x')
     
     # DMT panel
-    dmt_segs = _compute_fdr_significant_segments(H_DMT, L_DMT, x)
+    dmt_segs = _compute_fdr_significant_segments(H_DMT, L_DMT, x, alternative='greater')
     for w0, w1 in dmt_segs:
         t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
         t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
@@ -1705,7 +1705,7 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     
     c_dmt_high, c_dmt_low = COLOR_DMT_HIGH, COLOR_DMT_LOW
     
-    segs = _compute_fdr_significant_segments(H, L, x)
+    segs = _compute_fdr_significant_segments(H, L, x, alternative='greater')
     for w0, w1 in segs:
         t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
         t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window

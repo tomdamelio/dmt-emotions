@@ -6,6 +6,5 @@ PANEL RS:
     - None
 
 PANEL DMT:
-  Significant window ranges (count=2):
-    - Window 6 to 6 (2.5-3.0 min)
-    - Window 8 to 18 (3.5-9.0 min)
+  Significant window ranges (count=1):
+    - Window 4 to 18 (1.5-9.0 min)
