@@ -1102,7 +1102,7 @@ def create_model_summary_txt(diagnostics: Dict, coef_df: pd.DataFrame, output_pa
         f.write('\n'.join(lines))
 
 
-def _compute_fdr_significant_segments(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05) -> List[Tuple[float, float]]:
+def _compute_fdr_significant_segments(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05, alternative: str = 'two-sided') -> List[Tuple[float, float]]:
     """Return contiguous x-intervals where High vs Low differ after BH-FDR."""
     if scistats is None:
         return []
@@ -1114,7 +1114,7 @@ def _compute_fdr_significant_segments(A: np.ndarray, B: np.ndarray, x_grid: np.n
         mask = (~np.isnan(a)) & (~np.isnan(b))
         if np.sum(mask) >= 2:
             try:
-                _, p = scistats.ttest_rel(a[mask], b[mask])
+                _, p = scistats.ttest_rel(a[mask], b[mask], alternative=alternative)
                 pvals[t] = float(p)
             except Exception:
                 pvals[t] = np.nan
@@ -1138,7 +1138,7 @@ def _compute_fdr_significant_segments(A: np.ndarray, B: np.ndarray, x_grid: np.n
     return segs
 
 
-def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05) -> Dict:
+def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05, alternative: str = 'two-sided') -> Dict:
     """Compute paired t-test across time, apply BH-FDR, and summarize results."""
     result: Dict[str, object] = {'alpha': alpha, 'pvals': [], 'pvals_adj': [], 'sig_mask': [], 'segments': []}
     if scistats is None:
@@ -1155,7 +1155,7 @@ def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha
         mask = (~np.isnan(a)) & (~np.isnan(b))
         if np.sum(mask) >= 2:
             try:
-                _, p = scistats.ttest_rel(a[mask], b[mask])
+                _, p = scistats.ttest_rel(a[mask], b[mask], alternative=alternative)
                 pvals[t] = float(p)
             except Exception:
                 pvals[t] = np.nan
@@ -1173,7 +1173,7 @@ def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha
     # Find significant time points
     sig = adj < alpha
     n_sig = np.sum(sig)
-    print(f"FDR analysis: {n_sig}/{len(sig)} time points significant (alpha={alpha})")
+    print(f"FDR analysis: {n_sig}/{len(sig)} time points significant (alpha={alpha}, alternative={alternative})")
     
     # Find contiguous segments of significance
     segments: List[Tuple[float, float]] = []
@@ -1562,7 +1562,7 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     # DMT (right)
     dmt = state_data['DMT']
     print(f"Computing FDR for DMT with {dmt['H_mat'].shape[0]} subjects, {dmt['H_mat'].shape[1]} time points")
-    dmt_fdr = _compute_fdr_results(dmt['H_mat'], dmt['L_mat'], t_grid)
+    dmt_fdr = _compute_fdr_results(dmt['H_mat'], dmt['L_mat'], t_grid, alternative='greater')
     dmt_segments = dmt_fdr.get('segments', [])
     print(f"Adding {len(dmt_segments)} shaded regions to DMT panel")
     for x0, x1 in dmt_segments:

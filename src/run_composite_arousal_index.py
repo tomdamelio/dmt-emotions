@@ -1544,7 +1544,7 @@ def _resample_to_grid(t: np.ndarray, y: np.ndarray, t_grid: np.ndarray) -> np.nd
     return yg
 
 
-def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05) -> Dict:
+def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05, alternative: str = 'two-sided') -> Dict:
     """Compute paired t-test across time, apply BH-FDR, and summarize results."""
     result: Dict[str, object] = {'alpha': alpha, 'pvals': [], 'pvals_adj': [], 'sig_mask': [], 'segments': []}
     if scistats is None:
@@ -1561,7 +1561,7 @@ def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha
         mask = (~np.isnan(a)) & (~np.isnan(b))
         if np.sum(mask) >= 2:
             try:
-                _, p = scistats.ttest_rel(a[mask], b[mask])
+                _, p = scistats.ttest_rel(a[mask], b[mask], alternative=alternative)
                 pvals[t] = float(p)
             except Exception:
                 pvals[t] = np.nan
@@ -1579,7 +1579,7 @@ def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha
     # Find significant time points
     sig = adj < alpha
     n_sig = np.sum(sig)
-    print(f"FDR analysis: {n_sig}/{len(sig)} time points significant (alpha={alpha})")
+    print(f"FDR analysis: {n_sig}/{len(sig)} time points significant (alpha={alpha}, alternative={alternative})")
     
     # Find contiguous segments of significance
     segments: List[Tuple[float, float]] = []
@@ -1597,6 +1597,12 @@ def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha
     if segments:
         for j, (x0, x1) in enumerate(segments):
             print(f"  Segment {j+1}: {x0:.1f}s - {x1:.1f}s ({x0/60:.2f} - {x1/60:.2f} min)")
+    
+    result['pvals'] = pvals.tolist()
+    result['pvals_adj'] = adj.tolist()
+    result['sig_mask'] = sig.tolist()
+    result['segments'] = segments
+    return result
     
     result['pvals'] = pvals.tolist()
     result['pvals_adj'] = adj.tolist()
@@ -1744,7 +1750,7 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
     # DMT (right)
     dmt = state_data['DMT']
     print(f"Computing FDR for DMT with {dmt['H_mat'].shape[0]} subjects, {dmt['H_mat'].shape[1]} time points")
-    dmt_fdr = _compute_fdr_results(dmt['H_mat'], dmt['L_mat'], window_grid)
+    dmt_fdr = _compute_fdr_results(dmt['H_mat'], dmt['L_mat'], window_grid, alternative='greater')
     dmt_segments = dmt_fdr.get('segments', [])
     print(f"Adding {len(dmt_segments)} shaded regions to DMT panel")
     
@@ -1932,7 +1938,7 @@ def create_dmt_only_extended_plot_from_saved() -> Optional[str]:
     
     # Compute FDR
     print(f"  Computing FDR for DMT High vs Low...")
-    fdr_results = _compute_fdr_results(H, L, window_grid)
+    fdr_results = _compute_fdr_results(H, L, window_grid, alternative='greater')
     segments = fdr_results.get('segments', [])
     print(f"  Found {len(segments)} significant segments")
     
@@ -2112,7 +2118,7 @@ def create_dmt_only_extended_plot(df: pd.DataFrame) -> Optional[str]:
     
     # Compute FDR for High vs Low
     print(f"  Computing FDR for DMT High vs Low...")
-    fdr_results = _compute_fdr_results(H, L, window_grid)
+    fdr_results = _compute_fdr_results(H, L, window_grid, alternative='greater')
     segments = fdr_results.get('segments', [])
     print(f"  Found {len(segments)} significant segments")
     

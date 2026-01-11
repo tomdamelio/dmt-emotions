@@ -1,4 +1,4 @@
-ONE-TAILED FDR COMPARISON: RVT High > Low (DMT only)
+FDR COMPARISON: RVT High vs Low (DMT only)
 Alpha = 0.05
 
 Significant window ranges (count=0):

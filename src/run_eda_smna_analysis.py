@@ -592,7 +592,7 @@ def benjamini_hochberg_correction(p_values: List[float]) -> List[float]:
     return np.minimum(adjusted_p, 1.0).tolist()
 
 
-def _compute_fdr_significant_segments(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05) -> List[Tuple[float, float]]:
+def _compute_fdr_significant_segments(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05, alternative: str = 'two-sided') -> List[Tuple[float, float]]:
     if not SCIPY_AVAILABLE:
         return []
     from scipy import stats as scistats
@@ -604,7 +604,7 @@ def _compute_fdr_significant_segments(A: np.ndarray, B: np.ndarray, x_grid: np.n
         mask = (~np.isnan(a)) & (~np.isnan(b))
         if np.sum(mask) >= 2:
             try:
-                _, p = scistats.ttest_rel(a[mask], b[mask])
+                _, p = scistats.ttest_rel(a[mask], b[mask], alternative=alternative)
                 pvals[t] = float(p)
             except Exception:
                 pvals[t] = np.nan
@@ -628,7 +628,7 @@ def _compute_fdr_significant_segments(A: np.ndarray, B: np.ndarray, x_grid: np.n
     return segs
 
 
-def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05) -> Dict:
+def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05, alternative: str = 'two-sided') -> Dict:
     if not SCIPY_AVAILABLE:
         return {'alpha': alpha, 'pvals': [], 'pvals_adj': [], 'sig_mask': [], 'segments': []}
     from scipy import stats as scistats
@@ -640,7 +640,7 @@ def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha
         mask = (~np.isnan(a)) & (~np.isnan(b))
         if np.sum(mask) >= 2:
             try:
-                _, p = scistats.ttest_rel(a[mask], b[mask])
+                _, p = scistats.ttest_rel(a[mask], b[mask], alternative=alternative)
                 pvals[t] = float(p)
             except Exception:
                 pvals[t] = np.nan
@@ -1149,12 +1149,12 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str, df_raw: Op
                         H[si, window_idx - 1] = float(row_h.iloc[0])
                     if len(row_l) == 1:
                         L[si, window_idx - 1] = float(row_l.iloc[0])
-            segs = _compute_fdr_significant_segments(H, L, x_grid)
+            segs = _compute_fdr_significant_segments(H, L, x_grid, alternative='greater')
             for w0, w1 in segs:
                 t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
                 t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
                 ax2.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
-            dmt_res = _compute_fdr_results(H, L, x_grid)
+            dmt_res = _compute_fdr_results(H, L, x_grid, alternative='greater')
 
             # Write FDR report
             out_dir = os.path.dirname(os.path.dirname(output_path))
@@ -1309,7 +1309,7 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     ax1.set_title('Resting State (RS)', fontweight='bold')
     ax1.grid(True, which='major', axis='y', alpha=0.25); ax1.grid(False, which='major', axis='x')
     # DMT panel
-    dmt_segs = _compute_fdr_significant_segments(H_DMT, L_DMT, x)
+    dmt_segs = _compute_fdr_significant_segments(H_DMT, L_DMT, x, alternative='greater')
     for w0, w1 in dmt_segs:
         t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
         t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window

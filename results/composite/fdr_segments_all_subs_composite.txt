@@ -8,8 +8,7 @@ PANEL RS:
   Min p_FDR: 0.725370; Median p_FDR: 0.735151
 
 PANEL DMT:
-  Significant window ranges (count=3):
-    - Window 6 to 6 (2.5-3.0 min)
-    - Window 8 to 13 (3.5-6.5 min)
-    - Window 15 to 18 (7.0-9.0 min)
-  Min p_FDR: 0.010569; Median p_FDR: 0.032801
+  Significant window ranges (count=2):
+    - Window 5 to 6 (2.0-3.0 min)
+    - Window 8 to 18 (3.5-9.0 min)
+  Min p_FDR: 0.005284; Median p_FDR: 0.016400
