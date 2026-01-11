@@ -959,11 +959,11 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
         # Tamaño uniforme para todos los elementos
         linewidth = 4.0
         alpha = 1.0
-        marker_size = 120
+        marker_size = 30  # Reduced from 60
         # Línea del CI
         ax.plot([row['ci_lower'], row['ci_upper']], [y_pos, y_pos], color=row['color'], linewidth=linewidth, alpha=alpha)
         # Círculo del coeficiente con borde del mismo color
-        ax.scatter(row['beta'], y_pos, color=row['color'], s=marker_size, alpha=alpha, edgecolors=row['color'], linewidths=2.0, zorder=3)
+        ax.scatter(row['beta'], y_pos, color=row['color'], s=marker_size, alpha=alpha, edgecolors=row['color'], linewidths=1.5, zorder=3)
     ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=1.0)
     ax.set_yticks(y_positions)
     ax.set_yticklabels(coef_df['label'], fontsize=FONT_SIZE_TICK_LABEL)

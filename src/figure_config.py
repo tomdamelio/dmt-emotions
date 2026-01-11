@@ -82,17 +82,17 @@ MARKER_SIZE_SMALL = 3       # Small markers for dense plots
 TAB20C = plt.cm.tab20c.colors
 TAB20B = plt.cm.tab20b.colors
 
-# ECG/HR colors (red family - indices 0-3)
-COLOR_ECG_HIGH = TAB20C[0]   # Dark red for High dose
-COLOR_ECG_LOW = TAB20C[2]    # Light red for Low dose
+# ECG/HR colors (blue family - indices 0-3)
+COLOR_ECG_HIGH = TAB20C[0]   # Dark blue for High dose
+COLOR_ECG_LOW = TAB20C[2]    # Light blue for Low dose
 
-# EDA/SMNA colors (green family - indices 8-11)
-COLOR_EDA_HIGH = TAB20C[8]   # Dark green for High dose
-COLOR_EDA_LOW = TAB20C[10]   # Light green for Low dose
+# EDA/SMNA colors (orange family - indices 4-7)
+COLOR_EDA_HIGH = TAB20C[4]   # Dark orange for High dose
+COLOR_EDA_LOW = TAB20C[6]    # Light orange for Low dose
 
-# Resp/RVT colors (blue family - indices 4-7)
-COLOR_RESP_HIGH = TAB20C[4]  # Dark blue for High dose
-COLOR_RESP_LOW = TAB20C[6]   # Light blue for Low dose
+# Resp/RVT colors (green family - indices 8-11)
+COLOR_RESP_HIGH = TAB20C[8]  # Dark green for High dose
+COLOR_RESP_LOW = TAB20C[10]  # Light green for Low dose
 
 # Composite/PCA colors (yellow/beige family from tab20b - indices 8-11)
 COLOR_COMPOSITE_HIGH = TAB20B[8]   # Dark yellow for High dose

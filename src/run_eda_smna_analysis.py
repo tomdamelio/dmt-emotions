@@ -126,10 +126,11 @@ try:
     COLOR_DMT_HIGH = COLOR_EDA_HIGH
     COLOR_DMT_LOW = COLOR_EDA_LOW
 except NameError:
-    COLOR_RS_HIGH = tab20c_colors[8]
-    COLOR_RS_LOW = tab20c_colors[10]
-    COLOR_DMT_HIGH = tab20c_colors[8]
-    COLOR_DMT_LOW = tab20c_colors[10]
+    # EDA uses orange family (indices 4-7)
+    COLOR_RS_HIGH = tab20c_colors[4]
+    COLOR_RS_LOW = tab20c_colors[6]
+    COLOR_DMT_HIGH = tab20c_colors[4]
+    COLOR_DMT_LOW = tab20c_colors[6]
 
 # Analysis window: first 9 minutes (18 windows of 30 seconds each)
 N_WINDOWS = 18  # 30-second windows: 0-30s, 30-60s, ..., 510-540s
@@ -993,11 +994,11 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
         # Tamaño uniforme para todos los elementos
         linewidth = 4.0
         alpha = 1.0
-        marker_size = 120
+        marker_size = 30  # Reduced from 60
         # Línea del CI
         ax.plot([row['ci_lower'], row['ci_upper']], [y_pos, y_pos], color=row['color'], linewidth=linewidth, alpha=alpha)
         # Círculo del coeficiente con borde del mismo color
-        ax.scatter(row['beta'], y_pos, color=row['color'], s=marker_size, alpha=alpha, edgecolors=row['color'], linewidths=2.0, zorder=3)
+        ax.scatter(row['beta'], y_pos, color=row['color'], s=marker_size, alpha=alpha, edgecolors=row['color'], linewidths=1.5, zorder=3)
 
     ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=1.0)
     ax.set_yticks(y_positions)

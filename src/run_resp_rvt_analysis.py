@@ -123,10 +123,11 @@ try:
     COLOR_DMT_HIGH = COLOR_RESP_HIGH
     COLOR_DMT_LOW = COLOR_RESP_LOW
 except NameError:
-    COLOR_RS_HIGH = tab20c_colors[4]
-    COLOR_RS_LOW = tab20c_colors[6]
-    COLOR_DMT_HIGH = tab20c_colors[4]
-    COLOR_DMT_LOW = tab20c_colors[6]
+    # RESP uses green family (indices 8-11)
+    COLOR_RS_HIGH = tab20c_colors[8]
+    COLOR_RS_LOW = tab20c_colors[10]
+    COLOR_DMT_HIGH = tab20c_colors[8]
+    COLOR_DMT_LOW = tab20c_colors[10]
 
 # Analysis window: first 9 minutes (18 windows of 30 seconds each)
 N_WINDOWS = 18  # 30-second windows: 0-30s, 30-60s, ..., 510-540s
@@ -883,11 +884,11 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
         # Tamaño uniforme para todos los elementos
         linewidth = 4.0
         alpha = 1.0
-        marker_size = 120
+        marker_size = 30  # Reduced from 60
         # Línea del CI
         ax.plot([row['ci_lower'], row['ci_upper']], [y_pos, y_pos], color=row['color'], linewidth=linewidth, alpha=alpha)
         # Círculo del coeficiente con borde del mismo color
-        ax.scatter(row['beta'], y_pos, color=row['color'], s=marker_size, alpha=alpha, edgecolors=row['color'], linewidths=2.0, zorder=3)
+        ax.scatter(row['beta'], y_pos, color=row['color'], s=marker_size, alpha=alpha, edgecolors=row['color'], linewidths=1.5, zorder=3)
     ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=1.0)
     ax.set_yticks(y_positions)
     ax.set_yticklabels(coef_df['label'], fontsize=FONT_SIZE_TICK_LABEL)
@@ -1313,7 +1314,8 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     ax2.fill_between(time_minutes, dmt_mean_h - dmt_sem_h, dmt_mean_h + dmt_sem_h, color=c_dmt_high, alpha=0.25)
     l4 = ax2.plot(time_minutes, dmt_mean_l, color=c_dmt_low, lw=LINE_WIDTH, label='Low dose (20mg)')[0]
     ax2.fill_between(time_minutes, dmt_mean_l - dmt_sem_l, dmt_mean_l + dmt_sem_l, color=c_dmt_low, alpha=0.25)
-    leg2 = ax2.legend([l3, l4], ['High dose (40mg)', 'Low dose (20mg)'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
+    # Legend in lower right to avoid overlapping with data
+    leg2 = ax2.legend([l3, l4], ['High dose (40mg)', 'Low dose (20mg)'], loc='lower right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg2.get_frame().set_facecolor('white'); leg2.get_frame().set_alpha(0.9)
     ax2.set_xlabel('Time (minutes)', fontsize=FONT_SIZE_AXIS_LABEL)
     ax2.set_title('DMT', fontweight='bold', fontsize=FONT_SIZE_TITLE)
