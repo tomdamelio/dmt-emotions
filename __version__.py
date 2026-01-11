@@ -58,10 +58,4 @@ def get_version_info() -> str:
         f"  - Analysis Modules: v{ANALYSIS_MODULES_VERSION}",
         f"  - Preprocessing: v{PREPROCESSING_VERSION}",
         f"  - TET Analysis: v{TET_ANALYSIS_VERSION}",
-        f"  - Coupling Analysis: v{COUPLING_ANALYSIS_VERSION}",
-    ]
-    return "\n".join(info)
-
-
-if __name__ == "__main__":
-    print(get_version_info())
+        f"  - 
