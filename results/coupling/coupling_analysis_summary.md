@@ -1,5 +1,5 @@
 # Coupling Analysis Summary Report
-Generated: 2026-01-11 19:10:42
+Generated: 2026-01-11 22:19:38
 
 ## 1. Linear Correlations (DMT State)
 

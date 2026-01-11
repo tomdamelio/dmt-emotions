@@ -23,7 +23,14 @@ from typing import List, Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 import matplotlib
-matplotlib.use('TkAgg')
+# Only set TkAgg if no backend is already set (allows Agg when imported from run_figures.py)
+if matplotlib.get_backend() == 'agg' or not matplotlib.get_backend():
+    pass  # Keep current backend
+else:
+    try:
+        matplotlib.use('TkAgg')
+    except Exception:
+        pass  # Ignore if backend already set
 import matplotlib.pyplot as plt
 
 from sklearn.decomposition import PCA
@@ -299,10 +306,10 @@ def compute_pca_and_index(df: pd.DataFrame) -> Tuple[pd.DataFrame, float, np.nda
     plt.figure(figsize=(7.2, 3))
     # Use yellow/camel color from tab20b
     plt.plot([1, 2, 3], var_ratio, 'o-', linewidth=2, markersize=8, color=tab20b_colors[8])
-    plt.xlabel('Principal Component', fontsize=20)
-    plt.ylabel('Explained Variance\nRatio', fontsize=18)
-    plt.xticks([1, 2, 3], fontsize=16)
-    plt.yticks(fontsize=16)
+    plt.xlabel('Principal Component', fontsize=AXES_LABEL_SIZE)
+    plt.ylabel('Explained Variance\nRatio', fontsize=AXES_LABEL_SIZE)
+    plt.xticks([1, 2, 3], fontsize=TICK_LABEL_SIZE)
+    plt.yticks(fontsize=TICK_LABEL_SIZE)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(os.path.join(PLOTS_DIR, 'pca_scree.png'), dpi=300, bbox_inches='tight')
@@ -324,11 +331,11 @@ def compute_pca_and_index(df: pd.DataFrame) -> Tuple[pd.DataFrame, float, np.nda
     
     # Styling
     ax.axhline(y=0, color='black', linestyle='-', linewidth=1.0)
-    ax.set_ylabel('PC1 Loading', fontsize=20)
-    ax.set_xlabel('Physiological signal', fontsize=20)
+    ax.set_ylabel('PC1 Loading', fontsize=AXES_LABEL_SIZE)
+    ax.set_xlabel('Physiological signal', fontsize=AXES_LABEL_SIZE)
     ax.set_xticks(x_pos)
-    ax.set_xticklabels(signal_names, fontsize=18)
-    ax.tick_params(axis='y', labelsize=16)
+    ax.set_xticklabels(signal_names, fontsize=TICK_LABEL_SIZE)
+    ax.tick_params(axis='y', labelsize=TICK_LABEL_SIZE)
     ax.grid(True, axis='y', alpha=0.3, linestyle='--')
     ax.set_axisbelow(True)
     
@@ -647,34 +654,34 @@ def compute_and_plot_cross_correlations(df: pd.DataFrame) -> str:
     im1 = ax1.imshow(corr_matrices['RS'], cmap='RdPu', vmin=vmin, vmax=vmax, aspect='auto')
     ax1.set_xticks(range(3))
     ax1.set_yticks(range(3))
-    ax1.set_xticklabels(signal_labels, fontsize=18)
-    ax1.set_yticklabels(signal_labels, fontsize=18)
-    ax1.set_title('Resting State (RS)', fontsize=22, fontweight='bold')
+    ax1.set_xticklabels(signal_labels, fontsize=TICK_LABEL_SIZE)
+    ax1.set_yticklabels(signal_labels, fontsize=TICK_LABEL_SIZE)
+    ax1.set_title('Resting State (RS)', fontsize=AXES_TITLE_SIZE, fontweight='bold')
     
     # Add correlation values as text
     for i in range(3):
         for j in range(3):
             text = ax1.text(j, i, f'{corr_matrices["RS"][i, j]:.2f}',
-                           ha="center", va="center", color="black", fontsize=16)
+                           ha="center", va="center", color="black", fontsize=TICK_LABEL_SIZE)
     
     # DMT heatmap
     im2 = ax2.imshow(corr_matrices['DMT'], cmap='RdPu', vmin=vmin, vmax=vmax, aspect='auto')
     ax2.set_xticks(range(3))
     ax2.set_yticks(range(3))
-    ax2.set_xticklabels(signal_labels, fontsize=18)
-    ax2.set_yticklabels(signal_labels, fontsize=18)
-    ax2.set_title('DMT', fontsize=22, fontweight='bold')
+    ax2.set_xticklabels(signal_labels, fontsize=TICK_LABEL_SIZE)
+    ax2.set_yticklabels(signal_labels, fontsize=TICK_LABEL_SIZE)
+    ax2.set_title('DMT', fontsize=AXES_TITLE_SIZE, fontweight='bold')
     
     # Add correlation values as text
     for i in range(3):
         for j in range(3):
             text = ax2.text(j, i, f'{corr_matrices["DMT"][i, j]:.2f}',
-                           ha="center", va="center", color="black", fontsize=16)
+                           ha="center", va="center", color="black", fontsize=TICK_LABEL_SIZE)
     
     # Add colorbar
     cbar = fig.colorbar(im2, ax=[ax1, ax2], orientation='vertical', fraction=0.046, pad=0.04)
-    cbar.set_label('Pearson r', fontsize=18)
-    cbar.ax.tick_params(labelsize=14)
+    cbar.set_label('Pearson r', fontsize=AXES_LABEL_SIZE)
+    cbar.ax.tick_params(labelsize=TICK_LABEL_SIZE)
     
     plt.tight_layout()
     
@@ -890,20 +897,20 @@ def compute_and_plot_dynamic_coherence(df: pd.DataFrame, window: int = 2) -> str
             
             # Labels
             if row_idx == 2:
-                ax.set_xlabel('Time (minutes)', fontsize=18)
+                ax.set_xlabel('Time (minutes)', fontsize=AXES_LABEL_SIZE)
             if col_idx == 0:
-                ax.set_ylabel(f'{pair_name}\nCorrelation (r)', fontsize=16)
+                ax.set_ylabel(f'{pair_name}\nCorrelation (r)', fontsize=AXES_LABEL_SIZE)
             
             # Title only on top row
             if row_idx == 0:
-                ax.set_title(state, fontsize=20, fontweight='bold')
+                ax.set_title(state, fontsize=AXES_TITLE_SIZE, fontweight='bold')
             
             # Legend only on top-right
             if row_idx == 0 and col_idx == 1:
-                ax.legend(loc='upper right', fontsize=14, frameon=True, 
+                ax.legend(loc='upper right', fontsize=LEGEND_FONTSIZE, frameon=True, 
                          fancybox=False, framealpha=0.9)
             
-            ax.tick_params(axis='both', labelsize=14)
+            ax.tick_params(axis='both', labelsize=TICK_LABEL_SIZE)
     
     plt.tight_layout()
     
@@ -1305,48 +1312,75 @@ def create_model_summary_txt(diagnostics: Dict, hypothesis_results: Dict,
 
 
 #############################
-# Plot aesthetics (aligned with unimodal scripts)
+# Plot aesthetics (aligned with centralized figure_config)
 #############################
 
-# Centralized font sizes and legend settings
-AXES_TITLE_SIZE = 29
-AXES_LABEL_SIZE = 36
-TICK_LABEL_SIZE = 28
-TICK_LABEL_SIZE_SMALL = 24
-
-LEGEND_FONTSIZE = 18
-LEGEND_FONTSIZE_SMALL = 14
-LEGEND_MARKERSCALE = 1.6
-LEGEND_BORDERPAD = 0.6
-LEGEND_HANDLELENGTH = 3.0
-LEGEND_LABELSPACING = 0.7
-LEGEND_BORDERAXESPAD = 0.9
+# Import centralized figure configuration
+try:
+    from figure_config import (
+        FONT_SIZE_TITLE, FONT_SIZE_AXIS_LABEL, FONT_SIZE_TICK_LABEL,
+        FONT_SIZE_LEGEND, FONT_SIZE_PANEL_LABEL, FONT_SIZE_ANNOTATION,
+        FONT_SIZE_TITLE_SMALL, FONT_SIZE_AXIS_LABEL_SMALL,
+        FONT_SIZE_TICK_LABEL_SMALL, FONT_SIZE_LEGEND_SMALL,
+        LINE_WIDTH, MARKER_SIZE, LEGEND_MARKERSCALE, LEGEND_BORDERPAD,
+        LEGEND_HANDLELENGTH, LEGEND_LABELSPACING, LEGEND_BORDERAXESPAD,
+        COLOR_COMPOSITE_HIGH, COLOR_COMPOSITE_LOW, DOUBLE_COL_WIDTH,
+        apply_rcparams, add_panel_label, style_legend
+    )
+    # Use centralized config
+    AXES_TITLE_SIZE = FONT_SIZE_TITLE
+    AXES_LABEL_SIZE = FONT_SIZE_AXIS_LABEL
+    TICK_LABEL_SIZE = FONT_SIZE_TICK_LABEL
+    TICK_LABEL_SIZE_SMALL = FONT_SIZE_TICK_LABEL_SMALL
+    LEGEND_FONTSIZE = FONT_SIZE_LEGEND
+    LEGEND_FONTSIZE_SMALL = FONT_SIZE_LEGEND_SMALL
+    # Apply standardized rcParams
+    apply_rcparams()
+except ImportError:
+    # Fallback to Nature-compliant defaults if config not available
+    AXES_TITLE_SIZE = 10
+    AXES_LABEL_SIZE = 9
+    TICK_LABEL_SIZE = 8
+    TICK_LABEL_SIZE_SMALL = 7
+    LEGEND_FONTSIZE = 8
+    LEGEND_FONTSIZE_SMALL = 7
+    LEGEND_MARKERSCALE = 1.2
+    LEGEND_BORDERPAD = 0.4
+    LEGEND_HANDLELENGTH = 2.0
+    LEGEND_LABELSPACING = 0.5
+    LEGEND_BORDERAXESPAD = 0.5
 
 plt.style.use('seaborn-v0_8-whitegrid')
 plt.rcParams.update({
-    'figure.dpi': 110,
-    'savefig.dpi': 400,
+    'figure.dpi': 150,
+    'savefig.dpi': 300,
     'axes.titlesize': AXES_TITLE_SIZE,
     'axes.labelsize': AXES_LABEL_SIZE,
-    'axes.titlepad': 8.0,
+    'axes.titlepad': 6.0,
     'axes.spines.top': False,
     'axes.spines.right': False,
-    'legend.frameon': False,
+    'legend.frameon': True,
     'legend.fontsize': LEGEND_FONTSIZE,
     'legend.borderpad': LEGEND_BORDERPAD,
     'legend.handlelength': LEGEND_HANDLELENGTH,
-    'xtick.labelsize': TICK_LABEL_SIZE_SMALL,
-    'ytick.labelsize': TICK_LABEL_SIZE_SMALL,
+    'xtick.labelsize': TICK_LABEL_SIZE,
+    'ytick.labelsize': TICK_LABEL_SIZE,
 })
 
 # Composite index uses yellow/beige/camel color scheme from tab20b
 tab20b_colors = plt.cm.tab20b.colors
 tab20c_colors = plt.cm.tab20c.colors  # Keep for other modalities compatibility
 # Yellow/beige group from tab20b: indices 8-11 (darkest to lightest)
-COLOR_RS_HIGH = tab20b_colors[8]    # Dark yellow/camel for High
-COLOR_RS_LOW = tab20b_colors[10]    # Light yellow/beige for Low
-COLOR_DMT_HIGH = tab20b_colors[8]   # Same dark yellow/camel for High
-COLOR_DMT_LOW = tab20b_colors[10]   # Same light yellow/beige for Low
+try:
+    COLOR_RS_HIGH = COLOR_COMPOSITE_HIGH
+    COLOR_RS_LOW = COLOR_COMPOSITE_LOW
+    COLOR_DMT_HIGH = COLOR_COMPOSITE_HIGH
+    COLOR_DMT_LOW = COLOR_COMPOSITE_LOW
+except NameError:
+    COLOR_RS_HIGH = tab20b_colors[8]    # Dark yellow/camel for High
+    COLOR_RS_LOW = tab20b_colors[10]    # Light yellow/beige for Low
+    COLOR_DMT_HIGH = tab20b_colors[8]   # Same dark yellow/camel for High
+    COLOR_DMT_LOW = tab20b_colors[10]   # Same light yellow/beige for Low
 
 
 #############################
@@ -1495,9 +1529,9 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
     
     ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=2.0)
     ax.set_yticks(y_positions)
-    ax.set_yticklabels(coef_df['label'], fontsize=26)
-    ax.set_xlabel('Coefficient Estimate (β)\nwith 95% CI', fontsize=22)
-    ax.tick_params(axis='x', labelsize=16)
+    ax.set_yticklabels(coef_df['label'], fontsize=AXES_LABEL_SIZE)
+    ax.set_xlabel('Coefficient Estimate (β)\nwith 95% CI', fontsize=AXES_LABEL_SIZE)
+    ax.tick_params(axis='x', labelsize=TICK_LABEL_SIZE)
     ax.grid(True, axis='x', alpha=0.3, linestyle='-', linewidth=0.5)
     ax.set_axisbelow(True)
     
@@ -1518,7 +1552,7 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
         if sig_marker:
             # Position asterisks to the right of the CI
             x_pos = row['ci_upper'] + x_range * 0.02
-            ax.text(x_pos, y_pos, sig_marker, fontsize=32, fontweight='bold',
+            ax.text(x_pos, y_pos, sig_marker, fontsize=AXES_TITLE_SIZE, fontweight='bold',
                    va='center', ha='left', color=row['color'])
     
     plt.subplots_adjust(left=0.28, right=0.92)
@@ -1755,13 +1789,13 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
     legend1.get_frame().set_facecolor('white')
     legend1.get_frame().set_alpha(0.9)
     
-    ax1.set_xlabel('Time (minutes)', fontsize=24)
+    ax1.set_xlabel('Time (minutes)', fontsize=AXES_LABEL_SIZE)
     # Use yellow/camel color from tab20b for Composite Arousal Index
     ax1.text(-0.20, 0.5, 'Composite Arousal', transform=ax1.transAxes, 
-             fontsize=24, fontweight='bold', color=tab20b_colors[8],
+             fontsize=AXES_LABEL_SIZE, fontweight='bold', color=tab20b_colors[8],
              rotation=90, va='center', ha='center')
     ax1.text(-0.12, 0.5, 'Index (PC1)', transform=ax1.transAxes, 
-             fontsize=24, fontweight='normal', color='black', 
+             fontsize=AXES_LABEL_SIZE, fontweight='normal', color='black', 
              rotation=90, va='center', ha='center')
     ax1.set_title('Resting State (RS)', fontweight='bold')
     ax1.grid(True, which='major', axis='y', alpha=0.25)
@@ -1796,7 +1830,7 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
     legend2.get_frame().set_facecolor('white')
     legend2.get_frame().set_alpha(0.9)
     
-    ax2.set_xlabel('Time (minutes)', fontsize=24)
+    ax2.set_xlabel('Time (minutes)', fontsize=AXES_LABEL_SIZE)
     ax2.set_title('DMT', fontweight='bold')
     ax2.grid(True, which='major', axis='y', alpha=0.25)
     ax2.grid(False, which='major', axis='x')
@@ -1808,7 +1842,7 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
         time_ticks = list(range(0, max_tick + 1))
         ax.set_xticks(time_ticks)
         ax.set_xlim(-0.2, max_time_min + 0.2)
-        ax.tick_params(axis='both', labelsize=20)
+        ax.tick_params(axis='both', labelsize=TICK_LABEL_SIZE)
     
     plt.tight_layout()
     out_path = os.path.join(PLOTS_DIR, 'all_subs_composite.png')
@@ -1993,12 +2027,12 @@ def create_dmt_only_extended_plot_from_saved() -> Optional[str]:
     leg.get_frame().set_alpha(0.9)
     
     # Labels
-    ax.set_xlabel('Time (minutes)', fontsize=24)
+    ax.set_xlabel('Time (minutes)', fontsize=AXES_LABEL_SIZE)
     ax.text(-0.20, 0.5, 'Composite Arousal', transform=ax.transAxes, 
-            fontsize=24, fontweight='bold', color=tab20b_colors[8],
+            fontsize=AXES_LABEL_SIZE, fontweight='bold', color=tab20b_colors[8],
             rotation=90, va='center', ha='center')
     ax.text(-0.12, 0.5, 'Index (PC1)', transform=ax.transAxes, 
-            fontsize=24, fontweight='normal', color='black', 
+            fontsize=AXES_LABEL_SIZE, fontweight='normal', color='black', 
             rotation=90, va='center', ha='center')
     ax.set_title('DMT', fontweight='bold')
     
@@ -2012,7 +2046,7 @@ def create_dmt_only_extended_plot_from_saved() -> Optional[str]:
     time_ticks = list(range(0, max_tick + 1))
     ax.set_xticks(time_ticks)
     ax.set_xlim(-0.2, max_time_min + 0.2)
-    ax.tick_params(axis='both', labelsize=20)
+    ax.tick_params(axis='both', labelsize=TICK_LABEL_SIZE)
     
     plt.tight_layout()
     
@@ -2174,13 +2208,13 @@ def create_dmt_only_extended_plot(df: pd.DataFrame) -> Optional[str]:
     leg.get_frame().set_alpha(0.9)
     
     # Labels
-    ax.set_xlabel('Time (minutes)', fontsize=24)
+    ax.set_xlabel('Time (minutes)', fontsize=AXES_LABEL_SIZE)
     # Use yellow/camel color from tab20b for Composite Arousal Index
     ax.text(-0.20, 0.5, 'Composite Arousal', transform=ax.transAxes, 
-            fontsize=24, fontweight='bold', color=tab20b_colors[8],
+            fontsize=AXES_LABEL_SIZE, fontweight='bold', color=tab20b_colors[8],
             rotation=90, va='center', ha='center')
     ax.text(-0.12, 0.5, 'Index (PC1)', transform=ax.transAxes, 
-            fontsize=24, fontweight='normal', color='black', 
+            fontsize=AXES_LABEL_SIZE, fontweight='normal', color='black', 
             rotation=90, va='center', ha='center')
     ax.set_title('DMT', fontweight='bold')
     
@@ -2195,7 +2229,7 @@ def create_dmt_only_extended_plot(df: pd.DataFrame) -> Optional[str]:
     time_ticks = list(range(0, max_tick + 1))
     ax.set_xticks(time_ticks)
     ax.set_xlim(-0.2, max_time_min + 0.2)
-    ax.tick_params(axis='both', labelsize=20)
+    ax.tick_params(axis='both', labelsize=TICK_LABEL_SIZE)
     
     plt.tight_layout()
     
@@ -2248,10 +2282,10 @@ def create_stacked_subjects_plot(df: pd.DataFrame) -> Optional[str]:
     """
     print("Creating stacked subjects plot...")
     
-    # Stacked per-subject figure specific sizes
-    STACKED_AXES_LABEL_SIZE = 22
-    STACKED_TICK_LABEL_SIZE = 14
-    STACKED_SUBJECT_FONTSIZE = 30
+    # Stacked per-subject figure specific sizes (use centralized config)
+    STACKED_AXES_LABEL_SIZE = AXES_LABEL_SIZE
+    STACKED_TICK_LABEL_SIZE = TICK_LABEL_SIZE
+    STACKED_SUBJECT_FONTSIZE = AXES_TITLE_SIZE
     
     # Get unique subjects
     subjects = sorted(df['subject'].unique())
@@ -2300,7 +2334,7 @@ def create_stacked_subjects_plot(df: pd.DataFrame) -> Optional[str]:
                       color=COLOR_RS_LOW, lw=1.4, marker='o', markersize=3)
         
         ax_rs.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
-        ax_rs.set_ylabel(r'$\mathbf{Composite\ Arousal}$' + '\nIndex (PC1)', fontsize=12)
+        ax_rs.set_ylabel(r'$\mathbf{Composite\ Arousal}$' + '\nIndex (PC1)', fontsize=STACKED_AXES_LABEL_SIZE)
         ax_rs.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_rs.set_title('Resting State (RS)', fontweight='bold')
         ax_rs.set_xlim(-0.2, 9.2)
@@ -2332,7 +2366,7 @@ def create_stacked_subjects_plot(df: pd.DataFrame) -> Optional[str]:
                        color=COLOR_DMT_LOW, lw=1.4, marker='o', markersize=3)
         
         ax_dmt.set_xlabel('Time (minutes)', fontsize=STACKED_AXES_LABEL_SIZE)
-        ax_dmt.set_ylabel(r'$\mathbf{Composite\ Arousal}$' + '\nIndex (PC1)', fontsize=12)
+        ax_dmt.set_ylabel(r'$\mathbf{Composite\ Arousal}$' + '\nIndex (PC1)', fontsize=STACKED_AXES_LABEL_SIZE)
         ax_dmt.tick_params(axis='both', labelsize=STACKED_TICK_LABEL_SIZE)
         ax_dmt.set_title('DMT', fontweight='bold')
         ax_dmt.set_xlim(-0.2, 9.2)

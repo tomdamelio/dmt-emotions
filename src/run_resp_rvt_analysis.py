@@ -23,7 +23,14 @@ import warnings
 import numpy as np
 import pandas as pd
 import matplotlib
-matplotlib.use('TkAgg')
+# Only set TkAgg if no backend is already set (allows Agg when imported from run_figures.py)
+if matplotlib.get_backend() == 'agg' or not matplotlib.get_backend():
+    pass  # Keep current backend
+else:
+    try:
+        matplotlib.use('TkAgg')
+    except Exception:
+        pass  # Ignore if backend already set
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
@@ -53,52 +60,73 @@ except Exception:
 # Plot aesthetics & centralized hyperparameters
 #############################
 
-# Centralized font sizes and legend settings
-AXES_TITLE_SIZE = 29
-AXES_LABEL_SIZE = 36
-TICK_LABEL_SIZE = 28
-TICK_LABEL_SIZE_SMALL = 24
-
-# Legend sizes (global and a smaller variant for dense, per-subject panels)
-LEGEND_FONTSIZE = 18
-LEGEND_FONTSIZE_SMALL = 14
-LEGEND_MARKERSCALE = 1.6
-LEGEND_BORDERPAD = 0.6
-LEGEND_HANDLELENGTH = 3.0
-LEGEND_LABELSPACING = 0.7
-LEGEND_BORDERAXESPAD = 0.9
-
-# Stacked per-subject figure specific sizes
-STACKED_AXES_LABEL_SIZE = 22
-STACKED_TICK_LABEL_SIZE = 14
-STACKED_SUBJECT_FONTSIZE = 30
+# Import centralized figure configuration
+try:
+    from figure_config import (
+        FONT_SIZE_TITLE, FONT_SIZE_AXIS_LABEL, FONT_SIZE_TICK_LABEL,
+        FONT_SIZE_LEGEND, FONT_SIZE_PANEL_LABEL, FONT_SIZE_ANNOTATION,
+        FONT_SIZE_TITLE_SMALL, FONT_SIZE_AXIS_LABEL_SMALL, 
+        FONT_SIZE_TICK_LABEL_SMALL, FONT_SIZE_LEGEND_SMALL,
+        LINE_WIDTH, MARKER_SIZE, LEGEND_MARKERSCALE, LEGEND_BORDERPAD,
+        LEGEND_HANDLELENGTH, LEGEND_LABELSPACING, LEGEND_BORDERAXESPAD,
+        COLOR_RESP_HIGH, COLOR_RESP_LOW, DOUBLE_COL_WIDTH,
+        apply_rcparams, add_panel_label, style_legend
+    )
+    AXES_TITLE_SIZE = FONT_SIZE_TITLE
+    AXES_LABEL_SIZE = FONT_SIZE_AXIS_LABEL
+    TICK_LABEL_SIZE = FONT_SIZE_TICK_LABEL
+    TICK_LABEL_SIZE_SMALL = FONT_SIZE_TICK_LABEL_SMALL
+    LEGEND_FONTSIZE = FONT_SIZE_LEGEND
+    LEGEND_FONTSIZE_SMALL = FONT_SIZE_LEGEND_SMALL
+    STACKED_AXES_LABEL_SIZE = FONT_SIZE_AXIS_LABEL_SMALL
+    STACKED_TICK_LABEL_SIZE = FONT_SIZE_TICK_LABEL_SMALL
+    STACKED_SUBJECT_FONTSIZE = FONT_SIZE_TITLE
+    apply_rcparams()
+except ImportError:
+    AXES_TITLE_SIZE = 10
+    AXES_LABEL_SIZE = 9
+    TICK_LABEL_SIZE = 8
+    TICK_LABEL_SIZE_SMALL = 7
+    LEGEND_FONTSIZE = 8
+    LEGEND_FONTSIZE_SMALL = 7
+    LEGEND_MARKERSCALE = 1.2
+    LEGEND_BORDERPAD = 0.4
+    LEGEND_HANDLELENGTH = 2.0
+    LEGEND_LABELSPACING = 0.5
+    LEGEND_BORDERAXESPAD = 0.5
+    STACKED_AXES_LABEL_SIZE = 8
+    STACKED_TICK_LABEL_SIZE = 7
+    STACKED_SUBJECT_FONTSIZE = 10
 
 plt.style.use('seaborn-v0_8-whitegrid')
 plt.rcParams.update({
-    'figure.dpi': 110,
-    'savefig.dpi': 400,
+    'figure.dpi': 150,
+    'savefig.dpi': 300,
     'axes.titlesize': AXES_TITLE_SIZE,
     'axes.labelsize': AXES_LABEL_SIZE,
-    'axes.titlepad': 8.0,
+    'axes.titlepad': 6.0,
     'axes.spines.top': False,
     'axes.spines.right': False,
-    'legend.frameon': False,
+    'legend.frameon': True,
     'legend.fontsize': LEGEND_FONTSIZE,
     'legend.borderpad': LEGEND_BORDERPAD,
     'legend.handlelength': LEGEND_HANDLELENGTH,
-    'xtick.labelsize': TICK_LABEL_SIZE_SMALL,
-    'ytick.labelsize': TICK_LABEL_SIZE_SMALL,
+    'xtick.labelsize': TICK_LABEL_SIZE,
+    'ytick.labelsize': TICK_LABEL_SIZE,
 })
 
-# Respiration modality uses green color scheme from tab20c palette
-# High and Low are consistent across RS and DMT using first and third gradients of green
-# tab20c has 20 colors in 5 groups of 4 gradients each
-# Green group: indices 8-11 (darkest to lightest)
+# Respiration modality uses blue color scheme from tab20c palette
 tab20c_colors = plt.cm.tab20c.colors
-COLOR_RS_HIGH = tab20c_colors[8]   # First green gradient (darkest/most intense) for High
-COLOR_RS_LOW = tab20c_colors[10]   # Third green gradient (lighter) for Low
-COLOR_DMT_HIGH = tab20c_colors[8]  # Same intense green for High
-COLOR_DMT_LOW = tab20c_colors[10]  # Same lighter green for Low
+try:
+    COLOR_RS_HIGH = COLOR_RESP_HIGH
+    COLOR_RS_LOW = COLOR_RESP_LOW
+    COLOR_DMT_HIGH = COLOR_RESP_HIGH
+    COLOR_DMT_LOW = COLOR_RESP_LOW
+except NameError:
+    COLOR_RS_HIGH = tab20c_colors[4]
+    COLOR_RS_LOW = tab20c_colors[6]
+    COLOR_DMT_HIGH = tab20c_colors[4]
+    COLOR_DMT_LOW = tab20c_colors[6]
 
 # Analysis window: first 9 minutes (18 windows of 30 seconds each)
 N_WINDOWS = 18  # 30-second windows: 0-30s, 30-60s, ..., 510-540s
@@ -846,23 +874,26 @@ def prepare_coefficient_data(coefficients: Dict) -> pd.DataFrame:
 
 
 def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
-    fig, ax = plt.subplots(figsize=(10, 8))
+    # Use height that matches timeseries plots when assembled
+    fig, ax = plt.subplots(figsize=(DOUBLE_COL_WIDTH * 0.45, DOUBLE_COL_WIDTH * 0.35))
     coef_df = coef_df.sort_values('order')
     y_positions = np.arange(len(coef_df))
     for idx, row in coef_df.iterrows():
         y_pos = y_positions[coef_df.index.get_loc(idx)]
         # Tamaño uniforme para todos los elementos
-        linewidth = 6.5
+        linewidth = 4.0
         alpha = 1.0
-        marker_size = 200
-        # Línea del CI muy gruesa
+        marker_size = 120
+        # Línea del CI
         ax.plot([row['ci_lower'], row['ci_upper']], [y_pos, y_pos], color=row['color'], linewidth=linewidth, alpha=alpha)
-        # Círculo del coeficiente grande con borde del mismo color
-        ax.scatter(row['beta'], y_pos, color=row['color'], s=marker_size, alpha=alpha, edgecolors=row['color'], linewidths=3.5, zorder=3)
-    ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=2.0)
+        # Círculo del coeficiente con borde del mismo color
+        ax.scatter(row['beta'], y_pos, color=row['color'], s=marker_size, alpha=alpha, edgecolors=row['color'], linewidths=2.0, zorder=3)
+    ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=1.0)
     ax.set_yticks(y_positions)
-    ax.set_yticklabels(coef_df['label'], fontsize=33)
-    ax.set_xlabel('Coefficient Estimate (β)\nwith 95% CI')
+    ax.set_yticklabels(coef_df['label'], fontsize=FONT_SIZE_TICK_LABEL)
+    ax.set_xlabel('Coefficient Estimate (β)\nwith 95% CI', fontsize=FONT_SIZE_AXIS_LABEL)
+    ax.tick_params(axis='x', labelsize=FONT_SIZE_TICK_LABEL)
+    ax.tick_params(axis='y', labelsize=FONT_SIZE_TICK_LABEL)
     ax.grid(True, axis='x', alpha=0.3, linestyle='-', linewidth=0.5)
     ax.set_axisbelow(True)
     # Add significance asterisks based on FDR-corrected p-values
@@ -882,11 +913,11 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
         if sig_marker:
             # Position asterisks to the right of the CI
             x_pos = row['ci_upper'] + x_range * 0.02
-            ax.text(x_pos, y_pos, sig_marker, fontsize=40, fontweight='bold',
+            ax.text(x_pos, y_pos, sig_marker, fontsize=FONT_SIZE_TITLE, fontweight='bold',
                    va='center', ha='left', color=row['color'])
-    plt.subplots_adjust(left=0.28, right=0.92)
+    plt.subplots_adjust(left=0.35, right=0.92)
     plt.tight_layout()
-    plt.savefig(output_path, dpi=400, bbox_inches='tight')
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
 
 
@@ -1240,7 +1271,8 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     dmt_mean_l, dmt_sem_l = mean_sem(L_DMT)
 
     x = np.arange(1, N_WINDOWS + 1)
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6), sharex=True, sharey=True)
+    # Use double column width with height matching coefficient plots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(DOUBLE_COL_WIDTH, DOUBLE_COL_WIDTH * 0.35), sharex=True, sharey=True)
     
     c_dmt_high, c_dmt_low = COLOR_DMT_HIGH, COLOR_DMT_LOW
     c_rs_high, c_rs_low = COLOR_RS_HIGH, COLOR_RS_LOW
@@ -1253,21 +1285,22 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
         ax1.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
     # Convert window indices to time in minutes for x-axis
     time_minutes = (x - 0.5) * WINDOW_SIZE_SEC / 60.0  # Center of each window
-    l1 = ax1.plot(time_minutes, rs_mean_h, color=c_rs_high, lw=2.0, label='High dose (40mg)')[0]
+    l1 = ax1.plot(time_minutes, rs_mean_h, color=c_rs_high, lw=LINE_WIDTH, label='High dose (40mg)')[0]
     ax1.fill_between(time_minutes, rs_mean_h - rs_sem_h, rs_mean_h + rs_sem_h, color=c_rs_high, alpha=0.25)
-    l2 = ax1.plot(time_minutes, rs_mean_l, color=c_rs_low, lw=2.0, label='Low dose (20mg)')[0]
+    l2 = ax1.plot(time_minutes, rs_mean_l, color=c_rs_low, lw=LINE_WIDTH, label='Low dose (20mg)')[0]
     ax1.fill_between(time_minutes, rs_mean_l - rs_sem_l, rs_mean_l + rs_sem_l, color=c_rs_low, alpha=0.25)
     leg1 = ax1.legend([l1, l2], ['High dose (40mg)', 'Low dose (20mg)'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg1.get_frame().set_facecolor('white'); leg1.get_frame().set_alpha(0.9)
-    ax1.set_xlabel('Time (minutes)')
+    ax1.set_xlabel('Time (minutes)', fontsize=FONT_SIZE_AXIS_LABEL)
     # Use green color from tab20c for Respiration (RESP/RVT modality) - only first line colored
     ax1.text(-0.20, 0.5, 'Respiration', transform=ax1.transAxes, 
-             fontsize=28, fontweight='bold', color=tab20c_colors[8],
+             fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold', color=tab20c_colors[8],
              rotation=90, va='center', ha='center')
     ax1.text(-0.12, 0.5, 'RVT (Z-scored)', transform=ax1.transAxes, 
-             fontsize=28, fontweight='normal', color='black', 
+             fontsize=FONT_SIZE_AXIS_LABEL, fontweight='normal', color='black', 
              rotation=90, va='center', ha='center')
-    ax1.set_title('Resting State (RS)', fontweight='bold')
+    ax1.set_title('Resting State (RS)', fontweight='bold', fontsize=FONT_SIZE_TITLE)
+    ax1.tick_params(axis='both', labelsize=FONT_SIZE_TICK_LABEL)
     ax1.grid(True, which='major', axis='y', alpha=0.25); ax1.grid(False, which='major', axis='x')
     
     # DMT panel
@@ -1276,14 +1309,15 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
         t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
         t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
         ax2.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
-    l3 = ax2.plot(time_minutes, dmt_mean_h, color=c_dmt_high, lw=2.0, label='High dose (40mg)')[0]
+    l3 = ax2.plot(time_minutes, dmt_mean_h, color=c_dmt_high, lw=LINE_WIDTH, label='High dose (40mg)')[0]
     ax2.fill_between(time_minutes, dmt_mean_h - dmt_sem_h, dmt_mean_h + dmt_sem_h, color=c_dmt_high, alpha=0.25)
-    l4 = ax2.plot(time_minutes, dmt_mean_l, color=c_dmt_low, lw=2.0, label='Low dose (20mg)')[0]
+    l4 = ax2.plot(time_minutes, dmt_mean_l, color=c_dmt_low, lw=LINE_WIDTH, label='Low dose (20mg)')[0]
     ax2.fill_between(time_minutes, dmt_mean_l - dmt_sem_l, dmt_mean_l + dmt_sem_l, color=c_dmt_low, alpha=0.25)
     leg2 = ax2.legend([l3, l4], ['High dose (40mg)', 'Low dose (20mg)'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg2.get_frame().set_facecolor('white'); leg2.get_frame().set_alpha(0.9)
-    ax2.set_xlabel('Time (minutes)')
-    ax2.set_title('DMT', fontweight='bold')
+    ax2.set_xlabel('Time (minutes)', fontsize=FONT_SIZE_AXIS_LABEL)
+    ax2.set_title('DMT', fontweight='bold', fontsize=FONT_SIZE_TITLE)
+    ax2.tick_params(axis='both', labelsize=FONT_SIZE_TICK_LABEL)
     ax2.grid(True, which='major', axis='y', alpha=0.25); ax2.grid(False, which='major', axis='x')
 
     for ax in (ax1, ax2):
@@ -1293,7 +1327,7 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
 
     plt.tight_layout()
     out_path = os.path.join(out_dir, 'plots', 'all_subs_resp_rvt.png')
-    plt.savefig(out_path, dpi=400, bbox_inches='tight')
+    plt.savefig(out_path, dpi=300, bbox_inches='tight')
     plt.close()
 
     # Write FDR report

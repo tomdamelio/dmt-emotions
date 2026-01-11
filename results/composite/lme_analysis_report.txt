@@ -2,7 +2,7 @@
 COMPOSITE AUTONOMIC AROUSAL INDEX (PCA-PC1) + LME ANALYSIS
 ================================================================================
 
-Analysis date: 2026-01-11 19:09:53
+Analysis date: 2026-01-11 23:06:06
 Dataset: 504 observations from 7 subjects
 Subjects: S04, S06, S07, S16, S18, S19, S20
 

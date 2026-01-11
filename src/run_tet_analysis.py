@@ -46,6 +46,45 @@ RESULTS_DIR = PROJECT_ROOT / 'results' / 'tet'
 FIGURES_DIR = RESULTS_DIR / 'figures'
 DATA_PATH = RESULTS_DIR / 'preprocessed' / 'tet_preprocessed.csv'
 
+# Import centralized figure configuration
+sys.path.insert(0, str(PROJECT_ROOT / 'src'))
+try:
+    from figure_config import (
+        FONT_SIZE_TITLE, FONT_SIZE_SUBTITLE, FONT_SIZE_AXIS_LABEL, 
+        FONT_SIZE_TICK_LABEL, FONT_SIZE_LEGEND, FONT_SIZE_PANEL_LABEL,
+        FONT_SIZE_ANNOTATION, FONT_SIZE_TITLE_SMALL, FONT_SIZE_AXIS_LABEL_SMALL,
+        FONT_SIZE_TICK_LABEL_SMALL, FONT_SIZE_LEGEND_SMALL,
+        LINE_WIDTH, MARKER_SIZE, COLOR_TET_HIGH, COLOR_TET_LOW,
+        apply_rcparams, add_panel_label, style_legend
+    )
+    # Apply standardized rcParams
+    apply_rcparams()
+    # Use centralized colors
+    COLOR_HIGH = COLOR_TET_HIGH
+    COLOR_LOW = COLOR_TET_LOW
+    COLOR_AROUSAL = COLOR_TET_HIGH
+    COLOR_VALENCE = COLOR_TET_LOW
+except ImportError:
+    # Fallback to Nature-compliant defaults
+    FONT_SIZE_TITLE = 10
+    FONT_SIZE_SUBTITLE = 9
+    FONT_SIZE_AXIS_LABEL = 9
+    FONT_SIZE_TICK_LABEL = 8
+    FONT_SIZE_LEGEND = 8
+    FONT_SIZE_PANEL_LABEL = 12
+    FONT_SIZE_ANNOTATION = 8
+    FONT_SIZE_TITLE_SMALL = 9
+    FONT_SIZE_AXIS_LABEL_SMALL = 8
+    FONT_SIZE_TICK_LABEL_SMALL = 7
+    FONT_SIZE_LEGEND_SMALL = 7
+    LINE_WIDTH = 1.5
+    MARKER_SIZE = 4
+    # Colors
+    COLOR_HIGH = '#5E4FA2'  # Purple for High dose (40mg)
+    COLOR_LOW = '#9E9AC8'   # Light purple for Low dose (20mg)
+    COLOR_AROUSAL = '#5E4FA2'
+    COLOR_VALENCE = '#9E9AC8'
+
 # Affective dimensions for PCA (order matters for loadings interpretation)
 # Order: Anxiety, Bliss, Emotional Intensity, Interoception, Pleasantness, Unpleasantness
 AFFECTIVE_COLS = [
@@ -65,12 +104,6 @@ AFFECTIVE_LABELS = {
     'pleasantness_z': 'Pleasantness',
     'unpleasantness_z': 'Unpleasantness'
 }
-
-# Colors
-COLOR_HIGH = '#5E4FA2'  # Purple for High dose (40mg)
-COLOR_LOW = '#9E9AC8'   # Light purple for Low dose (20mg)
-COLOR_AROUSAL = '#5E4FA2'
-COLOR_VALENCE = '#9E9AC8'
 
 # Analysis time window (0-20 min for DMT, 0-10 min for RS)
 DMT_MAX_TIME_MIN = 20
@@ -606,7 +639,7 @@ def plot_figure3(df, time_courses, loadings, variance_explained, lme_results,
                            show_ylabel=True, is_first_col=False, legend_loc='lower right')
     
     ax_arousal.text(-0.10, 1.12, 'A', transform=ax_arousal.transAxes, 
-                    fontsize=18, fontweight='bold', va='top')
+                    fontsize=FONT_SIZE_PANEL_LABEL, fontweight='bold', va='top')
     
     # =========================================================================
     # Panel A - Bottom row: Individual dimensions (5 equal-width subplots)
@@ -652,7 +685,7 @@ def plot_figure3(df, time_courses, loadings, variance_explained, lme_results,
                         show_gray_shading=True, show_ylabel=True)
     
     ax_pc1.text(-0.10, 1.12, 'C', transform=ax_pc1.transAxes,
-                fontsize=18, fontweight='bold', va='top')
+                fontsize=FONT_SIZE_PANEL_LABEL, fontweight='bold', va='top')
     
     # =========================================================================
     # Panel D - Variance Explained (left side of bottom row)
@@ -660,7 +693,7 @@ def plot_figure3(df, time_courses, loadings, variance_explained, lme_results,
     ax_var = fig.add_subplot(gs[4, :3])
     _plot_variance_explained(ax_var, variance_explained)
     ax_var.text(-0.17, 1.12, 'D', transform=ax_var.transAxes,
-                fontsize=18, fontweight='bold', va='top')
+                fontsize=FONT_SIZE_PANEL_LABEL, fontweight='bold', va='top')
     
     # =========================================================================
     # Panel E - PCA Loadings Heatmap (horizontal, right side - matching paper)
@@ -668,7 +701,7 @@ def plot_figure3(df, time_courses, loadings, variance_explained, lme_results,
     ax_load = fig.add_subplot(gs[4, 3:])
     _plot_loadings_heatmap_paper_style(ax_load, loadings)
     ax_load.text(-0.07, 1.12, 'E', transform=ax_load.transAxes,
-                 fontsize=18, fontweight='bold', va='top')
+                 fontsize=FONT_SIZE_PANEL_LABEL, fontweight='bold', va='top')
     
     plt.tight_layout()
     
@@ -702,12 +735,7 @@ def _plot_timeseries_panel(ax, time_courses, var_name, title, show_legend=True,
         is_first_col: whether this is the first column (for Y label)
         legend_loc: location of legend (e.g., 'upper right', 'lower right')
     
-    Font sizes (homogenized across all panels):
-        - Title: 12 (small: 11)
-        - Subtitle: 11 (small: 10)
-        - Axis labels: 11 (small: 10)
-        - Tick labels: 10 (small: 9)
-        - Legend: 10 (small: 9)
+    Font sizes use centralized figure_config for Nature Human Behaviour compliance.
     """
     
     # Get time values
@@ -760,31 +788,37 @@ def _plot_timeseries_panel(ax, time_courses, var_name, title, show_legend=True,
         for start_t, end_t in sig_regions:
             ax.hlines(bar_y, start_t, end_t, colors='black', linewidth=3, zorder=4)
     
-    # Axis labels - homogenized font sizes
-    ax.set_xlabel('Time (minutes)', fontsize=10 if small else 11, fontweight='bold')
+    # Axis labels - use centralized font sizes
+    title_size = FONT_SIZE_TITLE_SMALL if small else FONT_SIZE_TITLE
+    subtitle_size = FONT_SIZE_AXIS_LABEL_SMALL if small else FONT_SIZE_SUBTITLE
+    label_size = FONT_SIZE_AXIS_LABEL_SMALL if small else FONT_SIZE_AXIS_LABEL
+    tick_size = FONT_SIZE_TICK_LABEL_SMALL if small else FONT_SIZE_TICK_LABEL
+    legend_size = FONT_SIZE_LEGEND_SMALL if small else FONT_SIZE_LEGEND
+    
+    ax.set_xlabel('Time (minutes)', fontsize=label_size, fontweight='bold')
     
     # Y label - show when show_ylabel is True
     if show_ylabel:
-        ax.set_ylabel('Intensity (Z-scored)', fontsize=10 if small else 11, fontweight='bold')
+        ax.set_ylabel('Intensity (Z-scored)', fontsize=label_size, fontweight='bold')
     else:
         ax.set_ylabel('')
     
-    # Title: main title bold, subtitle not bold - homogenized font sizes
+    # Title: main title bold, subtitle not bold
     if subtitle:
         ax.set_title('')
         y_title = 1.02
         ax.text(0.5, y_title + 0.08, title, transform=ax.transAxes, 
-                fontsize=11 if small else 12, fontweight='bold', ha='center', va='bottom')
+                fontsize=title_size, fontweight='bold', ha='center', va='bottom')
         ax.text(0.5, y_title, subtitle, transform=ax.transAxes,
-                fontsize=10 if small else 11, fontweight='normal', ha='center', va='bottom')
+                fontsize=subtitle_size, fontweight='normal', ha='center', va='bottom')
     else:
-        ax.set_title(title, fontsize=11 if small else 12, fontweight='bold')
+        ax.set_title(title, fontsize=title_size, fontweight='bold')
     
     ax.set_xlim(0, 20)
     ax.axhline(0, color='#AAAAAA', linestyle='-', linewidth=0.5, alpha=0.5)
     
     if show_legend and not small:
-        ax.legend(loc=legend_loc, fontsize=10, framealpha=0.9)
+        ax.legend(loc=legend_loc, fontsize=legend_size, framealpha=0.9)
     
     # Style: gray spines like figure 4
     ax.spines['top'].set_visible(False)
@@ -793,8 +827,8 @@ def _plot_timeseries_panel(ax, time_courses, var_name, title, show_legend=True,
     ax.spines['bottom'].set_color('#888888')
     ax.spines['left'].set_linewidth(0.5)
     ax.spines['bottom'].set_linewidth(0.5)
-    # Homogenize tick label sizes and colors
-    ax.tick_params(axis='both', labelsize=9 if small else 10, colors='#555555')
+    # Use centralized tick label sizes
+    ax.tick_params(axis='both', labelsize=tick_size, colors='#555555')
 
 
 def _get_contiguous_regions(mask, time_bins):
@@ -865,18 +899,18 @@ def _plot_pc_timeseries(ax, time_courses, pc_name, title, show_legend=True,
         for start_t, end_t in sig_regions:
             ax.hlines(bar_y, start_t, end_t, colors='black', linewidth=3, zorder=4)
     
-    # Homogenized font sizes matching other panels
-    ax.set_xlabel('Time (minutes)', fontsize=11, fontweight='bold')
+    # Use centralized font sizes
+    ax.set_xlabel('Time (minutes)', fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold')
     if show_ylabel:
-        ax.set_ylabel(f'{pc_name} Score', fontsize=11, fontweight='bold')
+        ax.set_ylabel(f'{pc_name} Score', fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold')
     else:
         ax.set_ylabel('')
-    ax.set_title(title, fontsize=12, fontweight='bold')
+    ax.set_title(title, fontsize=FONT_SIZE_TITLE, fontweight='bold')
     ax.set_xlim(0, 20)
     ax.axhline(0, color='#AAAAAA', linestyle='-', linewidth=0.5, alpha=0.5)
     
     if show_legend:
-        ax.legend(loc=legend_loc, fontsize=10, framealpha=0.9)
+        ax.legend(loc=legend_loc, fontsize=FONT_SIZE_LEGEND, framealpha=0.9)
     
     # Style: gray spines like figure 4
     ax.spines['top'].set_visible(False)
@@ -885,8 +919,8 @@ def _plot_pc_timeseries(ax, time_courses, pc_name, title, show_legend=True,
     ax.spines['bottom'].set_color('#888888')
     ax.spines['left'].set_linewidth(0.5)
     ax.spines['bottom'].set_linewidth(0.5)
-    # Homogenize tick label sizes and colors
-    ax.tick_params(axis='both', labelsize=10, colors='#555555')
+    # Use centralized tick label sizes
+    ax.tick_params(axis='both', labelsize=FONT_SIZE_TICK_LABEL, colors='#555555')
 
 
 def _plot_lme_forest_horizontal(ax, lme_results, add_label: bool = True):
@@ -921,7 +955,7 @@ def _plot_lme_forest_horizontal(ax, lme_results, add_label: bool = True):
     # Add "B" label using figure coordinates (since ax is invisible)
     # Only add if add_label is True (for composite figure, not individual subplots)
     if add_label:
-        fig.text(bbox.x0 - 0.035, bbox.y1 + 0.015, 'B', fontsize=18, fontweight='bold', va='bottom')
+        fig.text(bbox.x0 - 0.035, bbox.y1 + 0.015, 'B', fontsize=FONT_SIZE_PANEL_LABEL, fontweight='bold', va='bottom')
     
     # Create mini axes for each effect with better spacing
     total_width = bbox.width
@@ -968,7 +1002,7 @@ def _plot_lme_forest_horizontal(ax, lme_results, add_label: bool = True):
                            capthick=1.5, elinewidth=1.5, zorder=3)
             # Add significance marker to the right of the CI
             if sig_marker:
-                mini_ax.text(ci_h + 0.02, y, sig_marker, fontsize=20, fontweight='bold',
+                mini_ax.text(ci_h + 0.02, y, sig_marker, fontsize=FONT_SIZE_TITLE, fontweight='bold',
                            va='center', ha='left', color=color)
         
         # Reference line at 0
@@ -978,20 +1012,20 @@ def _plot_lme_forest_horizontal(ax, lme_results, add_label: bool = True):
         mini_ax.set_ylim(-0.5, 1.5)
         mini_ax.set_yticks([0, 1])
         
-        # Y-axis labels only on first panel - homogenized font sizes
+        # Y-axis labels only on first panel - use centralized font sizes
         if idx == 0:
-            mini_ax.set_yticklabels(['Valence', 'Arousal'], fontsize=10)
+            mini_ax.set_yticklabels(['Valence', 'Arousal'], fontsize=FONT_SIZE_TICK_LABEL)
         else:
             mini_ax.set_yticklabels([])
         
-        # X-axis label - homogenized font sizes
-        mini_ax.set_xlabel('β coefficient', fontsize=10, fontweight='bold')
+        # X-axis label - use centralized font sizes
+        mini_ax.set_xlabel('β coefficient', fontsize=FONT_SIZE_TICK_LABEL, fontweight='bold')
         
-        # Title in purple color (matching paper) - homogenized font sizes
-        mini_ax.set_title(effect_name, fontsize=11, color=COLOR_AROUSAL, fontweight='bold')
+        # Title in purple color (matching paper) - use centralized font sizes
+        mini_ax.set_title(effect_name, fontsize=FONT_SIZE_TITLE_SMALL, color=COLOR_AROUSAL, fontweight='bold')
         
-        # Homogenize tick label sizes
-        mini_ax.tick_params(axis='both', labelsize=9)
+        # Use centralized tick label sizes
+        mini_ax.tick_params(axis='both', labelsize=FONT_SIZE_TICK_LABEL_SMALL)
         
         # Remove top and right spines
         mini_ax.spines['top'].set_visible(False)
@@ -1013,10 +1047,7 @@ def _plot_lme_forest_horizontal(ax, lme_results, add_label: bool = True):
 def _plot_variance_explained(ax, variance_explained):
     """Plot variance explained bar chart matching paper style.
     
-    Font sizes homogenized with other panels:
-        - Axis labels: 11
-        - Tick labels: 10
-        - Annotations: 10
+    Font sizes use centralized figure_config for Nature Human Behaviour compliance.
     """
     n_components = 5
     x = np.arange(n_components)
@@ -1027,16 +1058,16 @@ def _plot_variance_explained(ax, variance_explained):
     
     bars = ax.bar(x, var_pct, color=colors, edgecolor='none', width=0.7)
     
-    # Add percentage labels on top of bars - homogenized font size
+    # Add percentage labels on top of bars - use centralized font size
     for i, (bar, pct) in enumerate(zip(bars, var_pct)):
         ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1,
-                f'{pct:.1f}%', ha='center', va='bottom', fontsize=10, 
+                f'{pct:.1f}%', ha='center', va='bottom', fontsize=FONT_SIZE_TICK_LABEL, 
                 color='#555555', fontweight='bold')
     
     ax.set_xticks(x)
-    ax.set_xticklabels([f'PC{i+1}' for i in range(n_components)], fontsize=10)
-    ax.set_ylabel('Variance Explained (%)', fontsize=11, fontweight='bold')
-    ax.set_xlabel('Principal Component', fontsize=11, fontweight='bold')
+    ax.set_xticklabels([f'PC{i+1}' for i in range(n_components)], fontsize=FONT_SIZE_TICK_LABEL)
+    ax.set_ylabel('Variance Explained (%)', fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold')
+    ax.set_xlabel('Principal Component', fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold')
     ax.set_ylim(0, 50)
     
     # Style: gray spines like figure 4
@@ -1046,17 +1077,14 @@ def _plot_variance_explained(ax, variance_explained):
     ax.spines['bottom'].set_color('#888888')
     ax.spines['left'].set_linewidth(0.5)
     ax.spines['bottom'].set_linewidth(0.5)
-    # Homogenize tick label sizes and colors
-    ax.tick_params(axis='both', labelsize=10, colors='#555555')
+    # Use centralized tick label sizes
+    ax.tick_params(axis='both', labelsize=FONT_SIZE_TICK_LABEL, colors='#555555')
 
 
 def _plot_loadings_heatmap(ax, loadings):
     """Plot PCA loadings heatmap for PC1 and PC2 (vertical orientation).
     
-    Font sizes homogenized with other panels:
-        - Axis labels: 11
-        - Tick labels: 10
-        - Cell annotations: 10
+    Font sizes use centralized figure_config for Nature Human Behaviour compliance.
     """
     load_matrix = loadings[['PC1', 'PC2']].T.values
     dim_labels = ['Anxiety', 'Bliss', 'Emot.\nIntens.', 
@@ -1069,26 +1097,23 @@ def _plot_loadings_heatmap(ax, loadings):
             val = load_matrix[i, j]
             color = 'white' if abs(val) > 0.4 else 'black'
             ax.text(j, i, f'{val:.2f}', ha='center', va='center',
-                   fontsize=10, color=color)
+                   fontsize=FONT_SIZE_TICK_LABEL, color=color)
     
     ax.set_xticks(np.arange(6))
-    ax.set_xticklabels(dim_labels, fontsize=10, rotation=45, ha='right')
+    ax.set_xticklabels(dim_labels, fontsize=FONT_SIZE_TICK_LABEL, rotation=45, ha='right')
     ax.set_yticks([0, 1])
-    ax.set_yticklabels(['PC1', 'PC2'], fontsize=10)
-    ax.set_xlabel('Affective Dimension', fontsize=11)
+    ax.set_yticklabels(['PC1', 'PC2'], fontsize=FONT_SIZE_TICK_LABEL)
+    ax.set_xlabel('Affective Dimension', fontsize=FONT_SIZE_AXIS_LABEL)
     
     cbar = plt.colorbar(im, ax=ax, shrink=0.8)
-    cbar.set_label('Loading', fontsize=11)
-    cbar.ax.tick_params(labelsize=10)
+    cbar.set_label('Loading', fontsize=FONT_SIZE_AXIS_LABEL)
+    cbar.ax.tick_params(labelsize=FONT_SIZE_TICK_LABEL)
 
 
 def _plot_loadings_heatmap_horizontal(ax, loadings):
     """Plot PCA loadings heatmap in horizontal orientation (dimensions as rows).
     
-    Font sizes homogenized with other panels:
-        - Axis labels: 11
-        - Tick labels: 10
-        - Cell annotations: 10
+    Font sizes use centralized figure_config for Nature Human Behaviour compliance.
     """
     # Transpose: dimensions as rows, PCs as columns
     load_matrix = loadings[['PC1', 'PC2']].values  # (6 dims, 2 PCs)
@@ -1098,25 +1123,25 @@ def _plot_loadings_heatmap_horizontal(ax, loadings):
     
     im = ax.imshow(load_matrix, cmap='RdBu_r', aspect='auto', vmin=-1, vmax=1)
     
-    # Add text annotations - homogenized font size
+    # Add text annotations - use centralized font size
     for i in range(6):  # dimensions
         for j in range(2):  # PCs
             val = load_matrix[i, j]
             color = 'white' if abs(val) > 0.4 else 'black'
             ax.text(j, i, f'{val:.2f}', ha='center', va='center',
-                   fontsize=10, color=color, fontweight='bold')
+                   fontsize=FONT_SIZE_TICK_LABEL, color=color, fontweight='bold')
     
     ax.set_xticks([0, 1])
-    ax.set_xticklabels(['PC1', 'PC2'], fontsize=10)
+    ax.set_xticklabels(['PC1', 'PC2'], fontsize=FONT_SIZE_TICK_LABEL)
     ax.set_yticks(np.arange(6))
-    ax.set_yticklabels(dim_labels, fontsize=10)
-    ax.set_xlabel('Principal Component', fontsize=11, fontweight='bold')
-    ax.set_ylabel('Affective Dimension', fontsize=11, fontweight='bold')
+    ax.set_yticklabels(dim_labels, fontsize=FONT_SIZE_TICK_LABEL)
+    ax.set_xlabel('Principal Component', fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold')
+    ax.set_ylabel('Affective Dimension', fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold')
     
     # Colorbar
     cbar = plt.colorbar(im, ax=ax, shrink=0.6, pad=0.02)
-    cbar.set_label('Loading', fontsize=11, fontweight='bold')
-    cbar.ax.tick_params(labelsize=10)
+    cbar.set_label('Loading', fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold')
+    cbar.ax.tick_params(labelsize=FONT_SIZE_TICK_LABEL)
 
 
 def _plot_loadings_heatmap_paper_style(ax, loadings):
@@ -1125,11 +1150,7 @@ def _plot_loadings_heatmap_paper_style(ax, loadings):
     Paper style: PCs as rows, dimensions as columns, with rotated x-labels.
     Colorbar extends to full height of the heatmap. No cell borders.
     
-    Font sizes homogenized with other panels:
-        - Axis labels: 11
-        - Tick labels: 10
-        - Cell annotations: 10
-        - Colorbar label: 11
+    Font sizes use centralized figure_config for Nature Human Behaviour compliance.
     """
     # PCs as rows, dimensions as columns (matching paper Figure 3e)
     load_matrix = loadings[['PC1', 'PC2']].T.values  # (2 PCs, 6 dims)
@@ -1145,25 +1166,25 @@ def _plot_loadings_heatmap_paper_style(ax, loadings):
     
     im = ax.imshow(load_matrix, cmap=cmap, aspect='auto', vmin=-1, vmax=1)
     
-    # Add text annotations - homogenized font size
+    # Add text annotations - use centralized font size
     for i in range(2):  # PCs (rows)
         for j in range(6):  # dimensions (columns)
             val = load_matrix[i, j]
             # Use white text for dark cells, black for light cells
             color = 'white' if abs(val) > 0.45 else 'black'
             ax.text(j, i, f'{val:.2f}', ha='center', va='center',
-                   fontsize=10, color=color, fontweight='bold')
+                   fontsize=FONT_SIZE_TICK_LABEL, color=color, fontweight='bold')
     
-    # X-axis: dimensions (rotated labels) - homogenized font size
+    # X-axis: dimensions (rotated labels) - use centralized font size
     ax.set_xticks(np.arange(6))
-    ax.set_xticklabels(dim_labels, fontsize=10, rotation=45, ha='right')
+    ax.set_xticklabels(dim_labels, fontsize=FONT_SIZE_TICK_LABEL, rotation=45, ha='right')
     
-    # Y-axis: PCs - homogenized font size
+    # Y-axis: PCs - use centralized font size
     ax.set_yticks([0, 1])
-    ax.set_yticklabels(['PC1', 'PC2'], fontsize=10, fontweight='bold')
+    ax.set_yticklabels(['PC1', 'PC2'], fontsize=FONT_SIZE_TICK_LABEL, fontweight='bold')
     
-    # Labels - homogenized font size
-    ax.set_xlabel('Affective Dimension', fontsize=11, fontweight='bold')
+    # Labels - use centralized font size
+    ax.set_xlabel('Affective Dimension', fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold')
     
     # Remove all spines (no border around heatmap)
     for spine in ax.spines.values():
@@ -1174,8 +1195,8 @@ def _plot_loadings_heatmap_paper_style(ax, loadings):
     
     # Colorbar on the right side - FULL HEIGHT (shrink=1.0)
     cbar = plt.colorbar(im, ax=ax, shrink=1.0, pad=0.02, aspect=10)
-    cbar.set_label('Loading', fontsize=11, fontweight='bold')
-    cbar.ax.tick_params(labelsize=10)
+    cbar.set_label('Loading', fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold')
+    cbar.ax.tick_params(labelsize=FONT_SIZE_TICK_LABEL)
     # Gray outline for colorbar
     cbar.outline.set_edgecolor('#888888')
     cbar.outline.set_linewidth(0.5)
