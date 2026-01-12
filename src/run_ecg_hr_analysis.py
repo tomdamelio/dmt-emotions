@@ -81,7 +81,7 @@ try:
     LEGEND_FONTSIZE_SMALL = FONT_SIZE_LEGEND_SMALL
     STACKED_AXES_LABEL_SIZE = FONT_SIZE_AXIS_LABEL_SMALL
     STACKED_TICK_LABEL_SIZE = FONT_SIZE_TICK_LABEL_SMALL
-    STACKED_SUBJECT_FONTSIZE = FONT_SIZE_TITLE
+    STACKED_SUBJECT_FONTSIZE = FONT_SIZE_TITLE * 3  # 3x larger for visibility
     # Apply standardized rcParams
     apply_rcparams()
 except ImportError:
@@ -99,7 +99,7 @@ except ImportError:
     LEGEND_BORDERAXESPAD = 0.5
     STACKED_AXES_LABEL_SIZE = 8
     STACKED_TICK_LABEL_SIZE = 7
-    STACKED_SUBJECT_FONTSIZE = 10
+    STACKED_SUBJECT_FONTSIZE = 30  # 3x larger (was 10)
 
 plt.style.use('seaborn-v0_8-whitegrid')
 plt.rcParams.update({

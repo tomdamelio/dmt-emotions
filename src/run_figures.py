@@ -526,27 +526,29 @@ def create_figure_S1() -> str:
         _load_image(str(resp_stacked)),
     ]
 
-    # Narrower figure to reduce horizontal spacing between panels
-    fig_width = DOUBLE_COL_WIDTH * 0.45  # Even narrower
-    fig_height = fig_width * 0.50
+    # Wider figure with more height to avoid "squashing" panels
+    fig_width = DOUBLE_COL_WIDTH * 0.85
+    fig_height = DOUBLE_COL_WIDTH * 0.45  # Increased height to stretch panels
     fig = plt.figure(figsize=(fig_width, fig_height))
-    gs = fig.add_gridspec(1, 3, wspace=0.000,
-                          left=0.005, right=0.995, top=0.90, bottom=0.01)
+    
+    # Significant spacing between panels, narrower panel C to match height
+    gs = fig.add_gridspec(1, 3, wspace=0.15, width_ratios=[1, 1, 0.85],
+                          left=0.02, right=0.98, top=0.92, bottom=0.02)
     
     labels = ['A', 'B', 'C']
-    label_x_positions = [0.005, 0.34, 0.67]
     
     for i, (img, label) in enumerate(zip(imgs, labels)):
         ax = fig.add_subplot(gs[0, i])
         ax.axis('off')
         if img is not None:
-            ax.imshow(img)
-        # Smaller panel labels
-        fig.text(label_x_positions[i], 0.97, label, 
-                fontsize=PANEL_LABEL_SIZE - 9, fontweight='bold', ha='left', va='top')
+            ax.imshow(img, aspect='auto')
+        # Slightly larger labels
+        pos = ax.get_position()
+        fig.text(pos.x0, pos.y1 + 0.02, label, 
+                fontsize=5, fontweight='bold', ha='left', va='bottom')
 
     out_path = str(OUT_DIR / 'figure_S1.png')
-    plt.savefig(out_path, dpi=600, bbox_inches='tight', facecolor='white')
+    plt.savefig(out_path, dpi=1800, bbox_inches='tight', facecolor='white')
     plt.close()
     return out_path
 

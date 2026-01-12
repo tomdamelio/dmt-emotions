@@ -2,7 +2,7 @@
 LME ANALYSIS REPORT: SMNA AUC by 30-second Windows (first 9 minutes)
 ================================================================================
 
-Analysis date: 2026-01-12 18:23:47
+Analysis date: 2026-01-12 20:27:35
 Dataset: 792 observations from 11 subjects
 
 DESIGN:
