@@ -1,12 +1,10 @@
 FDR COMPARISON: High vs Low (Composite Arousal Index, DMT only)
 Alpha = 0.05
-Time resolution: 30-second windows (windows 1-38, 0-19.0 minutes)
+Time resolution: 30-second windows (windows 1-18, 0-9.0 minutes)
 
-Significant window ranges (count=4):
+Significant window ranges (count=2):
   - Window 5 to 6 (2.0-3.0 min)
-  - Window 8 to 20 (3.5-10.0 min)
-  - Window 22 to 29 (10.5-14.5 min)
-  - Window 33 to 38 (16.0-19.0 min)
+  - Window 8 to 18 (3.5-9.0 min)
 
-Min p_FDR: 0.001479
-Median p_FDR: 0.020811
+Min p_FDR: 0.005284
+Median p_FDR: 0.016400

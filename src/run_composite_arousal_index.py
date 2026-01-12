@@ -1333,6 +1333,8 @@ try:
     AXES_TITLE_SIZE = FONT_SIZE_TITLE
     AXES_LABEL_SIZE = FONT_SIZE_AXIS_LABEL
     TICK_LABEL_SIZE = FONT_SIZE_TICK_LABEL
+    AXES_TITLE_SIZE_SMALL = FONT_SIZE_TITLE_SMALL
+    AXES_LABEL_SIZE_SMALL = FONT_SIZE_AXIS_LABEL_SMALL
     TICK_LABEL_SIZE_SMALL = FONT_SIZE_TICK_LABEL_SMALL
     LEGEND_FONTSIZE = FONT_SIZE_LEGEND
     LEGEND_FONTSIZE_SMALL = FONT_SIZE_LEGEND_SMALL
@@ -1343,6 +1345,8 @@ except ImportError:
     AXES_TITLE_SIZE = 10
     AXES_LABEL_SIZE = 9
     TICK_LABEL_SIZE = 8
+    AXES_TITLE_SIZE_SMALL = 9
+    AXES_LABEL_SIZE_SMALL = 8
     TICK_LABEL_SIZE_SMALL = 7
     LEGEND_FONTSIZE = 8
     LEGEND_FONTSIZE_SMALL = 7
@@ -1531,10 +1535,11 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
     
     ax.axvline(x=0, color='black', linestyle='--', alpha=0.5, linewidth=1.0)
     ax.set_yticks(y_positions)
-    ax.set_yticklabels(coef_df['label'], fontsize=TICK_LABEL_SIZE)
-    ax.set_xlabel('Coefficient Estimate (β)\nwith 95% CI', fontsize=AXES_LABEL_SIZE)
-    ax.tick_params(axis='x', labelsize=TICK_LABEL_SIZE)
-    ax.tick_params(axis='y', labelsize=TICK_LABEL_SIZE)
+    # Much smaller font sizes to match other panels when assembled
+    ax.set_yticklabels(coef_df['label'], fontsize=7)
+    ax.set_xlabel('Coefficient Estimate (β)\nwith 95% CI', fontsize=8)
+    ax.tick_params(axis='x', labelsize=7)
+    ax.tick_params(axis='y', labelsize=7)
     ax.grid(True, axis='x', alpha=0.3, linestyle='-', linewidth=0.5)
     ax.set_axisbelow(True)
     ax.spines['top'].set_visible(False)
@@ -1557,7 +1562,7 @@ def create_coefficient_plot(coef_df: pd.DataFrame, output_path: str) -> None:
         if sig_marker:
             # Position asterisks to the right of the CI
             x_pos = row['ci_upper'] + x_range * 0.02
-            ax.text(x_pos, y_pos, sig_marker, fontsize=AXES_TITLE_SIZE, fontweight='bold',
+            ax.text(x_pos, y_pos, sig_marker, fontsize=9, fontweight='bold',
                    va='center', ha='left', color=row['color'])
     
     plt.subplots_adjust(left=0.40, right=0.92)
@@ -2411,7 +2416,7 @@ def create_stacked_subjects_plot(df: pd.DataFrame) -> Optional[str]:
         )
     
     out_path = os.path.join(PLOTS_DIR, 'stacked_subs_composite.png')
-    plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    plt.savefig(out_path, dpi=600, bbox_inches='tight')
     plt.close()
     
     print(f"  ✓ Saved: {out_path}")

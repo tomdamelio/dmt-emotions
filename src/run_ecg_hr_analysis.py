@@ -2012,7 +2012,7 @@ def create_stacked_subjects_plot(out_dir: str) -> Optional[str]:
             transform=fig.transFigure,
         )
     out_path = os.path.join(out_dir, 'plots', 'stacked_subs_ecg_hr.png')
-    plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    plt.savefig(out_path, dpi=600, bbox_inches='tight')
     plt.close()
     return out_path
 

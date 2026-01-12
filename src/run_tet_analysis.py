@@ -486,7 +486,7 @@ def save_individual_subplots(df, time_courses, loadings, variance_explained,
     # =========================================================================
     # Panel A: Time series (Arousal, Valence, 5 dimensions)
     # =========================================================================
-    fig_a = plt.figure(figsize=(14, 5))
+    fig_a = plt.figure(figsize=(10, 4))
     gs_a = fig_a.add_gridspec(2, 11, height_ratios=[1.2, 0.9], hspace=0.35, wspace=0.4)
     
     # Top row: Arousal and Valence
@@ -529,7 +529,7 @@ def save_individual_subplots(df, time_courses, loadings, variance_explained,
     # =========================================================================
     # Panel B: LME Forest Plot (without label - added during assembly)
     # =========================================================================
-    fig_b = plt.figure(figsize=(14, 2.5))
+    fig_b = plt.figure(figsize=(10, 2))
     ax_lme = fig_b.add_subplot(1, 1, 1)
     _plot_lme_forest_horizontal(ax_lme, lme_results, add_label=False)
     plt.tight_layout()
@@ -542,7 +542,7 @@ def save_individual_subplots(df, time_courses, loadings, variance_explained,
     # =========================================================================
     # Panel C: PC Time Courses
     # =========================================================================
-    fig_c = plt.figure(figsize=(14, 3.5))
+    fig_c = plt.figure(figsize=(10, 2.5))
     gs_c = fig_c.add_gridspec(1, 11, wspace=0.4)
     
     ax_pc1 = fig_c.add_subplot(gs_c[0, :5])
@@ -565,7 +565,7 @@ def save_individual_subplots(df, time_courses, loadings, variance_explained,
     # =========================================================================
     # Panel D: Variance Explained
     # =========================================================================
-    fig_d = plt.figure(figsize=(5, 3.5))
+    fig_d = plt.figure(figsize=(4, 2.5))
     ax_var = fig_d.add_subplot(1, 1, 1)
     _plot_variance_explained(ax_var, variance_explained)
     plt.tight_layout()
@@ -578,7 +578,7 @@ def save_individual_subplots(df, time_courses, loadings, variance_explained,
     # =========================================================================
     # Panel E: PCA Loadings Heatmap
     # =========================================================================
-    fig_e = plt.figure(figsize=(8, 3.5))
+    fig_e = plt.figure(figsize=(6, 2.5))
     ax_load = fig_e.add_subplot(1, 1, 1)
     _plot_loadings_heatmap_paper_style(ax_load, loadings)
     plt.tight_layout()
@@ -609,8 +609,8 @@ def plot_figure3(df, time_courses, loadings, variance_explained, lme_results,
     """
     print("\nGenerating Figure 3 (composite)...")
     
-    # Create figure with custom layout
-    fig = plt.figure(figsize=(14, 16))
+    # Create figure with custom layout - increased height for better spacing
+    fig = plt.figure(figsize=(10, 14))
     
     # Define grid: 5 rows
     # Row 0: Panel A top (Arousal + Valence) - larger
@@ -621,7 +621,7 @@ def plot_figure3(df, time_courses, loadings, variance_explained, lme_results,
     
     gs = gridspec.GridSpec(5, 11, figure=fig, 
                            height_ratios=[1.2, 0.9, 0.7, 1.0, 0.9],
-                           hspace=0.4, wspace=0.4)
+                           hspace=0.60, wspace=0.75)
     
     # =========================================================================
     # Panel A - Top row: Arousal and Valence time series (small gap in middle)
@@ -638,7 +638,7 @@ def plot_figure3(df, time_courses, loadings, variance_explained, lme_results,
                            significance=significance, show_gray_shading=True,
                            show_ylabel=True, is_first_col=False, legend_loc='lower right')
     
-    ax_arousal.text(-0.10, 1.12, 'A', transform=ax_arousal.transAxes, 
+    ax_arousal.text(-0.20, 1.25, 'A', transform=ax_arousal.transAxes, 
                     fontsize=FONT_SIZE_PANEL_LABEL, fontweight='bold', va='top')
     
     # =========================================================================
@@ -684,7 +684,7 @@ def plot_figure3(df, time_courses, loadings, variance_explained, lme_results,
                         significance=significance, legend_loc='lower right',
                         show_gray_shading=True, show_ylabel=True)
     
-    ax_pc1.text(-0.10, 1.12, 'C', transform=ax_pc1.transAxes,
+    ax_pc1.text(-0.20, 1.25, 'C', transform=ax_pc1.transAxes,
                 fontsize=FONT_SIZE_PANEL_LABEL, fontweight='bold', va='top')
     
     # =========================================================================
@@ -692,7 +692,7 @@ def plot_figure3(df, time_courses, loadings, variance_explained, lme_results,
     # =========================================================================
     ax_var = fig.add_subplot(gs[4, :3])
     _plot_variance_explained(ax_var, variance_explained)
-    ax_var.text(-0.17, 1.12, 'D', transform=ax_var.transAxes,
+    ax_var.text(-0.35, 1.25, 'D', transform=ax_var.transAxes,
                 fontsize=FONT_SIZE_PANEL_LABEL, fontweight='bold', va='top')
     
     # =========================================================================
@@ -700,7 +700,7 @@ def plot_figure3(df, time_courses, loadings, variance_explained, lme_results,
     # =========================================================================
     ax_load = fig.add_subplot(gs[4, 3:])
     _plot_loadings_heatmap_paper_style(ax_load, loadings)
-    ax_load.text(-0.07, 1.12, 'E', transform=ax_load.transAxes,
+    ax_load.text(-0.10, 1.25, 'E', transform=ax_load.transAxes,
                  fontsize=FONT_SIZE_PANEL_LABEL, fontweight='bold', va='top')
     
     plt.tight_layout()
@@ -795,11 +795,11 @@ def _plot_timeseries_panel(ax, time_courses, var_name, title, show_legend=True,
     tick_size = FONT_SIZE_TICK_LABEL_SMALL if small else FONT_SIZE_TICK_LABEL
     legend_size = FONT_SIZE_LEGEND_SMALL if small else FONT_SIZE_LEGEND
     
-    ax.set_xlabel('Time (minutes)', fontsize=label_size, fontweight='bold')
+    ax.set_xlabel('Time (minutes)', fontsize=label_size)
     
     # Y label - show when show_ylabel is True
     if show_ylabel:
-        ax.set_ylabel('Intensity (Z-scored)', fontsize=label_size, fontweight='bold')
+        ax.set_ylabel('Intensity (Z-scored)', fontsize=label_size)
     else:
         ax.set_ylabel('')
     
@@ -900,9 +900,9 @@ def _plot_pc_timeseries(ax, time_courses, pc_name, title, show_legend=True,
             ax.hlines(bar_y, start_t, end_t, colors='black', linewidth=3, zorder=4)
     
     # Use centralized font sizes
-    ax.set_xlabel('Time (minutes)', fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold')
+    ax.set_xlabel('Time (minutes)', fontsize=FONT_SIZE_AXIS_LABEL)
     if show_ylabel:
-        ax.set_ylabel(f'{pc_name} Score', fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold')
+        ax.set_ylabel(f'{pc_name} Score', fontsize=FONT_SIZE_AXIS_LABEL)
     else:
         ax.set_ylabel('')
     ax.set_title(title, fontsize=FONT_SIZE_TITLE, fontweight='bold')
@@ -955,7 +955,7 @@ def _plot_lme_forest_horizontal(ax, lme_results, add_label: bool = True):
     # Add "B" label using figure coordinates (since ax is invisible)
     # Only add if add_label is True (for composite figure, not individual subplots)
     if add_label:
-        fig.text(bbox.x0 - 0.035, bbox.y1 + 0.015, 'B', fontsize=FONT_SIZE_PANEL_LABEL, fontweight='bold', va='bottom')
+        fig.text(bbox.x0 - 0.065, bbox.y1 + 0.035, 'B', fontsize=FONT_SIZE_PANEL_LABEL, fontweight='bold', va='bottom')
     
     # Create mini axes for each effect with better spacing
     total_width = bbox.width
@@ -1019,7 +1019,7 @@ def _plot_lme_forest_horizontal(ax, lme_results, add_label: bool = True):
             mini_ax.set_yticklabels([])
         
         # X-axis label - use centralized font sizes
-        mini_ax.set_xlabel('β coefficient', fontsize=FONT_SIZE_TICK_LABEL, fontweight='bold')
+        mini_ax.set_xlabel('β coefficient', fontsize=FONT_SIZE_TICK_LABEL)
         
         # Title in purple color (matching paper) - use centralized font sizes
         mini_ax.set_title(effect_name, fontsize=FONT_SIZE_TITLE_SMALL, color=COLOR_AROUSAL, fontweight='bold')
@@ -1066,8 +1066,8 @@ def _plot_variance_explained(ax, variance_explained):
     
     ax.set_xticks(x)
     ax.set_xticklabels([f'PC{i+1}' for i in range(n_components)], fontsize=FONT_SIZE_TICK_LABEL)
-    ax.set_ylabel('Variance Explained (%)', fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold')
-    ax.set_xlabel('Principal Component', fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold')
+    ax.set_ylabel('Variance Explained', fontsize=FONT_SIZE_AXIS_LABEL)
+    ax.set_xlabel('Principal Component', fontsize=FONT_SIZE_AXIS_LABEL)
     ax.set_ylim(0, 50)
     
     # Style: gray spines like figure 4
@@ -1135,8 +1135,8 @@ def _plot_loadings_heatmap_horizontal(ax, loadings):
     ax.set_xticklabels(['PC1', 'PC2'], fontsize=FONT_SIZE_TICK_LABEL)
     ax.set_yticks(np.arange(6))
     ax.set_yticklabels(dim_labels, fontsize=FONT_SIZE_TICK_LABEL)
-    ax.set_xlabel('Principal Component', fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold')
-    ax.set_ylabel('Affective Dimension', fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold')
+    ax.set_xlabel('Principal Component', fontsize=FONT_SIZE_AXIS_LABEL)
+    ax.set_ylabel('Affective Dimension', fontsize=FONT_SIZE_AXIS_LABEL)
     
     # Colorbar
     cbar = plt.colorbar(im, ax=ax, shrink=0.6, pad=0.02)
@@ -1184,7 +1184,7 @@ def _plot_loadings_heatmap_paper_style(ax, loadings):
     ax.set_yticklabels(['PC1', 'PC2'], fontsize=FONT_SIZE_TICK_LABEL, fontweight='bold')
     
     # Labels - use centralized font size
-    ax.set_xlabel('Affective Dimension', fontsize=FONT_SIZE_AXIS_LABEL, fontweight='bold')
+    ax.set_xlabel('Affective Dimension', fontsize=FONT_SIZE_AXIS_LABEL)
     
     # Remove all spines (no border around heatmap)
     for spine in ax.spines.values():
