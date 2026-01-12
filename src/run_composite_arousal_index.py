@@ -2398,20 +2398,22 @@ def create_stacked_subjects_plot(df: pd.DataFrame) -> Optional[str]:
     
     fig.tight_layout(pad=2.0)
     
-    # Add subject codes centered between columns, aligned to final layout
+    # Add subject codes above each row of subplots with larger font
     for i, subject in enumerate(subjects):
         pos_left = axes[i, 0].get_position()
         pos_right = axes[i, 1].get_position()
-        y_center = (pos_left.y0 + pos_left.y1) / 2.0
-        x_center = (pos_left.x1 + pos_right.x0) / 2.0
+        # Position above the row (at top of subplots)
+        y_top = pos_left.y1 + 0.01
+        # Center horizontally across both subplots
+        x_center = (pos_left.x0 + pos_right.x1) / 2.0
         fig.text(
             x_center,
-            y_center + 0.02,
+            y_top,
             subject,
             ha='center',
             va='bottom',
             fontweight='bold',
-            fontsize=STACKED_SUBJECT_FONTSIZE,
+            fontsize=STACKED_SUBJECT_FONTSIZE + 4,  # Considerably larger
             transform=fig.transFigure,
         )
     

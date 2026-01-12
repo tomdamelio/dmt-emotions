@@ -526,23 +526,24 @@ def create_figure_S1() -> str:
         _load_image(str(resp_stacked)),
     ]
 
-    # Use Nature Human Behaviour double column width
-    # 3 panels horizontally: A, B, C
-    # Respect original aspect ratios - do not deform
-    fig = plt.figure(figsize=(DOUBLE_COL_WIDTH, DOUBLE_COL_WIDTH * 0.4))
-    gs = fig.add_gridspec(1, 3, wspace=0.02, hspace=0.05,
-                          left=0.01, right=0.99, top=0.95, bottom=0.05)
+    # Narrower figure to reduce horizontal spacing between panels
+    fig_width = DOUBLE_COL_WIDTH * 0.45  # Even narrower
+    fig_height = fig_width * 0.50
+    fig = plt.figure(figsize=(fig_width, fig_height))
+    gs = fig.add_gridspec(1, 3, wspace=0.000,
+                          left=0.005, right=0.995, top=0.90, bottom=0.01)
     
-    for i, (img, label) in enumerate(zip(imgs, ['A', 'B', 'C'])):
+    labels = ['A', 'B', 'C']
+    label_x_positions = [0.005, 0.34, 0.67]
+    
+    for i, (img, label) in enumerate(zip(imgs, labels)):
         ax = fig.add_subplot(gs[0, i])
         ax.axis('off')
         if img is not None:
-            # Respect original aspect ratio - do not stretch or compress
             ax.imshow(img)
-        # Add panel label using consistent positioning
-        pos = ax.get_position()
-        fig.text(pos.x0 - 0.01, pos.y1 + 0.02, label, 
-                fontsize=PANEL_LABEL_SIZE, fontweight='bold', ha='left', va='top')
+        # Smaller panel labels
+        fig.text(label_x_positions[i], 0.97, label, 
+                fontsize=PANEL_LABEL_SIZE - 9, fontweight='bold', ha='left', va='top')
 
     out_path = str(OUT_DIR / 'figure_S1.png')
     plt.savefig(out_path, dpi=600, bbox_inches='tight', facecolor='white')
@@ -928,6 +929,7 @@ def create_figure_S5() -> str:
     outcomes = [('emotional_intensity_z', 'Emotional Intensity (Z)'),
                 ('valence_index_z', 'Valence Index (Z)')]
     states = [('RS', COLOR_RS), ('DMT', COLOR_DMT)]
+    state_titles = {'RS': 'Resting State (RS)', 'DMT': 'DMT'}
     
     for row, (outcome, ylabel) in enumerate(outcomes):
         for col, (state, color) in enumerate(states):
@@ -959,7 +961,7 @@ def create_figure_S5() -> str:
                        bbox=dict(boxstyle='round', facecolor='white', alpha=0.9, 
                                 edgecolor='gray', linewidth=0.5))
             
-            ax.set_title(state, fontweight='bold', fontsize=FONT_SIZE_TITLE)
+            ax.set_title(state_titles[state], fontweight='bold', fontsize=FONT_SIZE_TITLE)
             ax.set_xlabel('Arousal Index (Physio PC1)', fontsize=FONT_SIZE_AXIS_LABEL)
             ax.set_ylabel(ylabel if col == 0 else '', fontsize=FONT_SIZE_AXIS_LABEL)
             ax.tick_params(labelsize=FONT_SIZE_TICK_LABEL)
