@@ -2413,7 +2413,7 @@ def create_stacked_subjects_plot(df: pd.DataFrame) -> Optional[str]:
             ha='center',
             va='bottom',
             fontweight='bold',
-            fontsize=STACKED_SUBJECT_FONTSIZE + 4,  # Considerably larger
+            fontsize=STACKED_SUBJECT_FONTSIZE + 16,  # Considerably larger
             transform=fig.transFigure,
         )
     
