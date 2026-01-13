@@ -1,6 +1,6 @@
 # DMT-Emotions Analysis
 
-**Version**: 1.1.0 | **Last Updated**: 2026-01-11
+**Version**: 1.1.0 | **Last Updated**: 2026-01-13
 
 Analysis pipeline for studying dose-dependent physiological and subjective responses to N,N-Dimethyltryptamine (DMT).
 
