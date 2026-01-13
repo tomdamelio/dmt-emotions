@@ -65,7 +65,12 @@ Todas las funciones de plotting ahora aceptan parámetro `alternative`:
 ### 3. Respiration (RESP/RVT)
 
 **DMT - Segmentos significativos:**
-- Verificados en análisis previo
+- Window 4-5 (1.5-2.5 min)
+- Window 7-8 (3.0-4.0 min)
+- Window 10 (4.5-5.0 min)
+
+**RS - Segmentos significativos:**
+- Ninguno
 
 **Archivos:**
 - `results/resp/rvt/plots/all_subs_resp_rvt.png` (Figure 2, panel E-F)
