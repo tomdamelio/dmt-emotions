@@ -158,7 +158,7 @@ python src/run_figures.py
 | `run_resp_rvt_analysis.py` | Respiration | RVT | NeuroKit2, LME, one-tailed tests |
 | `run_supplementary_analyses.py` | All physio | Phase averages, features | Phase-based t-tests, feature extraction |
 
-### Analysis Utility Modules (Supervisor Revisions)
+### Analysis Utility Modules
 
 The following modules in `scripts/` provide enhanced statistical analyses and visualization capabilities:
 
@@ -219,22 +219,6 @@ The following modules in `scripts/` provide enhanced statistical analyses and vi
   - ECG shows dramatically faster time-to-peak in DMT (1.9 vs 5.0 min, p < 0.001, d = -2.051)
   - Provides reference for interpreting dose-dependent effects
 
-⚠️ **Important:** Baseline comparisons collapse DMT doses to increase statistical power for detecting drug effects. They do NOT address dose-dependent effects.
-
-**Scientific Rationale:**
-- Phase averaging reduces noise and captures overall trajectory
-- Feature extraction captures aspects not visible in time-aligned comparisons
-- Baseline comparisons quantify magnitude of DMT effects vs static baseline
-- Provides convergent evidence from multiple analytical perspectives
-- Results are consistent with main FDR time-to-time analyses
-
-**Outputs:**
-- `results/{modality}/supplementary/phase_*.csv` - Phase-averaged data and comparisons
-- `results/{modality}/supplementary/extracted_features.csv` - Temporal features per subject
-- `results/{modality}/supplementary/feature_comparisons.csv` - Dose comparisons (High vs Low)
-- `results/{modality}/supplementary/baseline_comparison.csv` - DMT vs RS comparisons
-- `results/{modality}/supplementary/baseline_comparison_report.txt` - Detailed statistical report
-- `results/{modality}/supplementary/*.png` - Visualizations for supplementary materials
 
 ### TET Analysis
 
