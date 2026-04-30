@@ -4,7 +4,7 @@ Analysis code accompanying the paper:
 
 > D'Amelio, T. A., Gil Garbagnoli, T., Rodríguez Cuello, J., Lewis-Healey, E., Pallavicini, C., Cavanna, F., Bruno, N. M., De La Fuente, L. A., Müller, S., Copa, D., Bekinschtein, T., Vidaurre, D., Tagliazucchi, E. (2026). *Multimodal autonomic arousal tracks dose-dependent affective dynamics during the acute effects of DMT* (in preparation).
 
-This repository reproduces all main and Extended Data figures and statistical results from the paper. The accompanying dataset is archived on Zenodo at [`10.5281/zenodo.19893951`](https://doi.org/10.5281/zenodo.19893951). A citable snapshot of this codebase is at [`10.5281/zenodo.YYYYYYY`](https://doi.org/10.5281/zenodo.YYYYYYY).
+This repository reproduces all main and Extended Data figures and statistical results from the paper. The accompanying dataset is archived on Zenodo at [`10.5281/zenodo.19893951`](https://doi.org/10.5281/zenodo.19893951). A citable snapshot of this codebase is at [`10.5281/zenodo.19916527`](https://doi.org/10.5281/zenodo.19916527).
 
 ---
 
