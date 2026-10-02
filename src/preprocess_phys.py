@@ -476,47 +476,6 @@ def process_physiology(experiment, subject, fname):
         
         return {}, None, {}, None, None
        
-#%% Use project configuration
-
-# EXECUTION MODE: Configured in config.py
-if TEST_MODE:
-    subjects = SUJETOS_TEST.copy()
-    print(f"🧪 TEST MODE: Processing {len(subjects)} test subjects:")
-    print(f"   {subjects}")
-else:
-    if PROCESSING_MODE == 'ALL':
-        subjects = TODOS_LOS_SUJETOS.copy()
-        print(f"📋 ALL SUBJECTS MODE: Processing {len(subjects)} subjects (S01-S20, except S14):")
-        print(f"   {subjects}")
-    else:  # PROCESSING_MODE == 'VALID'
-        subjects = SUJETOS_VALIDOS.copy()
-        print(f"📋 VALID SUBJECTS MODE: Processing {len(subjects)} valid subjects:")
-        print(f"   {subjects}")
-
-print(f"📊 Dose configuration loaded from config.py")
-
-# Display EDA analysis configuration
-print(f"\n📊 EDA Analysis Configuration:")
-for analysis_type, enabled in EDA_ANALYSIS_CONFIG.items():
-    status = "✅ ENABLED" if enabled else "❌ DISABLED"
-    print(f"   {analysis_type.upper()}: {status}")
-
-#### Note: Subjects with problematic EDA signal are documented in config.py
-
-#%% Processing and saving by condition
-
-# Create output directories organized by signal type and condition
-output_dirs = {}
-for signal in ['eda', 'ecg', 'resp']:
-    for condition in ['high', 'low']:
-        key = f'{signal}_{condition}'
-        output_dirs[key] = os.path.join(DERIVATIVES_DATA, 'phys', signal, f'dmt_{condition}')
-        os.makedirs(output_dirs[key], exist_ok=True)
-        print(f"📁 Created directory: {output_dirs[key]}")
-
-print(f"\n🔄 Starting physiological data processing ...")
-print(f"📋 Saving preprocessed data organized by signal type and condition")
-
 def save_physiology_data(processed_data, time, subject, experiment, condition, session_type, processed_info=None, emotiphai_data=None, cvx_data=None):
     """
     Save preprocessed physiological data in CSV format organized by signal type and condition
@@ -642,105 +601,156 @@ def save_physiology_data(processed_data, time, subject, experiment, condition, s
     
     return saved_files
 
-# Process each subject
-for subject in subjects:
-    print(f"\n👤 Processing subject: {subject}")
-    
-    # Determine which session has which dose for this subject
-    dose_session_1 = DOSIS['Dosis_Sesion_1'][subject]  # 'Alta' or 'Baja'
-    dose_session_2 = DOSIS['Dosis_Sesion_2'][subject]  # 'Alta' or 'Baja'
-    
-    print(f"   📊 Session 1: {dose_session_1}, Session 2: {dose_session_2}")
-    
-    # Map dose to condition
-    condition_map = {'Alta': 'high', 'Baja': 'low'}
-    condition_1 = condition_map[dose_session_1]
-    condition_2 = condition_map[dose_session_2]
-    
-    # Process and save Session 1 in the folder corresponding to its condition
-    print(f"   🔄 Processing Session 1 (condition: {condition_1}) → folder dmt_{condition_1}")
-    
-    # DMT Session 1
-    filename_dmt1 = get_nombre_archivo('DMT_1', subject)
-    processed_dmt1, time_dmt1, info_dmt1, emotiphai_dmt1, cvx_dmt1 = process_physiology('DMT_1', subject, filename_dmt1)
-    save_physiology_data(processed_dmt1, time_dmt1, subject, 'session1', condition_1, 'dmt', info_dmt1, emotiphai_dmt1, cvx_dmt1)
-    
-    # Resting Session 1  
-    filename_rs1 = get_nombre_archivo('Reposo_1', subject)
-    processed_rs1, time_rs1, info_rs1, emotiphai_rs1, cvx_rs1 = process_physiology('Reposo_1', subject, filename_rs1)
-    save_physiology_data(processed_rs1, time_rs1, subject, 'session1', condition_1, 'rs', info_rs1, emotiphai_rs1, cvx_rs1)
-    
-    # Process and save Session 2 in the folder corresponding to its condition  
-    print(f"   🔄 Processing Session 2 (condition: {condition_2}) → folder dmt_{condition_2}")
-    
-    # DMT Session 2
-    filename_dmt2 = get_nombre_archivo('DMT_2', subject)
-    processed_dmt2, time_dmt2, info_dmt2, emotiphai_dmt2, cvx_dmt2 = process_physiology('DMT_2', subject, filename_dmt2)
-    save_physiology_data(processed_dmt2, time_dmt2, subject, 'session2', condition_2, 'dmt', info_dmt2, emotiphai_dmt2, cvx_dmt2)
-    
-    # Resting Session 2
-    filename_rs2 = get_nombre_archivo('Reposo_2', subject)
-    processed_rs2, time_rs2, info_rs2, emotiphai_rs2, cvx_rs2 = process_physiology('Reposo_2', subject, filename_rs2)
-    save_physiology_data(processed_rs2, time_rs2, subject, 'session2', condition_2, 'rs', info_rs2, emotiphai_rs2, cvx_rs2)
 
-#%% Final summary and logging
+def main():
+    """Run the preprocessing for the configured subjects (see TEST_MODE and
+    PROCESSING_MODE in config.py). Writes to data/derivatives/preprocessing/phys/."""
+    global subjects, output_dirs
 
-print(f"\n✅ Physiological preprocessing completed successfully!")
-print(f"📁 Generated file structure:")
-for signal in ['eda', 'ecg', 'resp']:
-    print(f"   📂 {signal.upper()}:")
-    print(f"      📂 {output_dirs[f'{signal}_high']}")
-    print(f"      📂 {output_dirs[f'{signal}_low']}")
+    #%% Use project configuration
 
-# Save detailed processing log
-log_path = save_processing_log()
+    # EXECUTION MODE: Configured in config.py
+    if TEST_MODE:
+        subjects = SUJETOS_TEST.copy()
+        print(f"🧪 TEST MODE: Processing {len(subjects)} test subjects:")
+        print(f"   {subjects}")
+    else:
+        if PROCESSING_MODE == 'ALL':
+            subjects = TODOS_LOS_SUJETOS.copy()
+            print(f"📋 ALL SUBJECTS MODE: Processing {len(subjects)} subjects (S01-S20, except S14):")
+            print(f"   {subjects}")
+        else:  # PROCESSING_MODE == 'VALID'
+            subjects = SUJETOS_VALIDOS.copy()
+            print(f"📋 VALID SUBJECTS MODE: Processing {len(subjects)} valid subjects:")
+            print(f"   {subjects}")
 
-# Log summary
-successful_signals = {'eda': 0, 'ecg': 0, 'resp': 0}
-total_files = 0
+    print(f"📊 Dose configuration loaded from config.py")
 
-for subject in processing_log:
-    for filename in processing_log[subject]:
-        total_files += 1
-        for signal in ['eda', 'ecg', 'resp']:
-            if processing_log[subject][filename]['signals'][signal]['success']:
-                successful_signals[signal] += 1
+    # Display EDA analysis configuration
+    print(f"\n📊 EDA Analysis Configuration:")
+    for analysis_type, enabled in EDA_ANALYSIS_CONFIG.items():
+        status = "✅ ENABLED" if enabled else "❌ DISABLED"
+        print(f"   {analysis_type.upper()}: {status}")
 
-# Count files by signal and condition
-files_by_signal = {}
-for signal in ['eda', 'ecg', 'resp']:
-    files_by_signal[signal] = {'high': 0, 'low': 0}
-    for condition in ['high', 'low']:
-        dir_key = f'{signal}_{condition}'
-        if dir_key in output_dirs and os.path.exists(output_dirs[dir_key]):
-            files_in_dir = len([f for f in os.listdir(output_dirs[dir_key]) if f.endswith('.csv')])
-            files_by_signal[signal][condition] = files_in_dir
+    #### Note: Subjects with problematic EDA signal are documented in config.py
 
-print(f"\n📊 Summary of generated files:")
-print(f"   Total files processed: {total_files}")
-print(f"   📈 Successful signals per type:")
-for signal, count in successful_signals.items():
-    print(f"      {signal.upper()}: {count} successful processings")
-print(f"   📈 Files generated by signal and condition:")
-for signal in ['eda', 'ecg', 'resp']:
-    print(f"      {signal.upper()}: High={files_by_signal[signal]['high']}, Low={files_by_signal[signal]['low']}")
+    #%% Processing and saving by condition
 
-print(f"\n🔧 Data characteristics:")
-print(f"   - No baseline correction applied")
-print(f"   - All NeuroKit variables included per signal type")
-print(f"   - DMT: duration 20:15 min, Resting: duration 10:15 min")
-print(f"   - Data organized by signal type and condition (high/low)")
+    # Create output directories organized by signal type and condition
+    output_dirs = {}
+    for signal in ['eda', 'ecg', 'resp']:
+        for condition in ['high', 'low']:
+            key = f'{signal}_{condition}'
+            output_dirs[key] = os.path.join(DERIVATIVES_DATA, 'phys', signal, f'dmt_{condition}')
+            os.makedirs(output_dirs[key], exist_ok=True)
+            print(f"📁 Created directory: {output_dirs[key]}")
 
-print(f"\n📋 Detailed log saved to: {log_path}")
+    print(f"\n🔄 Starting physiological data processing ...")
+    print(f"📋 Saving preprocessed data organized by signal type and condition")
 
-print(f"\n📝 Generated file format (example for {subjects[0]}):")
-for signal in ['eda', 'ecg', 'resp']:
-    print(f"   📂 {signal}/")
-    print(f"      📂 dmt_high/")
-    print(f"         {subjects[0]}_dmt_session1_high.csv   # {signal.upper()} DMT from high dose session")  
-    print(f"         {subjects[0]}_rs_session1_high.csv    # {signal.upper()} Resting from high dose session")
-    print(f"      📂 dmt_low/")
-    print(f"         {subjects[0]}_dmt_session2_low.csv    # {signal.upper()} DMT from low dose session")
-    print(f"         {subjects[0]}_rs_session2_low.csv     # {signal.upper()} Resting from low dose session")
+    # Process each subject
+    for subject in subjects:
+        print(f"\n👤 Processing subject: {subject}")
 
-print(f"\n🎯 Data is ready for subsequent analysis")
+        # Determine which session has which dose for this subject
+        dose_session_1 = DOSIS['Dosis_Sesion_1'][subject]  # 'Alta' or 'Baja'
+        dose_session_2 = DOSIS['Dosis_Sesion_2'][subject]  # 'Alta' or 'Baja'
+
+        print(f"   📊 Session 1: {dose_session_1}, Session 2: {dose_session_2}")
+
+        # Map dose to condition
+        condition_map = {'Alta': 'high', 'Baja': 'low'}
+        condition_1 = condition_map[dose_session_1]
+        condition_2 = condition_map[dose_session_2]
+
+        # Process and save Session 1 in the folder corresponding to its condition
+        print(f"   🔄 Processing Session 1 (condition: {condition_1}) → folder dmt_{condition_1}")
+
+        # DMT Session 1
+        filename_dmt1 = get_nombre_archivo('DMT_1', subject)
+        processed_dmt1, time_dmt1, info_dmt1, emotiphai_dmt1, cvx_dmt1 = process_physiology('DMT_1', subject, filename_dmt1)
+        save_physiology_data(processed_dmt1, time_dmt1, subject, 'session1', condition_1, 'dmt', info_dmt1, emotiphai_dmt1, cvx_dmt1)
+
+        # Resting Session 1  
+        filename_rs1 = get_nombre_archivo('Reposo_1', subject)
+        processed_rs1, time_rs1, info_rs1, emotiphai_rs1, cvx_rs1 = process_physiology('Reposo_1', subject, filename_rs1)
+        save_physiology_data(processed_rs1, time_rs1, subject, 'session1', condition_1, 'rs', info_rs1, emotiphai_rs1, cvx_rs1)
+
+        # Process and save Session 2 in the folder corresponding to its condition  
+        print(f"   🔄 Processing Session 2 (condition: {condition_2}) → folder dmt_{condition_2}")
+
+        # DMT Session 2
+        filename_dmt2 = get_nombre_archivo('DMT_2', subject)
+        processed_dmt2, time_dmt2, info_dmt2, emotiphai_dmt2, cvx_dmt2 = process_physiology('DMT_2', subject, filename_dmt2)
+        save_physiology_data(processed_dmt2, time_dmt2, subject, 'session2', condition_2, 'dmt', info_dmt2, emotiphai_dmt2, cvx_dmt2)
+
+        # Resting Session 2
+        filename_rs2 = get_nombre_archivo('Reposo_2', subject)
+        processed_rs2, time_rs2, info_rs2, emotiphai_rs2, cvx_rs2 = process_physiology('Reposo_2', subject, filename_rs2)
+        save_physiology_data(processed_rs2, time_rs2, subject, 'session2', condition_2, 'rs', info_rs2, emotiphai_rs2, cvx_rs2)
+
+    #%% Final summary and logging
+
+    print(f"\n✅ Physiological preprocessing completed successfully!")
+    print(f"📁 Generated file structure:")
+    for signal in ['eda', 'ecg', 'resp']:
+        print(f"   📂 {signal.upper()}:")
+        print(f"      📂 {output_dirs[f'{signal}_high']}")
+        print(f"      📂 {output_dirs[f'{signal}_low']}")
+
+    # Save detailed processing log
+    log_path = save_processing_log()
+
+    # Log summary
+    successful_signals = {'eda': 0, 'ecg': 0, 'resp': 0}
+    total_files = 0
+
+    for subject in processing_log:
+        for filename in processing_log[subject]:
+            total_files += 1
+            for signal in ['eda', 'ecg', 'resp']:
+                if processing_log[subject][filename]['signals'][signal]['success']:
+                    successful_signals[signal] += 1
+
+    # Count files by signal and condition
+    files_by_signal = {}
+    for signal in ['eda', 'ecg', 'resp']:
+        files_by_signal[signal] = {'high': 0, 'low': 0}
+        for condition in ['high', 'low']:
+            dir_key = f'{signal}_{condition}'
+            if dir_key in output_dirs and os.path.exists(output_dirs[dir_key]):
+                files_in_dir = len([f for f in os.listdir(output_dirs[dir_key]) if f.endswith('.csv')])
+                files_by_signal[signal][condition] = files_in_dir
+
+    print(f"\n📊 Summary of generated files:")
+    print(f"   Total files processed: {total_files}")
+    print(f"   📈 Successful signals per type:")
+    for signal, count in successful_signals.items():
+        print(f"      {signal.upper()}: {count} successful processings")
+    print(f"   📈 Files generated by signal and condition:")
+    for signal in ['eda', 'ecg', 'resp']:
+        print(f"      {signal.upper()}: High={files_by_signal[signal]['high']}, Low={files_by_signal[signal]['low']}")
+
+    print(f"\n🔧 Data characteristics:")
+    print(f"   - No baseline correction applied")
+    print(f"   - All NeuroKit variables included per signal type")
+    print(f"   - DMT: duration 20:15 min, Resting: duration 10:15 min")
+    print(f"   - Data organized by signal type and condition (high/low)")
+
+    print(f"\n📋 Detailed log saved to: {log_path}")
+
+    print(f"\n📝 Generated file format (example for {subjects[0]}):")
+    for signal in ['eda', 'ecg', 'resp']:
+        print(f"   📂 {signal}/")
+        print(f"      📂 dmt_high/")
+        print(f"         {subjects[0]}_dmt_session1_high.csv   # {signal.upper()} DMT from high dose session")  
+        print(f"         {subjects[0]}_rs_session1_high.csv    # {signal.upper()} Resting from high dose session")
+        print(f"      📂 dmt_low/")
+        print(f"         {subjects[0]}_dmt_session2_low.csv    # {signal.upper()} DMT from low dose session")
+        print(f"         {subjects[0]}_rs_session2_low.csv     # {signal.upper()} Resting from low dose session")
+
+    print(f"\n🎯 Data is ready for subsequent analysis")
+
+
+if __name__ == "__main__":
+    main()

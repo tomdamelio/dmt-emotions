@@ -10,7 +10,7 @@ Two tests, following Lewis-Healey et al. (2024) on the same dataset:
 
 The participant record is the single source of truth for both administered
 dose and post-session dose guess:
-    dmt-emotions-paper/.submission/zenodo/participants.tsv
+    metadata/participants.tsv (the participants.tsv of the Zenodo data deposit)
 
 Reference values (Lewis-Healey et al., 2024):
    26/38 sessions correctly identified
@@ -19,8 +19,8 @@ Reference values (Lewis-Healey et al., 2024):
    Independence:      chi2(1, N=38) = 0.49, p = .49
 
 Outputs:
-   ../dmt-emotions/results/blinding/blinding_chisquare_report.txt
-   ../dmt-emotions/results/blinding/blinding_chisquare_summary.csv
+   results/blinding/blinding_chisquare_report.txt
+   results/blinding/blinding_chisquare_summary.csv
 """
 
 from pathlib import Path
@@ -31,11 +31,7 @@ from scipy import stats
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
-# papers/dmt/dmt-emotions/scripts -> papers/
-PAPERS_ROOT = SCRIPT_DIR.parents[2]
-PARTICIPANTS_TSV = (
-    PAPERS_ROOT / "dmt-emotions-paper" / ".submission" / "zenodo" / "participants.tsv"
-)
+PARTICIPANTS_TSV = PROJECT_ROOT / "metadata" / "participants.tsv"
 
 RESULTS_DIR = PROJECT_ROOT / "results" / "blinding"
 REPORT_TXT = RESULTS_DIR / "blinding_chisquare_report.txt"
@@ -88,7 +84,7 @@ def main():
     lines = [
         "Blinding-efficacy chi-square tests",
         "=" * 60,
-        f"Source: {PARTICIPANTS_TSV}",
+        f"Source: {PARTICIPANTS_TSV.relative_to(PROJECT_ROOT).as_posix()}",
         f"Total sessions: {len(long)}",
         "",
         "Reference (Lewis-Healey et al., 2024):",

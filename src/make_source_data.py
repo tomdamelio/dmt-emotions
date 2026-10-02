@@ -79,8 +79,6 @@ SHEETS = [
      'Fig. 4: TET PCA variance explained'),
     ('Fig4_TET_LME', 'tet/lme/lme_results.csv',
      'Fig. 4 / Results: LME results for the TET dimensions'),
-    ('Fig4_TET_PC_LME', 'tet/pca/pca_lme_results.csv',
-     'Fig. 4 / Results: LME results for the TET principal components'),
     ('Fig4_TET_clusters_per_bin', 'cluster_permutation/tet_per_bin.csv',
      'Fig. 4 shading: per-bin paired statistics for the TET cluster permutation'),
     ('Fig4_TET_clusters_summary', 'cluster_permutation/tet_summary.csv',

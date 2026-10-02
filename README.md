@@ -42,7 +42,6 @@ The study used a within-subjects, randomised and counterbalanced 2 × 2 design (
 │   ├── run_coupling_analysis.py    # Physiology-experience coupling (Fig 5, partial)
 │   ├── run_temporal_resolution_sensitivity.py
 │   │                               # Sensitivity to TET temporal resolution
-│   ├── run_supplementary_analyses.py
 │   ├── run_lme_random_slopes.py    # Random-slope LMEs, random-effects comparisons, prior DMT use
 │   ├── verify_rvt_interaction.py   # Optimiser check for the RVT State x Dose term
 │   ├── run_cluster_permutation.py  # Cluster-based permutation, physiology (Figs 2-3)
@@ -59,9 +58,6 @@ The study used a within-subjects, randomised and counterbalanced 2 × 2 design (
 ├── scripts/
 │   ├── compose_figure_1.py         # Composes Figure 1 from individual panels
 │   ├── compose_figure_S1.py        # Composes Supplementary Fig 1 (setup + pipeline schematic)
-│   ├── baseline_comparator.py      # Helper for run_supplementary_analyses
-│   ├── feature_extractor.py        # Helper for run_supplementary_analyses
-│   ├── phase_analyzer.py           # Helper for run_supplementary_analyses
 │   ├── run_blinding_chisquare.py   # Post-hoc blinding-efficacy chi-square test
 │   └── heteroscedastic_lme.R       # Heteroscedastic LME re-estimation in R/nlme
 ├── tet/                            # TET preprocessing utilities (Temporal Experience Tracing)
@@ -121,7 +117,7 @@ Path resolution is centralised in `config.py`; if your data lives elsewhere, edi
 
 Per-subject metadata (dose order, modality-specific inclusion flags) is provided in the deposit's `participants.tsv`. Group-level demographics are reported in the paper (Methods → Participants).
 
-The repository's `metadata/` folder holds two public files, `participants_sex.tsv` (self-reported sex) and `prior_dmt_use_session1.tsv` (number of prior DMT occasions), read by `src/participant_descriptives.py` and `src/run_lme_random_slopes.py`. A third file, `participants_age.tsv`, is private and git-ignored, because per-participant age is a quasi-identifier in a sample of this size. Without it, `src/run_ecg_hrv_analysis.py` uses the group mean age (see below) and `src/participant_descriptives.py` omits age; everything else reproduces.
+The repository's `metadata/` folder holds three public files: `participants_sex.tsv` (self-reported sex) and `prior_dmt_use_session1.tsv` (number of prior DMT occasions), read by `src/participant_descriptives.py` and `src/run_lme_random_slopes.py`; and `participants.tsv`, a copy of the deposit's participant record (dose order, inclusion flags, post-session dose guess), read by `scripts/run_blinding_chisquare.py`. A fourth file, `participants_age.tsv`, is private and git-ignored, because per-participant age is a quasi-identifier in a sample of this size. Without it, `src/run_ecg_hrv_analysis.py` uses the group mean age (see below) and `src/participant_descriptives.py` omits age; everything else reproduces.
 
 ---
 
@@ -179,7 +175,6 @@ python src/run_coupling_analysis.py
 # Robustness and supporting analyses (Methods, Results, Supplementary Information)
 python src/run_temporal_resolution_sensitivity.py
 python src/run_cluster_permutation_tet_resolution.py
-python src/run_supplementary_analyses.py
 python src/run_resp_band_check.py        # respiratory rate vs the HRV frequency bands
 python src/run_window_sd_ratio.py        # sample- vs window-level SD per modality
 python src/participant_descriptives.py   # participant descriptives
