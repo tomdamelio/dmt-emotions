@@ -2,20 +2,24 @@ name: dmt-emotions
 channels:
   - conda-forge
 dependencies:
-  - python=3.11
-  - mne
-  - neurokit2
-  - numpy
-  - scipy
-  - pandas
-  - matplotlib
-  - seaborn
-  - scikit-learn
-  - statsmodels
-  - joblib
-  - cvxopt
-  - jpype1
+  # Versions are pinned to the environment in which the results reported in the
+  # paper were produced. biosppy is needed only for Stage 1 (preprocessing of the
+  # raw recordings); every analysis that starts from the released derivatives
+  # runs without it.
+  - python=3.11.14
+  - mne=1.11.0
+  - neurokit2=0.2.10
+  - numpy=2.4.2
+  - scipy=1.17.1
+  - pandas=3.0.1
+  - matplotlib=3.10.8
+  - seaborn=0.13.2
+  - scikit-learn=1.8.0
+  - statsmodels=0.14.6
+  - joblib=1.5.3
+  - cvxopt=1.3.2
+  - plotly=6.5.2
+  - openpyxl=3.1.5
   - pip
-  - plotly
   - pip:
-      - biosppy
+      - biosppy==2.2.3

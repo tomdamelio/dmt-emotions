@@ -1,0 +1,87 @@
+########################################################################
+RESOLUTION 4s (native)
+########################################################################
+  emotional_intensity_z    dose  n = 18  bins = 300  cluster: 0.3-10.1
+        0.3- 10.1 min  mass =   412.18  p = 0.0249
+       10.8- 11.0 min  mass =     8.51  p = 0.2010
+  emotional_intensity_z    state n = 18  bins = 150  cluster: 0.0-9.9
+        0.0-  9.9 min  mass =  1571.79  p = 0.0000
+  valence_index_z          dose  n = 18  bins = 300  cluster: none
+        1.4-  1.9 min  mass =   -19.54  p = 0.2318
+  valence_index_z          state n = 18  bins = 150  cluster: none
+        0.0-  1.4 min  mass =   -50.29  p = 0.0988
+  interoception_z          dose  n = 18  bins = 300  cluster: none
+        5.3-  5.8 min  mass =    16.90  p = 0.2213
+        7.8-  7.9 min  mass =     4.23  p = 0.2433
+        8.0- 13.0 min  mass =   187.82  p = 0.0690
+  interoception_z          state n = 18  bins = 150  cluster: 0.0-9.9
+        0.0-  9.9 min  mass =  1023.49  p = 0.0000
+  anxiety_z                dose  n = 18  bins = 300  cluster: none
+  anxiety_z                state n = 18  bins = 150  cluster: 0.0-9.9
+        0.0-  9.9 min  mass =  1011.62  p = 0.0000
+  unpleasantness_z         dose  n = 18  bins = 300  cluster: none
+        0.9-  6.9 min  mass =   218.12  p = 0.0551
+  unpleasantness_z         state n = 18  bins = 150  cluster: 0.0-9.9
+        0.0-  9.9 min  mass =   624.19  p = 0.0000
+  pleasantness_z           dose  n = 18  bins = 300  cluster: none
+  pleasantness_z           state n = 18  bins = 150  cluster: none
+        7.9-  9.9 min  mass =    75.12  p = 0.0761
+  bliss_z                  dose  n = 18  bins = 300  cluster: none
+  bliss_z                  state n = 18  bins = 150  cluster: none
+########################################################################
+RESOLUTION 20s
+########################################################################
+  emotional_intensity_z    dose  n = 18  bins =  60  cluster: 0.3-10.0
+        0.3- 10.0 min  mass =    82.89  p = 0.0250
+       10.7- 10.7 min  mass =     2.11  p = 0.2049
+  emotional_intensity_z    state n = 18  bins =  30  cluster: 0.0-9.7
+        0.0-  9.7 min  mass =   314.47  p = 0.0000
+  valence_index_z          dose  n = 18  bins =  60  cluster: none
+        1.3-  1.7 min  mass =    -4.33  p = 0.2298
+  valence_index_z          state n = 18  bins =  30  cluster: none
+        0.0-  1.3 min  mass =   -11.33  p = 0.0940
+  interoception_z          dose  n = 18  bins =  60  cluster: none
+        5.3-  5.3 min  mass =     2.11  p = 0.2370
+        8.0- 12.7 min  mass =    37.16  p = 0.0704
+  interoception_z          state n = 18  bins =  30  cluster: 0.0-9.7
+        0.0-  9.7 min  mass =   204.81  p = 0.0000
+  anxiety_z                dose  n = 18  bins =  60  cluster: none
+  anxiety_z                state n = 18  bins =  30  cluster: 0.0-9.7
+        0.0-  9.7 min  mass =   202.52  p = 0.0000
+  unpleasantness_z         dose  n = 18  bins =  60  cluster: none
+        1.0-  6.7 min  mass =    43.22  p = 0.0566
+  unpleasantness_z         state n = 18  bins =  30  cluster: 0.0-9.7
+        0.0-  9.7 min  mass =   124.89  p = 0.0000
+  pleasantness_z           dose  n = 18  bins =  60  cluster: none
+  pleasantness_z           state n = 18  bins =  30  cluster: none
+        8.0-  9.7 min  mass =    14.17  p = 0.0799
+  bliss_z                  dose  n = 18  bins =  60  cluster: none
+  bliss_z                  state n = 18  bins =  30  cluster: none
+########################################################################
+RESOLUTION 30s
+########################################################################
+  emotional_intensity_z    dose  n = 18  bins =  40  cluster: 0.5-9.5
+        0.5-  9.5 min  mass =    53.11  p = 0.0269
+  emotional_intensity_z    state n = 18  bins =  20  cluster: 0.0-9.5
+        0.0-  9.5 min  mass =   209.86  p = 0.0000
+  valence_index_z          dose  n = 18  bins =  40  cluster: none
+        1.5-  1.5 min  mass =    -2.17  p = 0.2358
+  valence_index_z          state n = 18  bins =  20  cluster: none
+        0.0-  1.0 min  mass =    -6.84  p = 0.0983
+  interoception_z          dose  n = 18  bins =  40  cluster: none
+        5.5-  5.5 min  mass =     2.11  p = 0.2328
+        8.0- 12.5 min  mass =    24.77  p = 0.0707
+  interoception_z          state n = 18  bins =  20  cluster: 0.0-9.5
+        0.0-  9.5 min  mass =   136.59  p = 0.0000
+  anxiety_z                dose  n = 18  bins =  40  cluster: none
+  anxiety_z                state n = 18  bins =  20  cluster: 0.0-9.5
+        0.0-  9.5 min  mass =   135.35  p = 0.0000
+  unpleasantness_z         dose  n = 18  bins =  40  cluster: none
+        1.0-  6.5 min  mass =    28.85  p = 0.0571
+  unpleasantness_z         state n = 18  bins =  20  cluster: 0.0-9.5
+        0.0-  9.5 min  mass =    83.27  p = 0.0000
+  pleasantness_z           dose  n = 18  bins =  40  cluster: none
+  pleasantness_z           state n = 18  bins =  20  cluster: none
+        8.0-  9.5 min  mass =     9.45  p = 0.0797
+  bliss_z                  dose  n = 18  bins =  40  cluster: none
+  bliss_z                  state n = 18  bins =  20  cluster: none

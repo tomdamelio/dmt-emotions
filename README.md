@@ -4,7 +4,7 @@ Analysis code accompanying the paper:
 
 > D'Amelio, T. A., Gil Garbagnoli, T., Rodríguez Cuello, J., Lewis-Healey, E., Pallavicini, C., Cavanna, F., Bruno, N. M., De La Fuente, L. A., Müller, S., Copa, D., Bekinschtein, T., Vidaurre, D., Tagliazucchi, E. (2026). *Multimodal autonomic arousal tracks dose-dependent affective dynamics during the acute effects of DMT* (in preparation).
 
-This repository reproduces all main and Extended Data figures and statistical results from the paper. The accompanying dataset is archived on Zenodo at [`10.5281/zenodo.19893951`](https://doi.org/10.5281/zenodo.19893951). A citable snapshot of this codebase is at [`10.5281/zenodo.19916527`](https://doi.org/10.5281/zenodo.19916527).
+This repository reproduces all main and supplementary figures and statistical results from the paper. The accompanying dataset is archived on Zenodo at [`10.5281/zenodo.19893951`](https://doi.org/10.5281/zenodo.19893951). A citable snapshot of this codebase is at [`10.5281/zenodo.19916527`](https://doi.org/10.5281/zenodo.19916527).
 
 ---
 
@@ -29,8 +29,11 @@ The study used a within-subjects, randomised and counterbalanced 2 × 2 design (
 ├── environment.yml                 # Conda environment (sufficient to reproduce the paper)
 ├── src/
 │   ├── figure_config.py            # Centralised figure styling (Nature)
+│   ├── lme_fit.py                  # Shared LME fitting rule (L-BFGS, Powell fallback); imported, not run
+│   ├── cluster_stats.py            # Shared cluster-based permutation test; imported, not run
 │   ├── preprocess_phys.py          # ECG / EDA / RVT preprocessing pipeline
 │   ├── run_ecg_hr_analysis.py      # Heart rate analyses (Fig 2a, b)
+│   ├── run_ecg_hrv_analysis.py     # Heart rate variability + intrinsic-rate ceiling (Supp Fig 4; Results)
 │   ├── run_eda_smna_analysis.py    # Sudomotor nerve activity (Fig 2c, d)
 │   ├── run_resp_rvt_analysis.py    # Respiratory volume per time (Fig 2e, f)
 │   ├── run_composite_arousal_index.py
@@ -40,20 +43,35 @@ The study used a within-subjects, randomised and counterbalanced 2 × 2 design (
 │   ├── run_temporal_resolution_sensitivity.py
 │   │                               # Sensitivity to TET temporal resolution
 │   ├── run_supplementary_analyses.py
-│   └── run_figures.py              # Composes Figures 2-5 from analysis outputs
+│   ├── run_lme_random_slopes.py    # Random-slope LMEs, random-effects comparisons, prior DMT use
+│   ├── verify_rvt_interaction.py   # Optimiser check for the RVT State x Dose term
+│   ├── run_cluster_permutation.py  # Cluster-based permutation, physiology (Figs 2-3)
+│   ├── run_cluster_permutation_tet.py
+│   │                               # Cluster-based permutation, TET (Fig 4)
+│   ├── run_cluster_permutation_tet_resolution.py
+│   │                               # TET clusters at 4, 20 and 30 s
+│   ├── run_resp_band_check.py      # Respiratory rate vs HRV frequency bands (Methods, LF/HF)
+│   ├── run_window_sd_ratio.py      # Sample- vs window-level SD per modality (Methods)
+│   ├── participant_descriptives.py # Participant descriptives (Methods, Participants)
+│   ├── make_supp_fdr_table.py      # Supplementary Table 1 (written to the manuscript repository)
+│   ├── run_figures.py              # Composes Figures 2-5 and Supp Figs 1-7 (keys = manuscript numbering)
+│   └── make_source_data.py         # Source Data workbook (one sheet per figure panel)
 ├── scripts/
 │   ├── compose_figure_1.py         # Composes Figure 1 from individual panels
+│   ├── compose_figure_S1.py        # Composes Supplementary Fig 1 (setup + pipeline schematic)
 │   ├── baseline_comparator.py      # Helper for run_supplementary_analyses
 │   ├── feature_extractor.py        # Helper for run_supplementary_analyses
 │   ├── phase_analyzer.py           # Helper for run_supplementary_analyses
 │   ├── run_blinding_chisquare.py   # Post-hoc blinding-efficacy chi-square test
 │   └── heteroscedastic_lme.R       # Heteroscedastic LME re-estimation in R/nlme
 ├── tet/                            # TET preprocessing utilities (Temporal Experience Tracing)
+├── metadata/                       # Participant-level metadata (see Data)
 └── results/
-    └── figures/                    # Publication figures (Fig 1-5, Extended Data Fig 1-5)
+    ├── figures/                    # Publication figures (Figs 1-5, Supplementary Figs 1-7)
+    └── source_data/                # Supplementary Data 1 (Excel workbook and CSV copies)
 ```
 
-Only `results/figures/` is versioned in git. The rest of `results/` (per-modality statistical reports, intermediate outputs) is generated locally when the pipeline runs (see [Reproducing the analyses](#reproducing-the-analyses) below).
+The publication figures (`results/figures/`), the Source Data (`results/source_data/`) and the reports behind the cluster-permutation, random-slope and robustness results are versioned in git. The rest of `results/` (per-modality statistical reports, intermediate outputs) is generated locally when the pipeline runs (see [Reproducing the analyses](#reproducing-the-analyses) below).
 
 ---
 
@@ -71,7 +89,7 @@ micromamba create -n dmt-emotions -f environment.yml
 micromamba activate dmt-emotions
 ```
 
-`environment.yml` pins every dependency required to regenerate the figures and statistical results reported in the paper.
+`environment.yml` pins the exact versions of every dependency used to produce the results reported in the paper. Run every step inside this environment (for example `micromamba run -n dmt-emotions python src/run_ecg_hr_analysis.py`): with other versions of statsmodels some mixed-model p values change in the third decimal. R is needed only for `scripts/heteroscedastic_lme.R`; the rest of the pipeline runs without it.
 
 ---
 
@@ -92,14 +110,18 @@ parent/
     │   └── reports/resampled/      # TET retrospective ratings (.mat)
     └── derivatives/
         └── preprocessing/phys/
-            ├── ecg/{dmt_high, dmt_low, rs_high, rs_low}/
-            ├── eda/{dmt_high, dmt_low, rs_high, rs_low}/
-            └── resp/{dmt_high, dmt_low, rs_high, rs_low}/
+            ├── ecg/{dmt_high, dmt_low}/
+            ├── eda/{dmt_high, dmt_low}/
+            └── resp/{dmt_high, dmt_low}/
 ```
+
+The two folder names refer to the **dose**, not to the state: each of them holds both the DMT and the Resting State recordings of the sessions run at that dose, and the state is encoded in the file name (`S02_dmt_session2_high.csv`, `S02_rs_session2_high.csv`). Every recording is accompanied by an `*_info.json` sidecar; the EDA folders additionally carry `*_cvx_decomposition.csv` (tonic, phasic and sudomotor nerve activity from cvxEDA) and `*_emotiphai_scr.csv` (detected skin-conductance responses).
 
 Path resolution is centralised in `config.py`; if your data lives elsewhere, edit the `DATA_ROOT` constant there.
 
 Per-subject metadata (dose order, modality-specific inclusion flags) is provided in the deposit's `participants.tsv`. Group-level demographics are reported in the paper (Methods → Participants).
+
+The repository's `metadata/` folder holds two public files, `participants_sex.tsv` (self-reported sex) and `prior_dmt_use_session1.tsv` (number of prior DMT occasions), read by `src/participant_descriptives.py` and `src/run_lme_random_slopes.py`. A third file, `participants_age.tsv`, is private and git-ignored, because per-participant age is a quasi-identifier in a sample of this size. Without it, `src/run_ecg_hrv_analysis.py` uses the group mean age (see below) and `src/participant_descriptives.py` omits age; everything else reproduces.
 
 ---
 
@@ -112,8 +134,13 @@ The full pipeline runs in two stages: (1) preprocessing of raw physiology, and (
 If you already downloaded the `derivatives.zip` from Zenodo, you can skip this stage.
 
 ```bash
-python src/preprocess_phys.py    # Generates data/derivatives/preprocessing/phys/{ecg,eda,resp}/
+python src/preprocess_phys.py            # -> data/derivatives/preprocessing/phys/{ecg,eda,resp}/
+python scripts/preprocess_tet_data.py    # -> results/tet/preprocessed/tet_preprocessed.csv
 ```
+
+The first script filters and segments the raw physiology and runs the cvxEDA decomposition; it is the
+only step that needs `biosppy`. The second reads the `.mat` files of retrospective ratings and writes
+the tidy TET table that `src/run_tet_analysis.py` consumes.
 
 ### Stage 2 — Analyses and figures
 
@@ -123,27 +150,55 @@ python src/run_ecg_hr_analysis.py
 python src/run_eda_smna_analysis.py
 python src/run_resp_rvt_analysis.py
 
+# Heart rate variability and the intrinsic heart-rate ceiling (Supplementary Fig. 4;
+# HR in bpm and the ceiling counts reported in Results). Reads the Kubios-corrected
+# R peaks from the derivatives. NOTE: per-participant ages are not distributed (see
+# "Data" above); without a local metadata/participants_age.tsv the script uses the
+# group mean age and prints a warning, so the per-participant ceiling counts will
+# not match the manuscript exactly. Everything else reproduces without it.
+python src/run_ecg_hrv_analysis.py
+
 # Multimodal integration (Figure 3)
 python src/run_composite_arousal_index.py
 
-# Affective dynamics (Figure 4)
+# Mixed models with by-participant random slopes, the random-effects comparisons
+# reported in Methods, and prior DMT use as a moderator
+python src/run_lme_random_slopes.py
+python src/verify_rvt_interaction.py     # optimiser check for the RVT State x Dose term
+
+# Cluster-based permutation tests behind the shaded epochs of Figures 2-3
+python src/run_cluster_permutation.py
+
+# Affective dynamics (Figure 4) and its cluster-based permutation tests
 python src/run_tet_analysis.py
+python src/run_cluster_permutation_tet.py
 
 # Physiology-experience coupling (Figure 5)
 python src/run_coupling_analysis.py
 
-# Robustness analyses (Extended Data and Methods)
+# Robustness and supporting analyses (Methods, Results, Supplementary Information)
 python src/run_temporal_resolution_sensitivity.py
+python src/run_cluster_permutation_tet_resolution.py
 python src/run_supplementary_analyses.py
+python src/run_resp_band_check.py        # respiratory rate vs the HRV frequency bands
+python src/run_window_sd_ratio.py        # sample- vs window-level SD per modality
+python src/participant_descriptives.py   # participant descriptives
 python scripts/run_blinding_chisquare.py
-Rscript scripts/heteroscedastic_lme.R   # requires R ≥ 4.2 with nlme
+Rscript scripts/heteroscedastic_lme.R   # requires R ≥ 4.2 with nlme (heteroscedastic models)
 
 # Compose final publication figures (Figure 1 from panels, Figures 2-5 from analyses)
 python scripts/compose_figure_1.py
 python src/run_figures.py
+
+# Supplementary Table 1; writes ../dmt-emotions-paper/tables/fdr_windows_table.tex, so it needs
+# the manuscript repository next to this one
+python src/make_supp_fdr_table.py
+
+# Source Data: one Excel workbook + CSV folder with the per-participant values behind every panel
+python src/make_source_data.py       # -> results/source_data/
 ```
 
-After completion, all main figures and Extended Data figures are written to `results/figures/`, and statistical reports are in `results/{ecg,eda,resp,composite,coupling,tet,blinding}/`.
+After completion, all main and supplementary figures are written to `results/figures/`, and statistical reports are in `results/{ecg,eda,resp,composite,coupling,tet,blinding}/`.
 
 ---
 
@@ -151,8 +206,9 @@ After completion, all main figures and Extended Data figures are written to `res
 
 A short summary of the statistical strategy implemented in the pipeline; the full description is in the paper's Methods section.
 
-- **Linear mixed-effects models (LME)**: every outcome (HR, SMNA, RVT, Physiological Arousal Index, TET dimensions) was modelled with State, Dose, mean-centred Time, and the State × Dose, State × Time, and Dose × Time interactions as fixed effects, plus a random intercept per participant. Models were fitted by REML in `statsmodels`. Standardised coefficients with 95% confidence intervals are reported.
-- **Time-resolved comparisons**: paired t-tests at each 30-s window (physiology) or 4-s sample (TET), one-tailed for *a priori* directional hypotheses during DMT and two-tailed elsewhere. Multiple comparisons across time were controlled with Benjamini–Hochberg FDR.
+- **Linear mixed-effects models (LME)**: every outcome (HR, SMNA, RVT, Physiological Arousal Index, TET dimensions) was modelled with State, Dose, mean-centred Time, and the State × Dose, State × Time, and Dose × Time interactions as fixed effects, plus by-participant random slopes for State, Dose and State × Dose (the random intercept is omitted because within-participant standardisation fixes every participant's mean at zero). Models were fitted by REML in `statsmodels`; Wald 95% confidence intervals are reported and p-values are FDR-corrected across modalities within each term. Physiological outcomes are standardised at the window level (z over each participant's 72 window values).
+- **Time-resolved comparisons**: paired t-tests at each 30-s window (physiology) or 4-s sample (TET), one-tailed for *a priori* directional hypotheses during DMT and two-tailed elsewhere, combined with an exact sign-flip cluster permutation test over time (`src/run_cluster_permutation.py`, `src/cluster_stats.py`) that controls the family-wise error across windows.
+- **Heart rate variability and intrinsic-rate ceiling** (`src/run_ecg_hrv_analysis.py`): RMSSD, RMSSD/mean RR and SDNN over 2-min windows (step 30 s) on Kubios-corrected beats, with beat-level exclusion of implausible intervals; peak 60-s heart rate compared with the age-predicted intrinsic rate (118.1 − 0.57 × age). Per-participant ages are not distributed (`metadata/participants_age.tsv` is git-ignored); without them the script uses the group mean age.
 - **PCA**: applied to the within-subject z-scored physiological time series (HR, SMNA, RVT) to derive the Physiological Arousal Index (PC1), and to the six pre-defined affective TET dimensions to derive arousal and valence components.
 - **Canonical Correlation Analysis (CCA)**: between physiological and affective spaces; significance via exact subject-level permutation testing (1,854 derangements for n = 7), and generalisation via leave-one-subject-out cross-validation.
 - **Robustness checks**: heteroscedastic-residual LME re-estimation (`scripts/heteroscedastic_lme.R`); sensitivity of TET-based effects to temporal binning (`src/run_temporal_resolution_sensitivity.py`); post-hoc blinding-efficacy chi-square (`scripts/run_blinding_chisquare.py`).

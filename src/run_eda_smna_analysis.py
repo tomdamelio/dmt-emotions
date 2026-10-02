@@ -23,6 +23,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
+from lme_fit import fit_lbfgs_powell  # noqa: E402
 import matplotlib
 # Only set TkAgg if no backend is already set (allows Agg when imported from run_figures.py)
 if matplotlib.get_backend() == 'agg' or not matplotlib.get_backend():
@@ -148,6 +149,51 @@ DMT_TRIM_START = None  # Trim start of DMT (e.g., 5.0 for first 5 seconds)
 
 # Minimum samples per window to accept a session
 MIN_SAMPLES_PER_WINDOW = 10
+
+
+
+# --- Unidad E: individual participant traces behind the group mean -----------
+# The editor requires a mean-with-error-bars graph to also show the individual
+# data. For a time course the accepted form is one faint trace per participant.
+# High dose keeps the modality colour; Low dose is grey and dashed, so the two
+# conditions stay separable once 22 traces share a panel.
+TRACE_GREY = "#9e9e9e"
+TRACE_GREY_MEAN = "#6b6b6b"
+TRACE_DASH = (0, (2.2, 1.3))
+
+
+
+# --- Unidad E: window-level standardisation ---------------------------------
+# One standard deviation should mean the same thing in every modality: how far
+# a 30-s window sits from that participant's average window. Standardising the
+# raw signal sample by sample instead makes it mean the variation between
+# instants, which for a spiky signal is an order of magnitude larger (median
+# ratio of sample-level to window-level SD: 0.98 for HR, 1.57 for RVT, 10.86 for
+# SMNA). Re-standardising the per-window values within participant is invariant
+# to the affine transform already applied, so it recovers the correct quantity
+# without recomputing anything upstream.
+def _standardise_within_subject(df, value_col, scale_col='Scale', scale_value='z'):
+    """Re-standardise the per-window values of each participant."""
+    if df is None or len(df) == 0 or value_col not in df.columns:
+        return df
+    mask = (df[scale_col] == scale_value) if scale_col in df.columns else df[value_col].notna()
+    sub = df.loc[mask]
+    if sub.empty:
+        return df
+    g = sub.groupby('subject')[value_col]
+    mu = g.transform('mean')
+    sd = g.transform(lambda s: s.std(ddof=1))
+    df.loc[mask, value_col] = (sub[value_col] - mu) / sd
+    return df
+
+
+def _draw_individual_traces(ax, t, M_high, M_low, color_high):
+    """One line per participant: High in the modality colour, Low dashed grey."""
+    import numpy as _np
+    for row in _np.atleast_2d(_np.asarray(M_high, dtype=float)):
+        ax.plot(t, row, color=color_high, lw=0.7, alpha=0.40, zorder=1)
+    for row in _np.atleast_2d(_np.asarray(M_low, dtype=float)):
+        ax.plot(t, row, color=TRACE_GREY, lw=0.9, alpha=0.80, ls=TRACE_DASH, zorder=1)
 
 
 def determine_sessions(subject: str) -> Tuple[str, str]:
@@ -353,7 +399,7 @@ def compute_auc_window(t: np.ndarray, y: np.ndarray, window_idx: int) -> Optiona
     return float(np.trapezoid(y_win, t_win))
 
 
-def prepare_long_data() -> pd.DataFrame:
+def prepare_long_data(restandardise: bool = True) -> pd.DataFrame:
     """Prepare data in long format for LME analysis (first 9 minutes = 18 windows of 30s).
     
     If USE_RS_ZSCORE=True: z-scores using session or subject baseline (RS+DMT).
@@ -521,6 +567,10 @@ def prepare_long_data() -> pd.DataFrame:
             print(f"  {msg}")
 
     df = pd.DataFrame(rows)
+    # restandardise=False keeps the sample-level standardisation of the submitted
+    # manuscript; only the sensitivity check in run_cluster_permutation.py uses it.
+    if restandardise:
+        df = _standardise_within_subject(df, 'AUC')
 
     # Set categorical variables with proper ordering
     df['State'] = pd.Categorical(df['State'], categories=['RS', 'DMT'], ordered=True)
@@ -543,10 +593,20 @@ def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
         return None, {'error': f'No {scale_to_use}-scaled data available'}
     try:
         formula = "AUC ~ State * Dose + window_c + State:window_c + Dose:window_c"
-        model = mixedlm(formula, df_model, groups=df_model["subject"])  # type: ignore[arg-type]
+        # Random effects: by-subject slopes for State, Dose and their interaction
+        # (Barr et al. 2013). The random intercept is omitted because
+        # within-subject z-scoring across the four sessions fixes each
+        # participant's mean at zero, so its variance is zero by construction
+        # and the fit is singular; the slopes are what actually vary.
+        # Numeric codes are required: with a categorical, "0 + State" is
+        # cell-means coding and silently reinstates the intercept.
+        df_model['State_n'] = (df_model['State'].astype(str) == 'DMT').astype(float)
+        df_model['Dose_n'] = (df_model['Dose'].astype(str) == 'High').astype(float)
+        model = mixedlm(formula, df_model, groups=df_model['subject'],
+                        re_formula='0 + State_n + Dose_n + State_n:Dose_n')  # type: ignore[arg-type]
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            fitted = model.fit()
+            fitted, optimizer_used = fit_lbfgs_powell(model)
             convergence_warnings = [str(warning.message) for warning in w]
     except Exception as e:
         return None, {'error': str(e)}
@@ -560,6 +620,7 @@ def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
         'convergence_warnings': convergence_warnings,
         'random_effects_var': getattr(fitted, 'cov_re', None),
         'residual_var': getattr(fitted, 'scale', np.nan),
+        'optimizer': optimizer_used,
     }
     return fitted, diagnostics
 
@@ -619,6 +680,12 @@ def benjamini_hochberg_correction(p_values: List[float]) -> List[float]:
         else:
             adjusted_p[sorted_indices[i]] = min(sorted_p[i] * n / (i + 1), adjusted_p[sorted_indices[i + 1]])
     return np.minimum(adjusted_p, 1.0).tolist()
+
+
+# Cluster-based permutation (revision, R2.2): drop-in replacements used for the
+# shaded bands; the FDR helpers below are kept for the window-wise reports.
+from cluster_stats import (cluster_significant_segments as _compute_cluster_significant_segments,
+                           cluster_results as _compute_cluster_results)
 
 
 def _compute_fdr_significant_segments(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05, alternative: str = 'two-sided') -> List[Tuple[float, float]]:
@@ -1182,7 +1249,8 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str, df_raw: Op
                         L[si, window_idx - 1] = float(row_l.iloc[0])
             x_grid = np.arange(1, N_WINDOWS + 1)
             segs = _compute_fdr_significant_segments(H, L, x_grid)
-            for w0, w1 in segs:
+            shade = _compute_cluster_significant_segments(H, L, x_grid)
+            for w0, w1 in shade:
                 t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
                 t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
                 ax1.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
@@ -1201,7 +1269,8 @@ def create_interaction_plot(stats_df: pd.DataFrame, output_path: str, df_raw: Op
                     if len(row_l) == 1:
                         L[si, window_idx - 1] = float(row_l.iloc[0])
             segs = _compute_fdr_significant_segments(H, L, x_grid, alternative='greater')
-            for w0, w1 in segs:
+            shade = _compute_cluster_significant_segments(H, L, x_grid, alternative='greater')
+            for w0, w1 in shade:
                 t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
                 t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
                 ax2.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
@@ -1325,6 +1394,15 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     H_RS = np.vstack(H_RS); L_RS = np.vstack(L_RS)
     H_DMT = np.vstack(H_DMT); L_DMT = np.vstack(L_DMT)
 
+    # Unidad E: standardise each participant's 72 window values, so the plotted
+    # scale matches the one the models use (see _standardise_within_subject).
+    _stack = np.concatenate([H_RS, L_RS, H_DMT, L_DMT], axis=1)
+    _mu = np.nanmean(_stack, axis=1, keepdims=True)
+    _sd = np.nanstd(_stack, axis=1, ddof=1, keepdims=True)
+    _sd[_sd == 0] = np.nan
+    H_RS = (H_RS - _mu) / _sd; L_RS = (L_RS - _mu) / _sd
+    H_DMT = (H_DMT - _mu) / _sd; L_DMT = (L_DMT - _mu) / _sd
+
     def mean_sem(M: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         return np.nanmean(M, axis=0), np.nanstd(M, axis=0, ddof=1) / np.sqrt(M.shape[0])
 
@@ -1338,16 +1416,18 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(DOUBLE_COL_WIDTH, DOUBLE_COL_WIDTH * 0.35), sharex=True, sharey=True)
     # RS panel
     rs_segs = _compute_fdr_significant_segments(H_RS, L_RS, x)
-    for w0, w1 in rs_segs:
+    rs_shade = _compute_cluster_significant_segments(H_RS, L_RS, x)
+    for w0, w1 in rs_shade:
         t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
         t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
         ax1.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
     # Convert window indices to time in minutes for x-axis
     time_minutes = (x - 0.5) * WINDOW_SIZE_SEC / 60.0  # Center of each window
+    _draw_individual_traces(ax1, time_minutes, H_RS, L_RS, COLOR_RS_HIGH)
     l1 = ax1.plot(time_minutes, rs_mean_h, color=COLOR_RS_HIGH, lw=LINE_WIDTH, label='High dose (40mg)')[0]
     ax1.fill_between(time_minutes, rs_mean_h - rs_sem_h, rs_mean_h + rs_sem_h, color=COLOR_RS_HIGH, alpha=0.25)
-    l2 = ax1.plot(time_minutes, rs_mean_l, color=COLOR_RS_LOW, lw=LINE_WIDTH, label='Low dose (20mg)')[0]
-    ax1.fill_between(time_minutes, rs_mean_l - rs_sem_l, rs_mean_l + rs_sem_l, color=COLOR_RS_LOW, alpha=0.25)
+    l2 = ax1.plot(time_minutes, rs_mean_l, color=TRACE_GREY_MEAN, lw=LINE_WIDTH, label='Low dose (20mg)')[0]
+    ax1.fill_between(time_minutes, rs_mean_l - rs_sem_l, rs_mean_l + rs_sem_l, color=TRACE_GREY_MEAN, alpha=0.25)
     leg1 = ax1.legend([l1, l2], ['High dose (40mg)', 'Low dose (20mg)'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg1.get_frame().set_facecolor('white'); leg1.get_frame().set_alpha(0.9)
     ax1.set_xlabel('Time (minutes)', fontsize=FONT_SIZE_AXIS_LABEL)
@@ -1363,14 +1443,16 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     ax1.grid(True, which='major', axis='y', alpha=0.25); ax1.grid(False, which='major', axis='x')
     # DMT panel
     dmt_segs = _compute_fdr_significant_segments(H_DMT, L_DMT, x, alternative='greater')
-    for w0, w1 in dmt_segs:
+    dmt_shade = _compute_cluster_significant_segments(H_DMT, L_DMT, x, alternative='greater')
+    for w0, w1 in dmt_shade:
         t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
         t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
         ax2.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
+    _draw_individual_traces(ax2, time_minutes, H_DMT, L_DMT, COLOR_DMT_HIGH)
     l3 = ax2.plot(time_minutes, dmt_mean_h, color=COLOR_DMT_HIGH, lw=LINE_WIDTH, label='High dose (40mg)')[0]
     ax2.fill_between(time_minutes, dmt_mean_h - dmt_sem_h, dmt_mean_h + dmt_sem_h, color=COLOR_DMT_HIGH, alpha=0.25)
-    l4 = ax2.plot(time_minutes, dmt_mean_l, color=COLOR_DMT_LOW, lw=LINE_WIDTH, label='Low dose (20mg)')[0]
-    ax2.fill_between(time_minutes, dmt_mean_l - dmt_sem_l, dmt_mean_l + dmt_sem_l, color=COLOR_DMT_LOW, alpha=0.25)
+    l4 = ax2.plot(time_minutes, dmt_mean_l, color=TRACE_GREY_MEAN, lw=LINE_WIDTH, label='Low dose (20mg)')[0]
+    ax2.fill_between(time_minutes, dmt_mean_l - dmt_sem_l, dmt_mean_l + dmt_sem_l, color=TRACE_GREY_MEAN, alpha=0.25)
     leg2 = ax2.legend([l3, l4], ['High dose (40mg)', 'Low dose (20mg)'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg2.get_frame().set_facecolor('white'); leg2.get_frame().set_alpha(0.9)
     ax2.set_xlabel('Time (minutes)', fontsize=FONT_SIZE_AXIS_LABEL)
@@ -1480,7 +1562,8 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     time_minutes = (x - 0.5) * WINDOW_SIZE_SEC / 60.0  # Center of each window
     fig, ax = plt.subplots(1, 1, figsize=(12, 6))
     segs = _compute_fdr_significant_segments(H, L, x)
-    for w0, w1 in segs:
+    shade = _compute_cluster_significant_segments(H, L, x)
+    for w0, w1 in shade:
         t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
         t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
         ax.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
@@ -1875,6 +1958,8 @@ def prepare_extended_long_data_smna() -> pd.DataFrame:
     df['Scale'] = pd.Categorical(df['Scale'], categories=['z', 'abs'], ordered=True)
     df['subject'] = pd.Categorical(df['subject'])
     df['window_c'] = df['window'] - df['window'].mean()
+    # Unidad E (extended): standardise at window level -- AUC
+    df = _standardise_within_subject(df, 'AUC')
     return df
 
 

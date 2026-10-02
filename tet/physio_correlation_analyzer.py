@@ -114,9 +114,12 @@ class TETPhysioCorrelationAnalyzer:
         Compute Pearson correlations between TET and physiological measures.
         
         Analysis families (for FDR correction):
-        1. Arousal-Physiology: emotional_intensity_z vs (HR_z, SMNA_AUC_z, RVT_z) = 3 tests
-        2. Valence-Physiology: valence_index_z vs (HR_z, SMNA_AUC_z, RVT_z) = 3 tests
-        3. All Affective-Physiology: 6 TET dims × 3 physio measures = 18 tests
+        1. Arousal-Physiology: emotional_intensity_z vs (HR_z, SMNA_AUC_z, RVT_z)
+           x 2 states = 6 tests
+        2. Valence-Physiology: valence_index_z vs (HR_z, SMNA_AUC_z, RVT_z)
+           x 2 states = 6 tests
+        3. All Affective-Physiology: 6 TET dims x 3 physio measures x 2 states
+           = 36 tests
         
         Args:
             by_state: If True, compute correlations separately for RS and DMT states
@@ -214,7 +217,12 @@ class TETPhysioCorrelationAnalyzer:
         Analysis families:
         1. Arousal-Physiology: emotional_intensity_z vs physio
         2. Valence-Physiology: valence_index_z vs physio
-        3. All Affective-Physiology: other TET dims vs physio
+        3. All Affective-Physiology: the six affective dims vs physio
+
+        Emotional Intensity belongs to families 1 and 3. Families are corrected
+        in that order, so the p_fdr kept for its rows is the family-3 value;
+        run_coupling_analysis.py stores both corrections in separate columns
+        (p_fdr_index_family6, p_fdr_dimensions_family36).
         
         Args:
             results_df: DataFrame with correlation results

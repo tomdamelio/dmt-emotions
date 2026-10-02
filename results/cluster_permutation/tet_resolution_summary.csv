@@ -1,0 +1,43 @@
+resolution,bin_sec,variable,comparison,n,n_bins,cluster,clusters
+4s (native),4,emotional_intensity_z,dose,18,300,0.3-10.1,"[(np.float64(0.26666666666666666), np.float64(10.133333333333333), 412.18, 0.0249), (np.float64(10.8), np.float64(11.0), 8.51, 0.201)]"
+4s (native),4,emotional_intensity_z,state,18,150,0.0-9.9,"[(np.float64(0.0), np.float64(9.933333333333334), 1571.79, 0.0)]"
+4s (native),4,valence_index_z,dose,18,300,none,"[(np.float64(1.4), np.float64(1.9333333333333333), -19.54, 0.2318)]"
+4s (native),4,valence_index_z,state,18,150,none,"[(np.float64(0.0), np.float64(1.4), -50.29, 0.0988)]"
+4s (native),4,interoception_z,dose,18,300,none,"[(np.float64(5.333333333333333), np.float64(5.8), 16.9, 0.2213), (np.float64(7.8), np.float64(7.866666666666666), 4.23, 0.2433), (np.float64(8.0), np.float64(13.0), 187.82, 0.069)]"
+4s (native),4,interoception_z,state,18,150,0.0-9.9,"[(np.float64(0.0), np.float64(9.933333333333334), 1023.49, 0.0)]"
+4s (native),4,anxiety_z,dose,18,300,none,[]
+4s (native),4,anxiety_z,state,18,150,0.0-9.9,"[(np.float64(0.0), np.float64(9.933333333333334), 1011.62, 0.0)]"
+4s (native),4,unpleasantness_z,dose,18,300,none,"[(np.float64(0.9333333333333333), np.float64(6.933333333333334), 218.12, 0.0551)]"
+4s (native),4,unpleasantness_z,state,18,150,0.0-9.9,"[(np.float64(0.0), np.float64(9.933333333333334), 624.19, 0.0)]"
+4s (native),4,pleasantness_z,dose,18,300,none,[]
+4s (native),4,pleasantness_z,state,18,150,none,"[(np.float64(7.866666666666666), np.float64(9.933333333333334), 75.12, 0.0761)]"
+4s (native),4,bliss_z,dose,18,300,none,[]
+4s (native),4,bliss_z,state,18,150,none,[]
+20s,20,emotional_intensity_z,dose,18,60,0.3-10.0,"[(np.float64(0.3333333333333333), np.float64(10.0), 82.89, 0.025), (np.float64(10.666666666666666), np.float64(10.666666666666666), 2.11, 0.2049)]"
+20s,20,emotional_intensity_z,state,18,30,0.0-9.7,"[(np.float64(0.0), np.float64(9.666666666666666), 314.47, 0.0)]"
+20s,20,valence_index_z,dose,18,60,none,"[(np.float64(1.3333333333333333), np.float64(1.6666666666666667), -4.33, 0.2298)]"
+20s,20,valence_index_z,state,18,30,none,"[(np.float64(0.0), np.float64(1.3333333333333333), -11.33, 0.094)]"
+20s,20,interoception_z,dose,18,60,none,"[(np.float64(5.333333333333333), np.float64(5.333333333333333), 2.11, 0.237), (np.float64(8.0), np.float64(12.666666666666666), 37.16, 0.0704)]"
+20s,20,interoception_z,state,18,30,0.0-9.7,"[(np.float64(0.0), np.float64(9.666666666666666), 204.81, 0.0)]"
+20s,20,anxiety_z,dose,18,60,none,[]
+20s,20,anxiety_z,state,18,30,0.0-9.7,"[(np.float64(0.0), np.float64(9.666666666666666), 202.52, 0.0)]"
+20s,20,unpleasantness_z,dose,18,60,none,"[(np.float64(1.0), np.float64(6.666666666666667), 43.22, 0.0566)]"
+20s,20,unpleasantness_z,state,18,30,0.0-9.7,"[(np.float64(0.0), np.float64(9.666666666666666), 124.89, 0.0)]"
+20s,20,pleasantness_z,dose,18,60,none,[]
+20s,20,pleasantness_z,state,18,30,none,"[(np.float64(8.0), np.float64(9.666666666666666), 14.17, 0.0799)]"
+20s,20,bliss_z,dose,18,60,none,[]
+20s,20,bliss_z,state,18,30,none,[]
+30s,30,emotional_intensity_z,dose,18,40,0.5-9.5,"[(np.float64(0.5), np.float64(9.5), 53.11, 0.0269)]"
+30s,30,emotional_intensity_z,state,18,20,0.0-9.5,"[(np.float64(0.0), np.float64(9.5), 209.86, 0.0)]"
+30s,30,valence_index_z,dose,18,40,none,"[(np.float64(1.5), np.float64(1.5), -2.17, 0.2358)]"
+30s,30,valence_index_z,state,18,20,none,"[(np.float64(0.0), np.float64(1.0), -6.84, 0.0983)]"
+30s,30,interoception_z,dose,18,40,none,"[(np.float64(5.5), np.float64(5.5), 2.11, 0.2328), (np.float64(8.0), np.float64(12.5), 24.77, 0.0707)]"
+30s,30,interoception_z,state,18,20,0.0-9.5,"[(np.float64(0.0), np.float64(9.5), 136.59, 0.0)]"
+30s,30,anxiety_z,dose,18,40,none,[]
+30s,30,anxiety_z,state,18,20,0.0-9.5,"[(np.float64(0.0), np.float64(9.5), 135.35, 0.0)]"
+30s,30,unpleasantness_z,dose,18,40,none,"[(np.float64(1.0), np.float64(6.5), 28.85, 0.0571)]"
+30s,30,unpleasantness_z,state,18,20,0.0-9.5,"[(np.float64(0.0), np.float64(9.5), 83.27, 0.0)]"
+30s,30,pleasantness_z,dose,18,40,none,[]
+30s,30,pleasantness_z,state,18,20,none,"[(np.float64(8.0), np.float64(9.5), 9.45, 0.0797)]"
+30s,30,bliss_z,dose,18,40,none,[]
+30s,30,bliss_z,state,18,20,none,[]

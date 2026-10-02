@@ -181,6 +181,14 @@ research_diary/
 # Internal validation log (kept local, not versioned)
 validation_log.json
 
+# Per-participant age (quasi-identifier in a sample of 19; deliberately not
+# shared, see the Zenodo deposit's CHANGELOG). Local file only. Without it,
+# run_ecg_hrv_analysis.py falls back to the group mean age reported in Methods.
+metadata/participants_age.tsv
+
 # Analysis outputs (regenerated from src/run_*.py - not versioned)
 results/*
 !results/figures/
+# Source data (Supplementary Data 1): anonymised, published with the code
+!results/source_data/
+!results/source_data/**

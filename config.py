@@ -94,6 +94,35 @@ SUJETOS_INDICES = ['S01', 'S02', 'S03', 'S04', 'S05', 'S06', 'S07', 'S08', 'S09'
 # Build the dose DataFrame
 DOSIS = pd.DataFrame(DOSIS_RAW, columns=COLUMNAS_DOSIS, index=SUJETOS_INDICES)
 
+# Per-participant age, used by run_ecg_hrv_analysis.py to estimate each
+# participant's intrinsic heart rate (Jose & Collison 1970: 118.1 - 0.57 * age).
+#
+# Individual ages are deliberately NOT part of the public dataset or of this
+# repository: in a sample of 19 with two female participants they would be a
+# quasi-identifier (see the Zenodo deposit's CHANGELOG, "Not included by
+# design"). They are read from a local, git-ignored file. If that file is
+# absent, every participant is assigned the group mean age reported in
+# Methods, and the ceiling analysis runs with a single shared bound; the
+# per-participant counts in the paper cannot then be reproduced exactly.
+EDAD_MEDIA_MUESTRA = 33.9   # years; Methods -> Participants (n = 19)
+EDAD_SUJETO_PATH = os.path.join(PROJECT_ROOT, 'metadata', 'participants_age.tsv')
+
+
+def _cargar_edades():
+    if not os.path.exists(EDAD_SUJETO_PATH):
+        return {}
+    t = pd.read_csv(EDAD_SUJETO_PATH, sep='\t')
+    return dict(zip(t['participant_id'].astype(str), t['age'].astype(float)))
+
+
+EDAD_SUJETO = _cargar_edades()
+
+
+def get_edad_sujeto(sujeto):
+    """Age in years at the first session; group mean if per-participant ages
+    are not available locally."""
+    return EDAD_SUJETO.get(sujeto, EDAD_MEDIA_MUESTRA)
+
 # Full list of all subjects (S01-S20, except S14) - 19 subjects in total
 TODOS_LOS_SUJETOS = SUJETOS_INDICES.copy()  # ['S01', 'S02', ..., 'S13', 'S15', ..., 'S20']
 

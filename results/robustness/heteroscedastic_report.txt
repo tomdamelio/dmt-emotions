@@ -1,0 +1,114 @@
+
+ ============================================================ 
+MODALITY: SMNA 
+N rows: 792 | Subjects: 11 
+States: RS, DMT 
+============================================================ 
+
+--- Standard LME (homoscedastic) ---
+                        Value   Std.Error  DF   t-value      p-value
+(Intercept)       -0.39274285 0.051512154 775 -7.624275 7.185306e-14
+StateDMT           0.58569185 0.144196152 775  4.061772 5.365666e-05
+DoseHigh          -0.11508644 0.095280064 775 -1.207875 2.274637e-01
+window_c          -0.03062186 0.008598639 775 -3.561245 3.916300e-04
+StateDMT:DoseHigh  0.62976058 0.276197297 775  2.280111 2.287191e-02
+StateDMT:window_c -0.07447795 0.009928853 775 -7.501163 1.735262e-13
+DoseHigh:window_c  0.01998068 0.009928853 775  2.012386 4.452480e-02
+
+--- Heteroscedastic LME (varIdent by State) ---
+                        Value   Std.Error  DF    t-value      p-value
+(Intercept)       -0.39274285 0.035337905 775 -11.113926 9.934283e-27
+StateDMT           0.58569185 0.141667917 775   4.134259 3.949590e-05
+DoseHigh          -0.11508644 0.084716784 775  -1.358485 1.747053e-01
+window_c          -0.03137699 0.006399780 775  -4.902823 1.151148e-06
+StateDMT:DoseHigh  0.62976058 0.273337358 775   2.303968 2.148813e-02
+StateDMT:window_c -0.07447795 0.009948653 775  -7.486234 1.929516e-13
+DoseHigh:window_c  0.02149094 0.008428585 775   2.549768 1.097089e-02
+
+Variance structure (sigma ratio DMT/RS):
+      DMT        RS 
+1.0000000 0.5532754 
+
+--- Likelihood Ratio Test (ML, not REML) ---
+         Model df      AIC      BIC    logLik   Test  L.Ratio p-value
+m_std_ml     1 14 1801.966 1867.410 -886.9832                        
+m_het_ml     2 15 1675.146 1745.265 -822.5731 1 vs 2 128.8202  <.0001
+
+Saved: results/robustness/lme_smna_comparison.csv 
+
+ ============================================================ 
+MODALITY: HR 
+N rows: 792 | Subjects: 11 
+States: RS, DMT 
+============================================================ 
+
+--- Standard LME (homoscedastic) ---
+                         Value   Std.Error  DF     t-value      p-value
+(Intercept)       -0.487874898 0.040620957 775 -12.0104236 1.349520e-30
+StateDMT           0.686796818 0.115270840 775   5.9581141 3.870494e-09
+DoseHigh          -0.271620314 0.120266531 775  -2.2584863 2.419261e-02
+window_c          -0.003943759 0.006780632 775  -0.5816212 5.609910e-01
+StateDMT:DoseHigh  1.121146584 0.147107683 775   7.6212646 7.342968e-14
+StateDMT:window_c -0.084232947 0.007829599 775 -10.7582711 2.967947e-25
+DoseHigh:window_c  0.010934778 0.007829599 775   1.3965949 1.629353e-01
+
+--- Heteroscedastic LME (varIdent by State) ---
+                          Value   Std.Error  DF      t-value      p-value
+(Intercept)       -0.4878748981 0.022706650 775 -21.48599182 1.069672e-80
+StateDMT           0.6867968182 0.113588797 775   6.04634289 2.302537e-09
+DoseHigh          -0.2716203141 0.113930024 775  -2.38409774 1.736078e-02
+window_c          -0.0001364905 0.004203011 775  -0.03247446 9.741020e-01
+StateDMT:DoseHigh  1.1211465845 0.143577639 775   7.80864340 1.876560e-14
+StateDMT:window_c -0.0842329472 0.007846733 775 -10.73477937 3.704137e-25
+DoseHigh:window_c  0.0033202399 0.005687792 775   0.58374842 5.595594e-01
+
+Variance structure (sigma ratio DMT/RS):
+      DMT        RS 
+1.0000000 0.4291926 
+
+--- Likelihood Ratio Test (ML, not REML) ---
+         Model df      AIC      BIC    logLik   Test  L.Ratio p-value
+m_std_ml     1 14 1428.728 1494.171 -700.3638                        
+m_het_ml     2 15 1182.854 1252.973 -576.4270 1 vs 2 247.8736  <.0001
+
+Saved: results/robustness/lme_hr_comparison.csv 
+
+ ============================================================ 
+MODALITY: RVT 
+N rows: 864 | Subjects: 12 
+States: RS, DMT 
+============================================================ 
+
+--- Standard LME (homoscedastic) ---
+                          Value   Std.Error  DF     t-value      p-value
+(Intercept)       -0.2020650119 0.055667600 846 -3.62984952 0.0003006173
+StateDMT          -0.0198251569 0.158885724 846 -0.12477620 0.9007303715
+DoseHigh           0.1440352907 0.147274380 846  0.97800643 0.3283507206
+window_c           0.0143508541 0.009292284 846  1.54438386 0.1228693293
+StateDMT:DoseHigh  0.5598397799 0.333415793 846  1.67910397 0.0935010391
+StateDMT:window_c  0.0003245604 0.010729806 846  0.03024849 0.9758760094
+DoseHigh:window_c -0.0094044838 0.010729806 846 -0.87648221 0.3810167485
+
+--- Heteroscedastic LME (varIdent by State) ---
+                          Value   Std.Error  DF     t-value      p-value
+(Intercept)       -0.2020650119 0.049243967 846 -4.10334554 4.466101e-05
+StateDMT          -0.0198251569 0.156727420 846 -0.12649450 8.993706e-01
+DoseHigh           0.1440352907 0.144964085 846  0.99359294 3.207052e-01
+window_c           0.0122328898 0.008515954 846  1.43646737 1.512391e-01
+StateDMT:DoseHigh  0.5598397799 0.332393564 846  1.68426781 9.249878e-02
+StateDMT:window_c  0.0003245604 0.010746475 846  0.03020157 9.759134e-01
+DoseHigh:window_c -0.0051685553 0.010483438 846 -0.49302101 6.221257e-01
+
+Variance structure (sigma ratio DMT/RS):
+      DMT        RS 
+1.0000000 0.7996777 
+
+--- Likelihood Ratio Test (ML, not REML) ---
+         Model df      AIC      BIC    logLik   Test L.Ratio p-value
+m_std_ml     1 14 2189.948 2256.610 -1080.974                       
+m_het_ml     2 15 2171.294 2242.717 -1070.647 1 vs 2 20.6541  <.0001
+
+Saved: results/robustness/lme_rvt_comparison.csv 
+
+
+Done. Results saved to: results/robustness

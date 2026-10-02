@@ -6,11 +6,10 @@
 #   Rscript scripts/heteroscedastic_lme.R
 
 library(nlme)
-
-RSCRIPT <- "C:/Users/au805392/AppData/Local/Programs/R/R-4.5.3/bin/Rscript.exe"
+`%||%` <- function(a, b) if (is.null(a)) b else a
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
-BASE <- "c:/Users/au805392/OneDrive - Aarhus universitet/Escritorio/Investigacion/papers/dmt/dmt-emotions"
+BASE <- normalizePath(getwd(), mustWork = FALSE)   # run from the repository root
 SMNA_CSV <- file.path(BASE, "results/eda/smna/smna_auc_long_data_z.csv")
 HR_CSV   <- file.path(BASE, "results/ecg/hr/hr_minute_long_data_z.csv")
 RVT_CSV  <- file.path(BASE, "results/resp/rvt/resp_rvt_minute_long_data_z.csv")
@@ -20,10 +19,13 @@ dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 # ─── Helper: fit both models and extract fixed effects ────────────────────────
 fit_models <- function(df, outcome_col, label) {
 
-  df <- df[df$Scale == "z", ]
+  if ("Scale" %in% names(df)) df <- df[df$Scale == "z", ]
   df$State <- factor(df$State, levels = c("RS", "DMT"))
   df$Dose  <- factor(df$Dose,  levels = c("Low", "High"))
   df[[outcome_col]] <- as.numeric(df[[outcome_col]])
+  df$State_n <- as.numeric(df$State == "DMT")
+  df$Dose_n  <- as.numeric(df$Dose  == "High")
+  df$StateXDose_n <- df$State_n * df$Dose_n
 
   formula_fixed <- as.formula(
     paste0(outcome_col,
@@ -40,7 +42,7 @@ fit_models <- function(df, outcome_col, label) {
   cat("\n--- Standard LME (homoscedastic) ---\n")
   m_std <- tryCatch(
     lme(formula_fixed,
-        random = ~ 1 | subject,
+        random = ~ 0 + State_n + Dose_n + StateXDose_n | subject,
         data   = df,
         method = "REML",
         control = lmeControl(opt = "optim", maxIter = 200, msMaxIter = 200)),
@@ -52,7 +54,7 @@ fit_models <- function(df, outcome_col, label) {
   cat("\n--- Heteroscedastic LME (varIdent by State) ---\n")
   m_het <- tryCatch(
     lme(formula_fixed,
-        random  = ~ 1 | subject,
+        random  = ~ 0 + State_n + Dose_n + StateXDose_n | subject,
         weights = varIdent(form = ~ 1 | State),
         data    = df,
         method  = "REML",

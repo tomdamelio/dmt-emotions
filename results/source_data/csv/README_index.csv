@@ -1,0 +1,37 @@
+sheet,figure_panel,pipeline_file,n_rows,n_cols
+Fig2A_HR_9min,"Fig. 2A: heart rate, 30-s windows, RS and DMT, 0-9 min, window-level z per participant",results/ecg/hr/hr_minute_long_data_z.csv,792,7
+Fig2B_SMNA_9min,"Fig. 2B: SMNA AUC, 30-s windows, RS and DMT, 0-9 min, window-level z",results/eda/smna/smna_auc_long_data_z.csv,792,8
+Fig2C_RVT_9min,"Fig. 2C: respiratory volume per time, 30-s windows, RS and DMT, 0-9 min, window-level z",results/resp/rvt/resp_rvt_minute_long_data_z.csv,864,8
+Fig2D_HR_20min,"Fig. 2D: heart rate, DMT only, 0-20 min, window-level z",results/ecg/hr/hr_extended_dmt_z.csv,836,7
+Fig2E_SMNA_20min,"Fig. 2E: SMNA AUC, DMT only, 0-20 min, window-level z",results/eda/smna/smna_extended_dmt_z.csv,836,8
+Fig2F_RVT_20min,"Fig. 2F: RVT, DMT only, 0-20 min, window-level z",results/resp/rvt/resp_rvt_extended_dmt_z.csv,912,8
+Fig2_HR_effects,Fig. 2 / Results: per-window effect sizes for heart rate,results/ecg/hr/plots/effect_sizes_table.csv,5,10
+Fig2_SMNA_effects,Fig. 2 / Results: per-window effect sizes for SMNA,results/eda/smna/plots/effect_sizes_table.csv,5,10
+Fig2_RVT_effects,Fig. 2 / Results: per-window effect sizes for RVT,results/resp/rvt/plots/effect_sizes_table.csv,5,10
+Fig2_clusters_per_window,Fig. 2 shading / Supp. Table: per-window paired statistics entering the cluster permutation,results/cluster_permutation/per_window.csv,220,15
+Fig2_clusters_summary,Fig. 2 shading / Supp. Table: cluster masses and exact permutation p-values,results/cluster_permutation/summary.csv,10,10
+Fig3A_PC1_loadings,Fig. 3A: PC1 loadings of the composite arousal index,results/composite/pca_loadings_pc1.csv,3,2
+Fig3CD_composite,"Fig. 3C-D: composite arousal index per participant and window, RS and DMT (n = 7)",results/composite/arousal_index_long.csv,504,12
+Fig3_composite_extended,"Fig. 3D extended view: modality z-scores and composite, DMT 0-20 min, complete cases",results/composite/merged_extended_dmt_complete_cases.csv,532,8
+Fig4_TET_preprocessed,"Fig. 4 traces: Temporal Experience Tracing, per participant, session and time bin",results/tet/preprocessed/tet_preprocessed.csv,16200,39
+Fig4_TET_PC_scores,Fig. 4 PC1/PC2 traces: TET principal-component scores per participant and bin,results/tet/pca/pca_scores.csv,16200,12
+Fig4_TET_PC_loadings,Fig. 4: TET PCA loadings,results/tet/pca/pca_loadings.csv,36,3
+Fig4_TET_PC_variance,Fig. 4: TET PCA variance explained,results/tet/pca/pca_variance_explained.csv,6,3
+Fig4_TET_LME,Fig. 4 / Results: LME results for the TET dimensions,results/tet/lme/lme_results.csv,56,7
+Fig4_TET_PC_LME,Fig. 4 / Results: LME results for the TET principal components,results/tet/pca/pca_lme_results.csv,18,8
+Fig4_TET_clusters_per_bin,Fig. 4 shading: per-bin paired statistics for the TET cluster permutation,results/cluster_permutation/tet_per_bin.csv,4050,10
+Fig4_TET_clusters_summary,Fig. 4 shading: TET cluster masses and exact permutation p-values,results/cluster_permutation/tet_summary.csv,18,9
+Fig5_merged_physio_TET,Fig. 5 and Supp. Fig. 7: merged physiological and TET data per participant and window,results/coupling/merged_physio_tet_data.csv,504,22
+Fig5_regression,Fig. 5 / Supp. Fig. 7: regressions of TET dimensions on the composite arousal index,results/coupling/regression_tet_arousal_index.csv,14,9
+Fig5_correlations,Fig. 5: correlations between TET dimensions and physiological measures,results/coupling/correlations_tet_physio.csv,42,11
+Fig5_CCA_loadings,Fig. 5: CCA loadings,results/coupling/cca_loadings.csv,36,5
+Fig5_CCA_CV_folds,"Fig. 5: CCA cross-validation, per fold",results/coupling/cca_cross_validation_folds.csv,28,4
+Fig5_CCA_CV_summary,Fig. 5: CCA cross-validation summary,results/coupling/cca_cross_validation_summary.csv,4,11
+Fig5_CCA_CV_signif,Fig. 5: CCA cross-validation significance,results/coupling/cca_cv_significance.csv,4,12
+Fig5_CCA_perm_p,Fig. 5: CCA permutation p-values,results/coupling/cca_permutation_pvalues.csv,4,5
+FigS3_HR_scales,"Supp. Fig. 3: heart rate, DMT 0-20 min, all window scales",results/ecg/hr/hr_extended_dmt_all_scales.csv,1672,7
+FigS3_SMNA_scales,"Supp. Fig. 3: SMNA, DMT 0-20 min, all window scales",results/eda/smna/smna_extended_dmt_all_scales.csv,1672,8
+FigS3_RVT_scales,"Supp. Fig. 3: RVT, DMT 0-20 min, all window scales",results/resp/rvt/resp_rvt_extended_dmt_all_scales.csv,1824,8
+FigS6_composite_by_subj,Supp. Fig. 6: per-participant composite index and modality z-scores,results/composite/merged_z_by_subject.csv,504,11
+FigS4_HRV_windows,"Supp. Fig. 4: RMSSD, normalised RMSSD, SDNN and HR per 2-min window (step 30 s); the 11 participants with valid ECG, of whom the 10 passing the variability quality criterion enter Supp. Fig. 4 (S16 excluded)",results/ecg/hrv/hrv_windows_long.csv,1065,16
+FigS4_intrinsic_ceiling,Results (intrinsic-rate ceiling): peak 60-s HR per participant and dose against the age-predicted intrinsic rate,results/ecg/hrv/intrinsic_ceiling.csv,22,9

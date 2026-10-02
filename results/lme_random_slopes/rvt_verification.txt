@@ -1,0 +1,64 @@
+==========================================================================
+HR   (11 participants)
+==========================================================================
+  M3  (0 + State_n + Dose_n + State_n:Dose_n)
+    lbfgs   loglik=    -720.7  beta=+1.121  SE=0.1298  CI=[+0.867,+1.375]
+    bfgs    loglik=    -720.9  beta=+1.121  SE=0.1251  CI=[+0.876,+1.366]
+    cg      loglik=    -721.1  beta=+1.121  SE=0.1241  CI=[+0.878,+1.364]
+    powell  loglik=    -720.7  beta=+1.121  SE=0.1285  CI=[+0.869,+1.373]
+    nm      loglik=    -720.9  beta=+1.121  SE=0.1615  CI=[+0.805,+1.438]
+  M4  (0 + State_n + Dose_n + State_n:Dose_n + window_c)
+    lbfgs   loglik=    -711.4  beta=+1.121  SE=0.1438  CI=[+0.839,+1.403]
+    bfgs    loglik=    -693.4  beta=+1.121  SE=0.1329  CI=[+0.861,+1.382]
+    cg      loglik=    -694.0  beta=+1.121  SE=0.1366  CI=[+0.853,+1.389]
+    powell  loglik=    -692.2  beta=+1.121  SE=0.1283  CI=[+0.870,+1.373]
+    nm      loglik=    -705.6  beta=+1.121  SE=0.1408  CI=[+0.845,+1.397]
+
+==========================================================================
+SMNA   (11 participants)
+==========================================================================
+  M3  (0 + State_n + Dose_n + State_n:Dose_n)
+    lbfgs   loglik=    -904.9  beta=+0.630  SE=0.2771  CI=[+0.087,+1.173]
+    bfgs    loglik=    -904.9  beta=+0.630  SE=0.2759  CI=[+0.089,+1.171]
+    cg      loglik=    -904.9  beta=+0.630  SE=0.2773  CI=[+0.086,+1.173]
+    powell  loglik=    -904.9  beta=+0.630  SE=0.2740  CI=[+0.093,+1.167]
+    nm      loglik=    -905.9  beta=+0.630  SE=0.2498  CI=[+0.140,+1.119]
+  M4  (0 + State_n + Dose_n + State_n:Dose_n + window_c)
+    lbfgs   loglik=    -913.7  beta=+0.630  SE=0.3220  CI=[-0.001,+1.261]
+    bfgs    loglik=    -922.4  beta=+0.630  SE=0.3307  CI=[-0.018,+1.278]
+    cg      loglik=    -945.8  beta=+0.630  SE=0.2349  CI=[+0.169,+1.090]
+    powell  loglik=    -895.3  beta=+0.630  SE=0.2727  CI=[+0.095,+1.164]
+    nm      loglik=    -907.0  beta=+0.630  SE=0.2496  CI=[+0.141,+1.119]
+
+==========================================================================
+RVT   (12 participants)
+==========================================================================
+  M3  (0 + State_n + Dose_n + State_n:Dose_n)
+    lbfgs   loglik=   -1097.8  beta=+0.560  SE=0.3334  CI=[-0.094,+1.213]
+    bfgs    loglik=   -1097.8  beta=+0.560  SE=0.3334  CI=[-0.094,+1.213]
+    cg      loglik=   -1097.8  beta=+0.560  SE=0.3332  CI=[-0.093,+1.213]
+    powell  loglik=   -1097.8  beta=+0.560  SE=0.3169  CI=[-0.061,+1.181]
+    nm      loglik=   -1099.8  beta=+0.560  SE=0.3886  CI=[-0.202,+1.321]
+  M4  (0 + State_n + Dose_n + State_n:Dose_n + window_c)
+    lbfgs   loglik=   -1079.0  beta=+0.560  SE=0.3330  CI=[-0.093,+1.212]
+    bfgs    loglik=   -1079.0  beta=+0.560  SE=0.3332  CI=[-0.093,+1.213]
+    cg      loglik=   -1079.0  beta=+0.560  SE=0.3331  CI=[-0.093,+1.213]
+    powell  loglik=   -1079.1  beta=+0.560  SE=0.3228  CI=[-0.073,+1.193]
+    nm      loglik=   -1090.5  beta=+0.560  SE=0.3340  CI=[-0.095,+1.215]
+
+==========================================================================
+Arousal   (7 participants)
+==========================================================================
+  M3  (0 + State_n + Dose_n + State_n:Dose_n)
+    lbfgs   loglik=    -554.5  beta=+1.260  SE=0.3792  CI=[+0.517,+2.003]
+    bfgs    loglik=    -554.5  beta=+1.260  SE=0.3792  CI=[+0.517,+2.003]
+    cg      loglik=    -554.5  beta=+1.260  SE=0.3792  CI=[+0.517,+2.003]
+    powell  loglik=    -554.6  beta=+1.260  SE=0.3556  CI=[+0.563,+1.957]
+    nm      loglik=    -554.5  beta=+1.260  SE=0.3791  CI=[+0.517,+2.003]
+  M4  (0 + State_n + Dose_n + State_n:Dose_n + window_c)
+    lbfgs   loglik=    -557.0  beta=+1.260  SE=0.5572  CI=[+0.168,+2.352]
+    bfgs    loglik=    -540.2  beta=+1.260  SE=0.3788  CI=[+0.517,+2.002]
+    cg      loglik=    -540.2  beta=+1.260  SE=0.3787  CI=[+0.518,+2.002]
+    powell  loglik=    -540.3  beta=+1.260  SE=0.3559  CI=[+0.562,+1.957]
+    nm      loglik=    -549.0  beta=+1.260  SE=0.3743  CI=[+0.526,+1.993]
+

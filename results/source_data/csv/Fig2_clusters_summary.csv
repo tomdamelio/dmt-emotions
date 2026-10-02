@@ -1,0 +1,11 @@
+modality,state,alternative,n,fdr,cluster,tfce,n_sig_fdr,n_sig_cluster,n_sig_tfce
+HR,DMT,greater,11,1.5-9.0,1.5-9.0,"2.5-3.0, 3.5-8.5",15,15,11.0
+HR,RS,two-sided,11,none,none,none,0,0,0.0
+SMNA,DMT,greater,11,none,4.0-5.5,none,0,3,0.0
+SMNA,RS,two-sided,11,none,none,none,0,0,0.0
+RVT,DMT,greater,12,1.5-5.0,1.0-5.0,4.5-5.0,7,8,1.0
+RVT,RS,two-sided,12,none,none,none,0,0,0.0
+Arousal,DMT,greater,7,"2.0-3.0, 3.5-9.0",2.0-9.0,"2.5-3.0, 4.5-5.0, 5.5-6.0, 7.5-9.0",13,14,6.0
+Arousal,RS,two-sided,7,none,none,none,0,0,0.0
+HR,DMT_extended,greater,11,"2.5-3.0, 3.5-9.0",1.5-9.0,,12,15,
+Arousal,DMT_extended,greater,7,"2.0-3.0, 3.5-10.0, 10.5-14.5, 16.0-19.0","1.5-10.0, 10.5-14.5, 16.0-19.0",,29,31,

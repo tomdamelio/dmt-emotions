@@ -1,0 +1,91 @@
+========================================================================
+emotional_intensity_z | state | n = 18 | bins = 150 (0.0-9.9 min) | perms = 131072 | cluster vs published: REPRODUCED
+  FDR:     0.0-9.9  (150 bins)
+  cluster: 0.0-9.9  (150 bins)
+      0.0-9.9 min  mass = 1571.79  p = 0.0000
+========================================================================
+emotional_intensity_z | dose | n = 18 | bins = 300 (0.0-19.9 min) | perms = 131072 | cluster vs published: REPRODUCED
+  FDR:     1.1-3.2  (33 bins)
+  cluster: 0.3-10.1  (149 bins)
+      0.3-10.1 min  mass =  412.18  p = 0.0249
+      10.8-11.0 min  mass =    8.51  p = 0.2010
+========================================================================
+valence_index | state | n = 18 | bins = 150 (0.0-9.9 min) | perms = 131072 | cluster vs published: REPRODUCED
+  FDR:     none  (0 bins)
+  cluster: none  (0 bins)
+      0.0-1.4 min  mass =  -50.29  p = 0.0988
+========================================================================
+valence_index | dose | n = 18 | bins = 300 (0.0-19.9 min) | perms = 131072 | cluster vs published: REPRODUCED
+  FDR:     none  (0 bins)
+  cluster: none  (0 bins)
+      1.4-1.9 min  mass =  -19.54  p = 0.2318
+========================================================================
+interoception_z | state | n = 18 | bins = 150 (0.0-9.9 min) | perms = 131072 | cluster vs published: REPRODUCED
+  FDR:     0.0-9.9  (150 bins)
+  cluster: 0.0-9.9  (150 bins)
+      0.0-9.9 min  mass = 1023.49  p = 0.0000
+========================================================================
+interoception_z | dose | n = 18 | bins = 300 (0.0-19.9 min) | perms = 131072 | cluster vs published: REPRODUCED
+  FDR:     none  (0 bins)
+  cluster: none  (0 bins)
+      5.3-5.8 min  mass =   16.90  p = 0.2213
+      7.8-7.9 min  mass =    4.23  p = 0.2433
+      8.0-13.0 min  mass =  187.82  p = 0.0690
+========================================================================
+anxiety_z | state | n = 18 | bins = 150 (0.0-9.9 min) | perms = 131072 | cluster vs published: REPRODUCED
+  FDR:     0.0-9.9  (150 bins)
+  cluster: 0.0-9.9  (150 bins)
+      0.0-9.9 min  mass = 1011.62  p = 0.0000
+========================================================================
+anxiety_z | dose | n = 18 | bins = 300 (0.0-19.9 min) | perms = 0 | cluster vs published: REPRODUCED
+  FDR:     none  (0 bins)
+  cluster: none  (0 bins)
+========================================================================
+unpleasantness_z | state | n = 18 | bins = 150 (0.0-9.9 min) | perms = 131072 | cluster vs published: REPRODUCED
+  FDR:     0.0-9.9  (150 bins)
+  cluster: 0.0-9.9  (150 bins)
+      0.0-9.9 min  mass =  624.19  p = 0.0000
+========================================================================
+unpleasantness_z | dose | n = 18 | bins = 300 (0.0-19.9 min) | perms = 131072 | cluster vs published: REPRODUCED
+  FDR:     none  (0 bins)
+  cluster: none  (0 bins)
+      0.9-6.9 min  mass =  218.12  p = 0.0551
+========================================================================
+pleasantness_z | state | n = 18 | bins = 150 (0.0-9.9 min) | perms = 131072 | cluster vs published: REPRODUCED
+  FDR:     none  (0 bins)
+  cluster: none  (0 bins)
+      7.9-9.9 min  mass =   75.12  p = 0.0761
+========================================================================
+pleasantness_z | dose | n = 18 | bins = 300 (0.0-19.9 min) | perms = 0 | cluster vs published: REPRODUCED
+  FDR:     none  (0 bins)
+  cluster: none  (0 bins)
+========================================================================
+bliss_z | state | n = 18 | bins = 150 (0.0-9.9 min) | perms = 0 | cluster vs published: REPRODUCED
+  FDR:     none  (0 bins)
+  cluster: none  (0 bins)
+========================================================================
+bliss_z | dose | n = 18 | bins = 300 (0.0-19.9 min) | perms = 0 | cluster vs published: REPRODUCED
+  FDR:     none  (0 bins)
+  cluster: none  (0 bins)
+========================================================================
+PC1 | state | n = 18 | bins = 150 (0.0-9.9 min) | perms = 131072 | cluster vs published: REPRODUCED
+  FDR:     0.0-9.9  (150 bins)
+  cluster: 0.0-9.9  (150 bins)
+      0.0-9.9 min  mass = 1565.78  p = 0.0000
+========================================================================
+PC1 | dose | n = 18 | bins = 300 (0.0-19.9 min) | perms = 131072 | cluster vs published: REPRODUCED
+  FDR:     1.0-7.6  (100 bins)
+  cluster: 0.7-11.4  (162 bins)
+      0.7-11.4 min  mass =  448.54  p = 0.0213
+========================================================================
+PC2 | state | n = 18 | bins = 150 (0.0-9.9 min) | perms = 131072 | cluster vs published: REPRODUCED
+  FDR:     none  (0 bins)
+  cluster: none  (0 bins)
+      7.5-7.5 min  mass =    2.11  p = 0.1473
+      7.9-9.9 min  mass =   73.69  p = 0.0797
+========================================================================
+PC2 | dose | n = 18 | bins = 300 (0.0-19.9 min) | perms = 0 | cluster vs published: REPRODUCED
+  FDR:     none  (0 bins)
+  cluster: none  (0 bins)
+
+VALIDATION: all cluster masks identical to the published function

@@ -22,6 +22,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
+from lme_fit import fit_lbfgs_powell  # noqa: E402
 import matplotlib
 # Only set TkAgg if no backend is already set (allows Agg when imported from run_figures.py)
 if matplotlib.get_backend() == 'agg' or not matplotlib.get_backend():
@@ -150,6 +151,51 @@ MIN_SAMPLES_PER_WINDOW = 10
 
 # Baseline correction flag (deprecated, use z-scoring instead)
 BASELINE_CORRECTION = False
+
+
+
+# --- Unidad E: individual participant traces behind the group mean -----------
+# The editor requires a mean-with-error-bars graph to also show the individual
+# data. For a time course the accepted form is one faint trace per participant.
+# High dose keeps the modality colour; Low dose is grey and dashed, so the two
+# conditions stay separable once 22 traces share a panel.
+TRACE_GREY = "#9e9e9e"
+TRACE_GREY_MEAN = "#6b6b6b"
+TRACE_DASH = (0, (2.2, 1.3))
+
+
+
+# --- Unidad E: window-level standardisation ---------------------------------
+# One standard deviation should mean the same thing in every modality: how far
+# a 30-s window sits from that participant's average window. Standardising the
+# raw signal sample by sample instead makes it mean the variation between
+# instants, which for a spiky signal is an order of magnitude larger (median
+# ratio of sample-level to window-level SD: 0.98 for HR, 1.57 for RVT, 10.86 for
+# SMNA). Re-standardising the per-window values within participant is invariant
+# to the affine transform already applied, so it recovers the correct quantity
+# without recomputing anything upstream.
+def _standardise_within_subject(df, value_col, scale_col='Scale', scale_value='z'):
+    """Re-standardise the per-window values of each participant."""
+    if df is None or len(df) == 0 or value_col not in df.columns:
+        return df
+    mask = (df[scale_col] == scale_value) if scale_col in df.columns else df[value_col].notna()
+    sub = df.loc[mask]
+    if sub.empty:
+        return df
+    g = sub.groupby('subject')[value_col]
+    mu = g.transform('mean')
+    sd = g.transform(lambda s: s.std(ddof=1))
+    df.loc[mask, value_col] = (sub[value_col] - mu) / sd
+    return df
+
+
+def _draw_individual_traces(ax, t, M_high, M_low, color_high):
+    """One line per participant: High in the modality colour, Low dashed grey."""
+    import numpy as _np
+    for row in _np.atleast_2d(_np.asarray(M_high, dtype=float)):
+        ax.plot(t, row, color=color_high, lw=0.7, alpha=0.40, zorder=1)
+    for row in _np.atleast_2d(_np.asarray(M_low, dtype=float)):
+        ax.plot(t, row, color=TRACE_GREY, lw=0.9, alpha=0.80, ls=TRACE_DASH, zorder=1)
 
 
 def determine_sessions(subject: str) -> Tuple[str, str]:
@@ -514,6 +560,7 @@ def prepare_long_data_hr() -> pd.DataFrame:
             print(f"  {msg}")
 
     df = pd.DataFrame(rows)
+    df = _standardise_within_subject(df, 'HR')
     df['State'] = pd.Categorical(df['State'], categories=['RS', 'DMT'], ordered=True)
     df['Dose'] = pd.Categorical(df['Dose'], categories=['Low', 'High'], ordered=True)
     df['Scale'] = pd.Categorical(df['Scale'], categories=['z', 'abs'], ordered=True)
@@ -532,11 +579,22 @@ def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
         return None, {'error': f'No {scale_to_use}-scaled data available'}
     try:
         formula = 'HR ~ State * Dose + window_c + State:window_c + Dose:window_c'
-        model = mixedlm(formula, df_model, groups=df_model['subject'])  # type: ignore[arg-type]
+        # Random effects: by-subject slopes for State, Dose and their interaction
+        # (Barr et al. 2013). The random intercept is omitted because
+        # within-subject z-scoring across the four sessions fixes each
+        # participant's mean at zero, so its variance is zero by construction
+        # and the fit is singular; the slopes are what actually vary.
+        # Numeric codes are required: with a categorical, "0 + State" is
+        # cell-means coding and silently reinstates the intercept.
+        df_model['State_n'] = (df_model['State'].astype(str) == 'DMT').astype(float)
+        df_model['Dose_n'] = (df_model['Dose'].astype(str) == 'High').astype(float)
+        model = mixedlm(formula, df_model, groups=df_model['subject'],
+                        re_formula='0 + State_n + Dose_n + State_n:Dose_n')  # type: ignore[arg-type]
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter('always')
-            # Fit with REML (consistent with other modalities)
-            fitted = model.fit(reml=True, method='lbfgs')
+            # REML; lbfgs, with powell as fallback when lbfgs does not converge
+            # (the rule shared by every model in the pipeline, see lme_fit.py).
+            fitted, optimizer_used = fit_lbfgs_powell(model)
             convergence_warnings = [str(warning.message) for warning in w]
     except Exception as e:
         return None, {'error': str(e)}
@@ -550,7 +608,7 @@ def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
         'random_effects_var': getattr(fitted, 'cov_re', None),
         'residual_var': getattr(fitted, 'scale', np.nan),
         'method': 'REML',
-        'optimizer': 'lbfgs',
+        'optimizer': optimizer_used,
     }
     return fitted, diagnostics
 
@@ -681,18 +739,35 @@ def hypothesis_testing_with_fdr(fitted_model, df: pd.DataFrame) -> Dict:
                     'n': int(mask.sum()),
                 }
     
+    # Cohen's d as defined in Methods: the mean of the within-participant
+    # contrast across participants divided by its SD. Each participant's
+    # contrast is the difference of their mean HR across windows between the
+    # two cells being compared.
+    cell_means = (df_model.groupby(['subject', 'State', 'Dose'], observed=True)['HR']
+                  .mean().unstack(['State', 'Dose']))
+
+    def per_subject_d(state: str) -> Dict:
+        if (state, 'High') not in cell_means.columns or (state, 'Low') not in cell_means.columns:
+            return {'cohens_d': np.nan}
+        diff = (cell_means[(state, 'High')] - cell_means[(state, 'Low')]).dropna()
+        m, sd = float(diff.mean()), float(diff.std(ddof=1))
+        return {'cohens_d': m / sd if sd > 0 else np.nan,
+                'contrast_mean': m, 'contrast_sd': sd, 'contrast_n': int(len(diff))}
+
     contrasts: Dict[str, Dict] = {}
     if 'Dose[T.High]' in params.index:
         beta_rs = float(params['Dose[T.High]'])
-        # Cohen's d approximation: beta / pooled_std (using residual std as proxy)
-        residual_std = np.sqrt(fitted_model.scale)
-        cohens_d_rs = beta_rs / residual_std if residual_std > 0 else np.nan
+        d_rs = per_subject_d('RS')
+        cohens_d_rs = d_rs['cohens_d']
         
         contrasts['High_Low_within_RS'] = {
             'beta': beta_rs,
             'se': float(stderr['Dose[T.High]']),
             'p_raw': float(pvalues['Dose[T.High]']),
             'cohens_d': cohens_d_rs,
+            'contrast_mean': d_rs.get('contrast_mean', np.nan),
+            'contrast_sd': d_rs.get('contrast_sd', np.nan),
+            'contrast_n': d_rs.get('contrast_n', 0),
             'mean_RS_High': empirical_means.get('RS_High', {}).get('mean', np.nan),
             'mean_RS_Low': empirical_means.get('RS_Low', {}).get('mean', np.nan),
             'std_RS_High': empirical_means.get('RS_High', {}).get('std', np.nan),
@@ -726,18 +801,21 @@ def hypothesis_testing_with_fdr(fitted_model, df: pd.DataFrame) -> Dict:
             se_dmt = np.sqrt(float(stderr['Dose[T.High]'])**2 + float(stderr['State[T.DMT]:Dose[T.High]'])**2)
             p_dmt = np.nan
         
-        residual_std = np.sqrt(fitted_model.scale)
-        cohens_d_dmt = beta_dmt / residual_std if residual_std > 0 else np.nan
+        d_dmt = per_subject_d('DMT')
+        cohens_d_dmt = d_dmt['cohens_d']
         
         contrasts['High_Low_within_DMT'] = {
             'beta': beta_dmt,
             'se': se_dmt,
             'p_raw': p_dmt,
             'cohens_d': cohens_d_dmt,
+            'contrast_mean': d_dmt.get('contrast_mean', np.nan),
+            'contrast_sd': d_dmt.get('contrast_sd', np.nan),
+            'contrast_n': d_dmt.get('contrast_n', 0),
             'mean_DMT_High': empirical_means.get('DMT_High', {}).get('mean', np.nan),
             'mean_DMT_Low': empirical_means.get('DMT_Low', {}).get('mean', np.nan),
             'std_DMT_High': empirical_means.get('DMT_High', {}).get('std', np.nan),
-            'std_DMT_Low': empirical_means.get('DMT_Low', {}).get('mean', np.nan),
+            'std_DMT_Low': empirical_means.get('DMT_Low', {}).get('std', np.nan),
             'n_DMT_High': empirical_means.get('DMT_High', {}).get('n', 0),
             'n_DMT_Low': empirical_means.get('DMT_Low', {}).get('n', 0),
             'description': 'High - Low within DMT (simple effect)',
@@ -815,7 +893,11 @@ def generate_report(fitted_model, diagnostics: Dict, hypothesis_results: Dict, d
             
             # Add Cohen's d if available
             if 'cohens_d' in res and not np.isnan(res['cohens_d']):
-                lines.append(f"    Cohen's d = {res['cohens_d']:6.3f}")
+                lines.append(
+                    f"    Cohen's d = {res['cohens_d']:6.3f}  (per-participant contrast: "
+                    f"mean = {res['contrast_mean']:.4f} / SD = {res['contrast_sd']:.4f}, "
+                    f"n = {res['contrast_n']}; mean of each participant's High - Low "
+                    f"difference divided by its SD, as defined in Methods)")
             
             # Add empirical means for RS and DMT contrasts
             if 'mean_RS_High' in res:
@@ -1155,6 +1237,12 @@ def create_model_summary_txt(diagnostics: Dict, coef_df: pd.DataFrame, output_pa
         f.write('\n'.join(lines))
 
 
+# Cluster-based permutation (revision, R2.2): drop-in replacements used for the
+# shaded bands; the FDR helpers below are kept for the window-wise reports.
+from cluster_stats import (cluster_significant_segments as _compute_cluster_significant_segments,
+                           cluster_results as _compute_cluster_results)
+
+
 def _compute_fdr_significant_segments(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05, alternative: str = 'two-sided') -> List[Tuple[float, float]]:
     """Return contiguous x-intervals where High vs Low differ after BH-FDR."""
     if scistats is None:
@@ -1329,6 +1417,15 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     H_RS = np.vstack(H_RS); L_RS = np.vstack(L_RS)
     H_DMT = np.vstack(H_DMT); L_DMT = np.vstack(L_DMT)
 
+    # Unidad E: standardise each participant's 72 window values, so the plotted
+    # scale matches the one the models use (see _standardise_within_subject).
+    _stack = np.concatenate([H_RS, L_RS, H_DMT, L_DMT], axis=1)
+    _mu = np.nanmean(_stack, axis=1, keepdims=True)
+    _sd = np.nanstd(_stack, axis=1, ddof=1, keepdims=True)
+    _sd[_sd == 0] = np.nan
+    H_RS = (H_RS - _mu) / _sd; L_RS = (L_RS - _mu) / _sd
+    H_DMT = (H_DMT - _mu) / _sd; L_DMT = (L_DMT - _mu) / _sd
+
     def mean_sem(M: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         return np.nanmean(M, axis=0), np.nanstd(M, axis=0, ddof=1) / np.sqrt(M.shape[0])
 
@@ -1346,16 +1443,18 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     
     # RS panel
     rs_segs = _compute_fdr_significant_segments(H_RS, L_RS, x)
-    for w0, w1 in rs_segs:
+    rs_shade = _compute_cluster_significant_segments(H_RS, L_RS, x)
+    for w0, w1 in rs_shade:
         t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
         t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
         ax1.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
     # Convert window indices to time in minutes for x-axis
     time_minutes = (x - 0.5) * WINDOW_SIZE_SEC / 60.0  # Center of each window
+    _draw_individual_traces(ax1, time_minutes, H_RS, L_RS, c_rs_high)
     l1 = ax1.plot(time_minutes, rs_mean_h, color=c_rs_high, lw=LINE_WIDTH, label='High dose (40mg)')[0]
     ax1.fill_between(time_minutes, rs_mean_h - rs_sem_h, rs_mean_h + rs_sem_h, color=c_rs_high, alpha=0.25)
-    l2 = ax1.plot(time_minutes, rs_mean_l, color=c_rs_low, lw=LINE_WIDTH, label='Low dose (20mg)')[0]
-    ax1.fill_between(time_minutes, rs_mean_l - rs_sem_l, rs_mean_l + rs_sem_l, color=c_rs_low, alpha=0.25)
+    l2 = ax1.plot(time_minutes, rs_mean_l, color=TRACE_GREY_MEAN, lw=LINE_WIDTH, label='Low dose (20mg)')[0]
+    ax1.fill_between(time_minutes, rs_mean_l - rs_sem_l, rs_mean_l + rs_sem_l, color=TRACE_GREY_MEAN, alpha=0.25)
     leg1 = ax1.legend([l1, l2], ['High dose (40mg)', 'Low dose (20mg)'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg1.get_frame().set_facecolor('white'); leg1.get_frame().set_alpha(0.9)
     ax1.set_xlabel('Time (minutes)', fontsize=FONT_SIZE_AXIS_LABEL)
@@ -1373,14 +1472,16 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     
     # DMT panel
     dmt_segs = _compute_fdr_significant_segments(H_DMT, L_DMT, x, alternative='greater')
-    for w0, w1 in dmt_segs:
+    dmt_shade = _compute_cluster_significant_segments(H_DMT, L_DMT, x, alternative='greater')
+    for w0, w1 in dmt_shade:
         t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
         t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
         ax2.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
+    _draw_individual_traces(ax2, time_minutes, H_DMT, L_DMT, c_dmt_high)
     l3 = ax2.plot(time_minutes, dmt_mean_h, color=c_dmt_high, lw=LINE_WIDTH, label='High dose (40mg)')[0]
     ax2.fill_between(time_minutes, dmt_mean_h - dmt_sem_h, dmt_mean_h + dmt_sem_h, color=c_dmt_high, alpha=0.25)
-    l4 = ax2.plot(time_minutes, dmt_mean_l, color=c_dmt_low, lw=LINE_WIDTH, label='Low dose (20mg)')[0]
-    ax2.fill_between(time_minutes, dmt_mean_l - dmt_sem_l, dmt_mean_l + dmt_sem_l, color=c_dmt_low, alpha=0.25)
+    l4 = ax2.plot(time_minutes, dmt_mean_l, color=TRACE_GREY_MEAN, lw=LINE_WIDTH, label='Low dose (20mg)')[0]
+    ax2.fill_between(time_minutes, dmt_mean_l - dmt_sem_l, dmt_mean_l + dmt_sem_l, color=TRACE_GREY_MEAN, alpha=0.25)
     leg2 = ax2.legend([l3, l4], ['High dose (40mg)', 'Low dose (20mg)'], loc='upper right', frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, markerscale=LEGEND_MARKERSCALE, borderpad=LEGEND_BORDERPAD, labelspacing=LEGEND_LABELSPACING, borderaxespad=LEGEND_BORDERAXESPAD)
     leg2.get_frame().set_facecolor('white'); leg2.get_frame().set_alpha(0.9)
     ax2.set_xlabel('Time (minutes)', fontsize=FONT_SIZE_AXIS_LABEL)
@@ -1591,7 +1692,7 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     rs = state_data['RS']
     print(f"Computing FDR for RS with {rs['H_mat'].shape[0]} subjects, {rs['H_mat'].shape[1]} time points")
     rs_fdr = _compute_fdr_results(rs['H_mat'], rs['L_mat'], t_grid)
-    rs_segments = rs_fdr.get('segments', [])
+    rs_segments = _compute_cluster_results(rs['H_mat'], rs['L_mat'], t_grid).get('segments', [])
     print(f"Adding {len(rs_segments)} shaded regions to RS panel")
     for x0, x1 in rs_segments:
         ax1.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
@@ -1619,7 +1720,7 @@ def create_combined_summary_plot(out_dir: str) -> Optional[str]:
     dmt = state_data['DMT']
     print(f"Computing FDR for DMT with {dmt['H_mat'].shape[0]} subjects, {dmt['H_mat'].shape[1]} time points")
     dmt_fdr = _compute_fdr_results(dmt['H_mat'], dmt['L_mat'], t_grid, alternative='greater')
-    dmt_segments = dmt_fdr.get('segments', [])
+    dmt_segments = _compute_cluster_results(dmt['H_mat'], dmt['L_mat'], t_grid, alternative='greater').get('segments', [])
     print(f"Adding {len(dmt_segments)} shaded regions to DMT panel")
     for x0, x1 in dmt_segments:
         ax2.axvspan(x0, x1, color='0.85', alpha=0.35, zorder=0)
@@ -1762,7 +1863,8 @@ def create_dmt_only_20min_plot(out_dir: str) -> Optional[str]:
     c_dmt_high, c_dmt_low = COLOR_DMT_HIGH, COLOR_DMT_LOW
     
     segs = _compute_fdr_significant_segments(H, L, x, alternative='greater')
-    for w0, w1 in segs:
+    shade = _compute_cluster_significant_segments(H, L, x, alternative='greater')
+    for w0, w1 in shade:
         t0 = (w0 - 1) * WINDOW_SIZE_SEC / 60.0  # Start of first window
         t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
         ax.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
@@ -2151,6 +2253,8 @@ def prepare_extended_long_data_hr() -> pd.DataFrame:
     df['Scale'] = pd.Categorical(df['Scale'], categories=['z', 'abs'], ordered=True)
     df['subject'] = pd.Categorical(df['subject'])
     df['window_c'] = df['window'] - df['window'].mean()
+    # Unidad E (extended): standardise at window level -- HR
+    df = _standardise_within_subject(df, 'HR')
     return df
 
 

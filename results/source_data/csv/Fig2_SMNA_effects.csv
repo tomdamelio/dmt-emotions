@@ -1,0 +1,6 @@
+label,beta,se,ci_lower,ci_upper,p_raw,p_fdr,significance,family,interpretation
+State (DMT vs RS),0.5857,0.1444,0.3026,0.8688,0.0001,0.0001,***,State,Significant increase in SMNA AUC
+Dose (High vs Low),-0.1151,0.0946,-0.3004,0.0703,0.2236,0.2236,,Dose,Non-significant decrease in SMNA AUC
+State × Time,-0.0745,0.0099,-0.0939,-0.055,0.0,0.0,***,State,Significant decrease in SMNA AUC
+Dose × Time,0.02,0.0099,0.0005,0.0394,0.0442,0.0885,,Dose,Non-significant increase in SMNA AUC
+State × Dose,0.6298,0.2771,0.0867,1.1728,0.023,0.023,*,Interaction,Significant increase in SMNA AUC

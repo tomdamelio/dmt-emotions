@@ -22,6 +22,7 @@ from typing import List, Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from lme_fit import fit_lbfgs_powell  # noqa: E402
 import matplotlib
 # Only set TkAgg if no backend is already set (allows Agg when imported from run_figures.py)
 if matplotlib.get_backend() == 'agg' or not matplotlib.get_backend():
@@ -960,11 +961,21 @@ def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
     
     try:
         formula = 'ArousalIndex ~ State * Dose + window_c + State:window_c + Dose:window_c'
-        model = mixedlm(formula, df, groups=df['subject'])
+        # Random effects: by-subject slopes for State, Dose and their interaction
+        # (Barr et al. 2013). The random intercept is omitted because
+        # within-subject z-scoring across the four sessions fixes each
+        # participant's mean at zero, so its variance is zero by construction
+        # and the fit is singular; the slopes are what actually vary.
+        # Numeric codes are required: with a categorical, "0 + State" is
+        # cell-means coding and silently reinstates the intercept.
+        df['State_n'] = (df['State'].astype(str) == 'DMT').astype(float)
+        df['Dose_n'] = (df['Dose'].astype(str) == 'High').astype(float)
+        model = mixedlm(formula, df, groups=df['subject'],
+                        re_formula='0 + State_n + Dose_n + State_n:Dose_n')  # type: ignore[arg-type]
         
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter('always')
-            fitted = model.fit()
+            fitted, optimizer_used = fit_lbfgs_powell(model)
             convergence_warnings = [str(warning.message) for warning in w]
     
     except Exception as e:
@@ -979,6 +990,7 @@ def fit_lme_model(df: pd.DataFrame) -> Tuple[Optional[object], Dict]:
         'convergence_warnings': convergence_warnings,
         'random_effects_var': getattr(fitted, 'cov_re', None),
         'residual_var': getattr(fitted, 'scale', np.nan),
+        'optimizer': optimizer_used,
     }
     
     print(f"  Model fit: AIC={diagnostics['aic']:.2f}, BIC={diagnostics['bic']:.2f}")
@@ -1608,6 +1620,12 @@ def _resample_to_grid(t: np.ndarray, y: np.ndarray, t_grid: np.ndarray) -> np.nd
     return yg
 
 
+# Cluster-based permutation (revision, R2.2): drop-in replacements used for the
+# shaded bands; the FDR helpers below are kept for the window-wise reports.
+from cluster_stats import (cluster_significant_segments as _compute_cluster_significant_segments,
+                           cluster_results as _compute_cluster_results)
+
+
 def _compute_fdr_results(A: np.ndarray, B: np.ndarray, x_grid: np.ndarray, alpha: float = 0.05, alternative: str = 'two-sided') -> Dict:
     """Compute paired t-test across time, apply BH-FDR, and summarize results."""
     result: Dict[str, object] = {'alpha': alpha, 'pvals': [], 'pvals_adj': [], 'sig_mask': [], 'segments': []}
@@ -1771,7 +1789,7 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
     rs = state_data['RS']
     print(f"Computing FDR for RS with {rs['H_mat'].shape[0]} subjects, {rs['H_mat'].shape[1]} time points")
     rs_fdr = _compute_fdr_results(rs['H_mat'], rs['L_mat'], window_grid)
-    rs_segments = rs_fdr.get('segments', [])
+    rs_segments = _compute_cluster_results(rs['H_mat'], rs['L_mat'], window_grid).get('segments', [])
     print(f"Adding {len(rs_segments)} shaded regions to RS panel")
     
     # Convert window grid to time in minutes for plotting
@@ -1783,14 +1801,20 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
         t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
         ax1.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
     
+    # Unidad E: traces (composite all_subs) -- individual participants behind the mean
+    for _row in np.atleast_2d(rs['H_mat']):
+        ax1.plot(time_grid, _row, color=COLOR_RS_HIGH, lw=0.7, alpha=0.40, zorder=1)
+    for _row in np.atleast_2d(rs['L_mat']):
+        ax1.plot(time_grid, _row, color='#9e9e9e', lw=0.9, alpha=0.80, ls=(0, (2.2, 1.3)), zorder=1)
+
     line_h1 = ax1.plot(time_grid, rs['mean_h'], color=COLOR_RS_HIGH, lw=2.5, 
-                       marker='o', markersize=5, label='High dose (40mg)')[0]
+                       label='High dose (40mg)')[0]
     ax1.fill_between(time_grid, rs['mean_h'] - rs['sem_h'], rs['mean_h'] + rs['sem_h'], 
                      color=COLOR_RS_HIGH, alpha=0.25)
-    line_l1 = ax1.plot(time_grid, rs['mean_l'], color=COLOR_RS_LOW, lw=2.5, 
-                       marker='o', markersize=5, label='Low dose (20mg)')[0]
+    line_l1 = ax1.plot(time_grid, rs['mean_l'], color='#6b6b6b', lw=2.5, 
+                       label='Low dose (20mg)')[0]
     ax1.fill_between(time_grid, rs['mean_l'] - rs['sem_l'], rs['mean_l'] + rs['sem_l'], 
-                     color=COLOR_RS_LOW, alpha=0.25)
+                     color='#6b6b6b', alpha=0.25)
     
     legend1 = ax1.legend([line_h1, line_l1], ['High dose (40mg)', 'Low dose (20mg)'], loc='upper right', 
                         frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, 
@@ -1815,7 +1839,7 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
     dmt = state_data['DMT']
     print(f"Computing FDR for DMT with {dmt['H_mat'].shape[0]} subjects, {dmt['H_mat'].shape[1]} time points")
     dmt_fdr = _compute_fdr_results(dmt['H_mat'], dmt['L_mat'], window_grid, alternative='greater')
-    dmt_segments = dmt_fdr.get('segments', [])
+    dmt_segments = _compute_cluster_results(dmt['H_mat'], dmt['L_mat'], window_grid, alternative='greater').get('segments', [])
     print(f"Adding {len(dmt_segments)} shaded regions to DMT panel")
     
     # Shade significant window ranges (convert to time)
@@ -1824,14 +1848,20 @@ def create_combined_summary_plot(df: pd.DataFrame) -> Optional[str]:
         t1 = w1 * WINDOW_SIZE_SEC / 60.0  # End of last window
         ax2.axvspan(t0, t1, color='0.85', alpha=0.35, zorder=0)
     
+    # Unidad E: traces (composite all_subs)
+    for _row in np.atleast_2d(dmt['H_mat']):
+        ax2.plot(time_grid, _row, color=COLOR_DMT_HIGH, lw=0.7, alpha=0.40, zorder=1)
+    for _row in np.atleast_2d(dmt['L_mat']):
+        ax2.plot(time_grid, _row, color='#9e9e9e', lw=0.9, alpha=0.80, ls=(0, (2.2, 1.3)), zorder=1)
+
     line_h2 = ax2.plot(time_grid, dmt['mean_h'], color=COLOR_DMT_HIGH, lw=2.5, 
-                       marker='o', markersize=5, label='High dose (40mg)')[0]
+                       label='High dose (40mg)')[0]
     ax2.fill_between(time_grid, dmt['mean_h'] - dmt['sem_h'], dmt['mean_h'] + dmt['sem_h'], 
                      color=COLOR_DMT_HIGH, alpha=0.25)
-    line_l2 = ax2.plot(time_grid, dmt['mean_l'], color=COLOR_DMT_LOW, lw=2.5, 
-                       marker='o', markersize=5, label='Low dose (20mg)')[0]
+    line_l2 = ax2.plot(time_grid, dmt['mean_l'], color='#6b6b6b', lw=2.5, 
+                       label='Low dose (20mg)')[0]
     ax2.fill_between(time_grid, dmt['mean_l'] - dmt['sem_l'], dmt['mean_l'] + dmt['sem_l'], 
-                     color=COLOR_DMT_LOW, alpha=0.25)
+                     color='#6b6b6b', alpha=0.25)
     
     legend2 = ax2.legend([line_h2, line_l2], ['High dose (40mg)', 'Low dose (20mg)'], loc='upper right', 
                         frameon=True, fancybox=False, fontsize=LEGEND_FONTSIZE, 
@@ -2003,7 +2033,7 @@ def create_dmt_only_extended_plot_from_saved() -> Optional[str]:
     # Compute FDR
     print(f"  Computing FDR for DMT High vs Low...")
     fdr_results = _compute_fdr_results(H, L, window_grid, alternative='greater')
-    segments = fdr_results.get('segments', [])
+    segments = _compute_cluster_results(H, L, window_grid, alternative='greater').get('segments', [])
     print(f"  Found {len(segments)} significant segments")
     
     # Create plot
@@ -2183,7 +2213,7 @@ def create_dmt_only_extended_plot(df: pd.DataFrame) -> Optional[str]:
     # Compute FDR for High vs Low
     print(f"  Computing FDR for DMT High vs Low...")
     fdr_results = _compute_fdr_results(H, L, window_grid, alternative='greater')
-    segments = fdr_results.get('segments', [])
+    segments = _compute_cluster_results(H, L, window_grid, alternative='greater').get('segments', [])
     print(f"  Found {len(segments)} significant segments")
     
     # Create plot
@@ -2488,6 +2518,90 @@ def create_marginal_means_plot(stats_df: pd.DataFrame, output_path: str) -> None
 
 
 #############################
+# Numbers cited in the text (index peak, cross-modality correlations)
+#############################
+
+def report_index_peak_and_modality_correlations(df: pd.DataFrame, out_dir: str = OUT_DIR) -> str:
+    """
+    Print and save two descriptive numbers cited in the manuscript that no other
+    function writes out:
+
+    1) Peak of the group-mean Physiological Arousal Index under High dose during
+       DMT (Results: "the group-mean index peaking 2.0--2.5 min after inhalation";
+       Discussion: "peaked earlier, within the first 2.5 min"). The group mean is
+       taken per 30-s window across the n = 7 subjects; window w spans
+       (w - 1) * 0.5 to w * 0.5 min.
+    2) Pooled Pearson correlations between the within-subject z-scored signals
+       (HR, SMNA, RVT) over all rows of merged_z_by_subject.csv (both states,
+       both doses, 18 windows; n = 504). Discussion: "covariance ... strongest
+       between HR and SMNA" (r = .58 HR-SMNA, .25 HR-RVT, .29 SMNA-RVT). The
+       per-state values are added for context only.
+
+    Writes:
+        <out_dir>/index_peak_and_modality_correlations.txt
+        <out_dir>/modality_correlations_pooled.csv
+
+    Returns the path to the text report.
+    """
+    print("Reporting index peak and cross-modality correlations...")
+    from scipy import stats as _st
+
+    lines = ['INDEX PEAK AND CROSS-MODALITY CORRELATIONS', '=' * 60, '']
+
+    # 1) Peak of the group-mean index (DMT, High dose)
+    sub = df[(df['State'] == 'DMT') & (df['Dose'] == 'High')]
+    gm = sub.groupby('window')['ArousalIndex'].mean()
+    n_subj = sub.groupby('window')['subject'].nunique()
+    w_peak = int(gm.idxmax())
+    t0 = (w_peak - 1) * WINDOW_SIZE_SEC / 60.0
+    t1 = w_peak * WINDOW_SIZE_SEC / 60.0
+    # Individual peak windows (range only, no per-subject output)
+    indiv = sub.loc[sub.groupby('subject')['ArousalIndex'].idxmax(), 'window']
+    lines += [
+        'Physiological Arousal Index, DMT High dose, group mean per 30-s window:',
+        f'  n subjects per window: {n_subj.min()}-{n_subj.max()}',
+        f'  Peak: window {w_peak} ({t0:.1f}-{t1:.1f} min), mean index = {gm.max():.3f}',
+        f'  Individual peak windows span {(indiv.min() - 1) * WINDOW_SIZE_SEC / 60.0:.1f}-'
+        f'{indiv.max() * WINDOW_SIZE_SEC / 60.0:.1f} min (windows {int(indiv.min())}-{int(indiv.max())})',
+        '  Group mean by window:',
+    ]
+    for w, v in gm.items():
+        lines.append(f'    window {int(w):2d} ({(w - 1) * WINDOW_SIZE_SEC / 60.0:.1f}-'
+                     f'{w * WINDOW_SIZE_SEC / 60.0:.1f} min): {v:.3f}')
+    lines.append('')
+
+    # 2) Pooled correlations between modalities
+    pairs = [('HR_z', 'SMNA_AUC_z', 'HR-SMNA'),
+             ('HR_z', 'RVT_z', 'HR-RVT'),
+             ('SMNA_AUC_z', 'RVT_z', 'SMNA-RVT')]
+    rows = []
+    for scope, d in [('pooled', df), ('RS', df[df['State'] == 'RS']),
+                     ('DMT', df[df['State'] == 'DMT'])]:
+        for a, b, name in pairs:
+            dd = d[[a, b]].dropna()
+            r, p = _st.pearsonr(dd[a], dd[b])
+            rows.append({'scope': scope, 'pair': name, 'n': len(dd), 'r': r, 'p': p})
+    corr_df = pd.DataFrame(rows)
+    corr_path = os.path.join(out_dir, 'modality_correlations_pooled.csv')
+    corr_df.to_csv(corr_path, index=False)
+    lines.append('Pearson r between within-subject z-scored signals '
+                 '(pooled = all rows; RS/DMT for context):')
+    for _, r in corr_df.iterrows():
+        lines.append(f"  {r['scope']:6s} {r['pair']:8s} n = {int(r['n']):3d}  "
+                     f"r = {r['r']:.3f}  p = {r['p']:.2e}")
+    lines += ['', '  Note: rows are repeated windows within subject, so p values are '
+              'descriptive only.', '']
+
+    txt_path = os.path.join(out_dir, 'index_peak_and_modality_correlations.txt')
+    with open(txt_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines))
+    print('\n'.join(lines))
+    print(f"  ✓ Saved: {txt_path}")
+    print(f"  ✓ Saved: {corr_path}")
+    return txt_path
+
+
+#############################
 # Main execution
 #############################
 
@@ -2512,7 +2626,10 @@ def main() -> bool:
         
         # 5. Compute dynamic autonomic coherence (DISABLED)
         # compute_and_plot_dynamic_coherence(df, window=2)
-        
+
+        # 5b. Numbers cited in the text: index peak and pooled cross-modality r
+        report_index_peak_and_modality_correlations(df)
+
         # 6. Fit LME model
         fitted, diagnostics = fit_lme_model(df)
         
@@ -2594,6 +2711,8 @@ def main() -> bool:
         print(f"  - lme_analysis_report.txt: Full LME analysis report")
         print(f"  - model_summary.txt: Compact model summary")
         print(f"  - fdr_segments_all_subs_composite.txt: FDR analysis report")
+        print(f"  - index_peak_and_modality_correlations.txt: index peak and pooled r between signals")
+        print(f"  - modality_correlations_pooled.csv: pooled r between signals")
         print(f"  - plots/pca_scree.png: Scree plot")
         print(f"  - plots/pca_pc1_loadings.png: PC1 loadings bar plot")
         print(f"  - plots/pca_3d_loadings_interactive.html: 3D PCA space (interactive, open in browser)")

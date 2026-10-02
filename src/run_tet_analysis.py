@@ -1,22 +1,26 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-TET Analysis Pipeline - Self-contained script for Figure 3
+TET Analysis Pipeline - Self-contained script for Figure 4
 
 Generates publication-ready analysis of Temporal Experience Tracking (TET) data:
 - PCA on 6 affective dimensions (PC1=Arousal, PC2=Valence)
 - LME models for State × Dose interactions
-- Figure 3 with 5 panels (A-E)
+- Figure 4 with 5 panels (a-e)
 
-Expected Results (from paper):
-- PC1 (Arousal): 41.0% variance - loads on Emotional Intensity, Interoception, Anxiety, Unpleasantness
-- PC2 (Valence): 31.8% variance - bipolar: Pleasantness/Bliss (+) vs Unpleasantness/Anxiety (-)
+Expected results (checked against the values reported in the manuscript;
+last verified 2026-09-03):
+- PC1 (Arousal): 41.0% of variance - loads on Emotional Intensity, Interoception,
+  Anxiety and Unpleasantness
+- PC2 (Valence): 31.8% - bipolar: Pleasantness/Bliss (+) vs Unpleasantness/Anxiety (-)
 - Cumulative: 72.8%
-- State × Dose interaction for Arousal: β = 0.49, 95% CI [0.44, 0.53], p < .001
-- State × Dose interaction for Valence: β = −0.81, 95% CI [−0.88, −0.74], p < .001
+- Affective Arousal Index, State x Dose: beta = 0.49, 95% CI [0.44, 0.53], p < .001
+- Affective Valence Index, State x Dose: beta = -0.81, 95% CI [-0.88, -0.74], p < .001
+  These two are the affective indices, not the PC scores: the State x Dose term for
+  PC1 itself is beta = 0.68, 95% CI [0.47, 0.89].
 
 Outputs:
-    results/tet/figures/figure3_tet_analysis.png
+    results/tet/figures/figure4_tet_analysis.png
     results/tet/pca/ - PCA results
     results/tet/lme/ - LME results
 
@@ -32,6 +36,7 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import numpy as np
 import pandas as pd
+from lme_fit import fit_lbfgs_powell  # noqa: E402
 from scipy import stats
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -195,6 +200,31 @@ def compute_pca(df):
     return df, loadings, variance_explained
 
 
+TET_RE_FORMULA = '1 + State_n + Dose_n + State_n:Dose_n'
+TET_FDR_FAMILIES = {
+    'State': ['state[T.DMT]', 'state[T.DMT]:time_c'],
+    'Dose': ['dose[T.Alta]', 'dose[T.Alta]:time_c'],
+    'Interaction': ['state[T.DMT]:dose[T.Alta]'],
+}
+
+
+def _fit_tet_lme(formula, df):
+    """Fit one TET LME with the paper's random slopes; powell if lbfgs does not converge."""
+    model = smf.mixedlm(formula, df, groups=df['subject'], re_formula=TET_RE_FORMULA)
+    return fit_lbfgs_powell(model)
+
+
+def _fdr_by_family(fit):
+    """BH-FDR within the model over the three families of fixed effects."""
+    p_fdr = {}
+    for terms in TET_FDR_FAMILIES.values():
+        terms = [t for t in terms if t in fit.pvalues.index]
+        if terms:
+            adj = multipletests([fit.pvalues[t] for t in terms], method='fdr_bh')[1]
+            p_fdr.update(dict(zip(terms, adj)))
+    return pd.Series(p_fdr)
+
+
 def fit_lme_models(df):
     """
     Fit LME models for Arousal and Valence indices.
@@ -203,8 +233,18 @@ def fit_lme_models(df):
     during DMT vs resting state.
     
     Model formula:
-        Y ~ State + Dose + Time_c + State:Dose + State:Time_c + Dose:Time_c + (1|Subject)
-    
+        Y ~ State + Dose + Time_c + State:Dose + State:Time_c + Dose:Time_c
+            + (1 + State + Dose + State:Dose | Subject)
+
+    By-subject slopes for State, Dose and their interaction, as in the
+    physiological models (revision R3.3), PLUS a by-subject random intercept.
+    Unlike the physiological signals, TET is z-scored with one global mean and
+    SD per subject pooled over all 15 dimensions (tet/preprocessor.py), so each
+    dimension keeps a subject-specific mean and the intercept variance is not
+    zero (0.04-0.50 across outcomes; the intercept improves fit in all seven).
+    p values are BH-FDR corrected within each model over the three families
+    stated in Methods: {State, State:Time}, {Dose, Dose:Time}, {State:Dose}.
+
     Reference levels: State='RS', Dose='Baja' (Low)
     
     The State × Dose interaction tests whether the dose effect differs between
@@ -231,46 +271,20 @@ def fit_lme_models(df):
     # Create valence index (pleasantness - unpleasantness)
     df_all['valence_index'] = df_all['pleasantness_z'] - df_all['unpleasantness_z']
     
+    # Numeric codes for the random slopes, as in the physiological scripts.
+    df_all['State_n'] = (df_all['state'] == 'DMT').astype(float)
+    df_all['Dose_n'] = (df_all['dose'] == 'Alta').astype(float)
+
     results = {}
-    
-    # Arousal Index = emotional_intensity_z
-    # Paper: β = 0.47, 95% CI [0.32, 0.61], p < .001 for State × Dose
-    print("  Fitting Arousal (Emotional Intensity) model...")
-    model_arousal = smf.mixedlm(
-        "emotional_intensity_z ~ state * dose + state * time_c + dose * time_c",
-        df_all,
-        groups=df_all["subject"],
-        re_formula="1"  # Random intercept only
-    )
-    fit_arousal = model_arousal.fit(reml=True, method='lbfgs')
-    results['arousal'] = {'model': fit_arousal}
-    
-    # Valence Index
-    # Paper: β = −0.50, 95% CI [−0.70, −0.30], p < .001 for State × Dose
-    print("  Fitting Valence Index model...")
-    model_valence = smf.mixedlm(
-        "valence_index ~ state * dose + state * time_c + dose * time_c",
-        df_all,
-        groups=df_all["subject"],
-        re_formula="1"
-    )
-    fit_valence = model_valence.fit(reml=True, method='lbfgs')
-    results['valence'] = {'model': fit_valence}
-    
-    # Individual dimensions
-    for dim in AFFECTIVE_COLS:
-        dim_z = f'{dim}_z'
-        if dim_z in df_all.columns:
-            print(f"  Fitting {dim} model...")
-            model = smf.mixedlm(
-                f"{dim_z} ~ state * dose + state * time_c + dose * time_c",
-                df_all,
-                groups=df_all["subject"],
-                re_formula="1"
-            )
-            fit = model.fit(reml=True, method='lbfgs')
-            results[dim] = {'model': fit}
-    
+    # Arousal Index = Emotional Intensity; Valence Index = Pleasantness - Unpleasantness
+    outcomes = [('arousal', 'emotional_intensity_z'), ('valence', 'valence_index')]
+    outcomes += [(dim, f'{dim}_z') for dim in AFFECTIVE_COLS if f'{dim}_z' in df_all.columns]
+    for name, y in outcomes:
+        print(f"  Fitting {name} model...")
+        fit, optimizer = _fit_tet_lme(
+            f"{y} ~ state * dose + state * time_c + dose * time_c", df_all)
+        results[name] = {'model': fit, 'p_fdr': _fdr_by_family(fit), 'optimizer': optimizer}
+
     # Print key results
     _print_lme_summary(results)
     
@@ -345,120 +359,77 @@ def compute_time_courses(df):
 
 def compute_significance_masks(df):
     """
-    Compute significance masks for time series plots.
-    
+    Compute significance masks for time series plots (cluster-based permutation,
+    revision R2.2; the previous window-wise FDR masks are reported in
+    Supplementary Table 1 via run_cluster_permutation_tet.py).
+
     Computes two types of significance:
-    1. state_sig: DMT vs RS at each time bin (for gray shading)
-    2. dose_sig: High vs Low dose within DMT (for black bars)
-    
+    1. state_sig: DMT vs RS at each time bin (for gray shading), doses pooled
+       within subject, 0-10 min, two-tailed
+    2. dose_sig: High vs Low dose within DMT (for black bars), 0-20 min, two-tailed
+
+    Both masks mark the bins covered by a significant cluster (exact sign-flip
+    permutation, cluster-forming threshold at uncorrected p < .05).
+
     Returns dict with:
     - time_bins: list of time points
-    - state_sig: boolean mask where DMT differs from RS (p_FDR < 0.05)
-    - dose_sig: boolean mask where High differs from Low dose (p_FDR < 0.05)
+    - state_sig: boolean mask where DMT differs from RS (cluster p < 0.05)
+    - dose_sig: boolean mask where High differs from Low dose (cluster p < 0.05)
     """
-    from scipy.stats import ttest_rel
-    
-    print("\nComputing significance masks...")
-    
-    # Create valence index for both states
+    from cluster_stats import cluster_test
+
+    print("\nComputing significance masks (cluster-based permutation)...")
+
     df = df.copy()
     df['valence_index'] = df['pleasantness_z'] - df['unpleasantness_z']
-    
     df_dmt = df[df['state'] == 'DMT'].copy()
     df_rs = df[df['state'] == 'RS'].copy()
-    
-    # Variables to test
-    variables = ['emotional_intensity_z', 'valence_index', 'interoception_z', 
+
+    variables = ['emotional_intensity_z', 'valence_index', 'interoception_z',
                  'anxiety_z', 'unpleasantness_z', 'pleasantness_z', 'bliss_z']
-    
-    # Add PC columns if they exist
     for pc in ['PC1', 'PC2']:
         if pc in df_dmt.columns:
             variables.append(pc)
-    
+
+    def _wide(d, var, bins):
+        w = (d[d['time_min'].isin(bins)]
+             .groupby(['subject', 'time_min'])[var].mean().unstack('time_min'))
+        return w[bins]
+
+    def _mask(A, B, bins):
+        subj = sorted(set(A.dropna().index) & set(B.dropna().index))
+        if len(subj) < 3:
+            return np.zeros(len(bins), dtype=bool)
+        res = cluster_test(A.loc[subj].to_numpy(), B.loc[subj].to_numpy(), 'two-sided')
+        return np.asarray(res['sig'], dtype=bool)
+
     significance = {}
-    
     for var in variables:
         if var not in df_dmt.columns:
             continue
-            
-        # Get unique time bins (use RS time range: 0-10 min for state comparison)
         dmt_time_bins = sorted(df_dmt['time_min'].unique())
         rs_time_bins = sorted(df_rs['time_min'].unique())
         common_time_bins = sorted(set(dmt_time_bins) & set(rs_time_bins))
-        
-        # =====================================================================
-        # 1. State effect: DMT vs RS (for gray shading)
-        # =====================================================================
-        state_p_values = []
-        for t in common_time_bins:
-            dmt_data = df_dmt[df_dmt['time_min'] == t]
-            rs_data = df_rs[df_rs['time_min'] == t]
-            
-            # Match by subject for paired test
-            subjects = set(dmt_data['subject']) & set(rs_data['subject'])
-            if len(subjects) >= 3:
-                dmt_vals = dmt_data[dmt_data['subject'].isin(subjects)].groupby('subject')[var].mean()
-                rs_vals = rs_data[rs_data['subject'].isin(subjects)].groupby('subject')[var].mean()
-                
-                common_subjects = sorted(set(dmt_vals.index) & set(rs_vals.index))
-                if len(common_subjects) >= 3:
-                    _, p = ttest_rel(dmt_vals[common_subjects], rs_vals[common_subjects])
-                    state_p_values.append(p if not np.isnan(p) else 1.0)
-                else:
-                    state_p_values.append(1.0)
-            else:
-                state_p_values.append(1.0)
-        
-        # FDR correction for state effect
-        if len(state_p_values) > 0 and not all(p == 1.0 for p in state_p_values):
-            _, state_p_fdr, _, _ = multipletests(state_p_values, method='fdr_bh')
-            state_sig_mask = state_p_fdr < 0.05
-        else:
-            state_sig_mask = np.zeros(len(common_time_bins), dtype=bool)
-        
-        # =====================================================================
-        # 2. Dose effect: High vs Low within DMT (for black bars)
-        # =====================================================================
-        dose_p_values = []
-        for t in dmt_time_bins:
-            high_data = df_dmt[(df_dmt['time_min'] == t) & (df_dmt['dose'] == 'Alta')]
-            low_data = df_dmt[(df_dmt['time_min'] == t) & (df_dmt['dose'] == 'Baja')]
-            
-            subjects = set(high_data['subject']) & set(low_data['subject'])
-            if len(subjects) >= 3:
-                high_vals = high_data[high_data['subject'].isin(subjects)].groupby('subject')[var].mean()
-                low_vals = low_data[low_data['subject'].isin(subjects)].groupby('subject')[var].mean()
-                
-                common_subjects = sorted(set(high_vals.index) & set(low_vals.index))
-                if len(common_subjects) >= 3:
-                    _, p = ttest_rel(high_vals[common_subjects], low_vals[common_subjects])
-                    dose_p_values.append(p if not np.isnan(p) else 1.0)
-                else:
-                    dose_p_values.append(1.0)
-            else:
-                dose_p_values.append(1.0)
-        
-        # FDR correction for dose effect
-        if len(dose_p_values) > 0 and not all(p == 1.0 for p in dose_p_values):
-            _, dose_p_fdr, _, _ = multipletests(dose_p_values, method='fdr_bh')
-            dose_sig_mask = dose_p_fdr < 0.05
-        else:
-            dose_sig_mask = np.zeros(len(dmt_time_bins), dtype=bool)
-        
+
+        # 1. State effect: DMT vs RS (gray shading)
+        state_sig_mask = _mask(_wide(df_dmt, var, common_time_bins),
+                               _wide(df_rs, var, common_time_bins), common_time_bins)
+        # 2. Dose effect: High vs Low within DMT (black bars)
+        dose_sig_mask = _mask(_wide(df_dmt[df_dmt['dose'] == 'Alta'], var, dmt_time_bins),
+                              _wide(df_dmt[df_dmt['dose'] == 'Baja'], var, dmt_time_bins), dmt_time_bins)
+
         significance[var] = {
             'time_bins': dmt_time_bins,
             'dose_sig': dose_sig_mask,
             'state_time_bins': common_time_bins,
             'state_sig': state_sig_mask,
         }
-        
         n_state_sig = np.sum(state_sig_mask)
         n_dose_sig = np.sum(dose_sig_mask)
         if n_state_sig > 0 or n_dose_sig > 0:
             print(f"  {var}: State effect {n_state_sig}/{len(common_time_bins)}, "
-                  f"Dose effect {n_dose_sig}/{len(dmt_time_bins)} time bins (p_FDR < 0.05)")
-    
+                  f"Dose effect {n_dose_sig}/{len(dmt_time_bins)} time bins (cluster p < 0.05)")
+
     return significance
 
 
@@ -629,14 +600,18 @@ def plot_figure3(df, time_courses, loadings, variance_explained, lme_results,
     ax_arousal = fig.add_subplot(gs[0, :5])
     ax_valence = fig.add_subplot(gs[0, 6:])  # Skip column 5 for small gap (~5mm)
     
+    df_dmt = df[df['state'] == 'DMT']  # Unidad E: raw per-participant rows for traces/bands
+
     _plot_timeseries_panel(ax_arousal, time_courses, 'emotional_intensity_z', 
                            'Arousal', subtitle='(Emotional Intensity)', show_legend=True,
                            significance=significance, show_gray_shading=True,
-                           show_ylabel=True, is_first_col=True, legend_loc='upper right')
+                           show_ylabel=True, is_first_col=True, legend_loc='upper right',
+                           df_dmt=df_dmt, individual='traces')
     _plot_timeseries_panel(ax_valence, time_courses, 'valence_index',
                            'Valence', subtitle='(Pleasantness−Unpleasantness)', show_legend=True,
                            significance=significance, show_gray_shading=True,
-                           show_ylabel=True, is_first_col=False, legend_loc='lower right')
+                           show_ylabel=True, is_first_col=False, legend_loc='lower right',
+                           df_dmt=df_dmt, individual='traces')
     
     ax_arousal.text(-0.20, 1.25, 'A', transform=ax_arousal.transAxes, 
                     fontsize=FONT_SIZE_PANEL_LABEL, fontweight='bold', va='top')
@@ -660,9 +635,11 @@ def plot_figure3(df, time_courses, loadings, variance_explained, lme_results,
     for i, (dim, label) in enumerate(zip(dims, dim_labels)):
         left = row1_bbox.x0 + i * (subplot_width + gap_frac * total_width)
         ax = fig.add_axes([left, row1_bbox.y0, subplot_width, row1_bbox.height])
+        # Unidad E: percentile band, not full traces -- panel is too small (~1.7x2.7 in)
         _plot_timeseries_panel(ax, time_courses, dim, label, 
                                show_legend=False, small=True, significance=significance,
-                               show_gray_shading=True, show_ylabel=(i == 0), is_first_col=(i == 0))
+                               show_gray_shading=True, show_ylabel=(i == 0), is_first_col=(i == 0),
+                               df_dmt=df_dmt, individual='band')
     
     # =========================================================================
     # Panel B - LME Coefficients Forest Plot (horizontal)
@@ -679,10 +656,12 @@ def plot_figure3(df, time_courses, loadings, variance_explained, lme_results,
     
     _plot_pc_timeseries(ax_pc1, time_courses, 'PC1', 'PC1', show_legend=True,
                         significance=significance, legend_loc='upper right',
-                        show_gray_shading=True, show_ylabel=True)
+                        show_gray_shading=True, show_ylabel=True,
+                        df_dmt=df_dmt, individual='traces')
     _plot_pc_timeseries(ax_pc2, time_courses, 'PC2', 'PC2', show_legend=True,
                         significance=significance, legend_loc='lower right',
-                        show_gray_shading=True, show_ylabel=True)
+                        show_gray_shading=True, show_ylabel=True,
+                        df_dmt=df_dmt, individual='traces')
     
     ax_pc1.text(-0.20, 1.25, 'C', transform=ax_pc1.transAxes,
                 fontsize=FONT_SIZE_PANEL_LABEL, fontweight='bold', va='top')
@@ -715,10 +694,54 @@ def plot_figure3(df, time_courses, loadings, variance_explained, lme_results,
     return output_path
 
 
+
+# --- Unidad E: individual-data representation, shared by the large-panel and
+# small-panel time series of Figure 4. High dose keeps the modality colour;
+# Low dose is grey (matches the treatment already applied to Figs. 2-3 and
+# Supplementary Figs. 3-4).
+TRACE_GREY = "#9e9e9e"
+TRACE_GREY_MEAN = "#6b6b6b"
+TRACE_DASH = (0, (2.2, 1.3))
+
+
+def _subject_matrix(df_dmt, dose, col):
+    """Pivot subject x time_min for one dose, one column of df_dmt (DMT rows
+    only). Computes valence_index on the fly if not already present."""
+    d = df_dmt[df_dmt['dose'] == dose]
+    if col == 'valence_index' and col not in d.columns:
+        d = d.copy()
+        d['valence_index'] = d['pleasantness_z'] - d['unpleasantness_z']
+    return d.pivot_table(index='subject', columns='time_min', values=col)
+
+
+def _draw_individual(ax, df_dmt, col, mode):
+    """mode='traces': one line per participant. mode='band': 10th-90th
+    percentile band per dose, no individual lines."""
+    if df_dmt is None or mode is None:
+        return
+    for dose, high_colour in [('Alta', COLOR_HIGH), ('Baja', None)]:
+        M = _subject_matrix(df_dmt, dose, col)
+        t = M.columns.to_numpy()
+        X = M.to_numpy()
+        if mode == 'traces':
+            colour = high_colour if high_colour else TRACE_GREY
+            ls = '-' if high_colour else TRACE_DASH
+            lw = 0.5 if high_colour else 0.6
+            alpha = 0.30 if high_colour else 0.55
+            for row in X:
+                ax.plot(t, row, color=colour, lw=lw, alpha=alpha, ls=ls, zorder=1)
+        elif mode == 'band':
+            colour = high_colour if high_colour else TRACE_GREY_MEAN
+            import numpy as _np
+            lo = _np.nanpercentile(X, 10, axis=0)
+            hi = _np.nanpercentile(X, 90, axis=0)
+            ax.fill_between(t, lo, hi, color=colour, alpha=0.12, lw=0, zorder=1)
+
+
 def _plot_timeseries_panel(ax, time_courses, var_name, title, show_legend=True, 
                           small=False, significance=None, show_gray_shading=False,
                           subtitle=None, show_ylabel=True, is_first_col=True,
-                          legend_loc='upper right'):
+                          legend_loc='upper right', df_dmt=None, individual=None):
     """Plot a single time series panel with significance indicators.
     
     Args:
@@ -757,9 +780,12 @@ def _plot_timeseries_panel(ax, time_courses, var_name, title, show_legend=True,
             for start_t, end_t in sig_regions:
                 ax.axvspan(start_t, end_t, alpha=0.2, color='gray', zorder=0)
     
+    # Unidad E: individual traces or percentile band, behind the means
+    _draw_individual(ax, df_dmt, var_name, individual)
+
     # Plot time series for each dose
     for dose, color, label in [('Alta', COLOR_HIGH, 'High dose (40mg)'), 
-                                ('Baja', COLOR_LOW, 'Low dose (20mg)')]:
+                                ('Baja', TRACE_GREY_MEAN, 'Low dose (20mg)')]:
         tc = time_courses[dose]
         
         mean_col = f'{var_name}_mean'
@@ -769,8 +795,8 @@ def _plot_timeseries_panel(ax, time_courses, var_name, title, show_legend=True,
             mean = tc[mean_col].values
             sem = tc[sem_col].values
             
-            ax.fill_between(time, mean - sem, mean + sem, alpha=0.3, color=color, zorder=2)
-            ax.plot(time, mean, color=color, linewidth=2, label=label, zorder=3)
+            ax.fill_between(time, mean - sem, mean + sem, alpha=0.3, color=color, zorder=4)
+            ax.plot(time, mean, color=color, linewidth=2, label=label, zorder=5)
     
     # Add significance bars (black horizontal bars for State × Dose interaction)
     if significance and var_name in significance:
@@ -855,7 +881,8 @@ def _get_contiguous_regions(mask, time_bins):
 
 def _plot_pc_timeseries(ax, time_courses, pc_name, title, show_legend=True,
                         significance=None, legend_loc='upper right',
-                        show_gray_shading=False, show_ylabel=True):
+                        show_gray_shading=False, show_ylabel=True,
+                        df_dmt=None, individual=None):
     """Plot PC score time series with gray shading and significance bars."""
     
     # Add vertical dashed line at t=0 (injection time)
@@ -872,16 +899,19 @@ def _plot_pc_timeseries(ax, time_courses, pc_name, title, show_legend=True,
             for start_t, end_t in sig_regions:
                 ax.axvspan(start_t, end_t, alpha=0.2, color='gray', zorder=0)
     
+    # Unidad E: individual traces, behind the means (PC1/PC2 are large panels)
+    _draw_individual(ax, df_dmt, pc_name, individual)
+
     for dose, color, label in [('Alta', COLOR_HIGH, 'High dose (40mg)'), 
-                                ('Baja', COLOR_LOW, 'Low dose (20mg)')]:
+                                ('Baja', TRACE_GREY_MEAN, 'Low dose (20mg)')]:
         tc = time_courses[dose]
         time = tc['time_min'].values
         
         mean = tc[f'{pc_name}_mean'].values
         sem = tc[f'{pc_name}_sem'].values
         
-        ax.fill_between(time, mean - sem, mean + sem, alpha=0.3, color=color, zorder=2)
-        ax.plot(time, mean, color=color, linewidth=2, label=label, zorder=3)
+        ax.fill_between(time, mean - sem, mean + sem, alpha=0.3, color=color, zorder=4)
+        ax.plot(time, mean, color=color, linewidth=2, label=label, zorder=5)
     
     # Add significance bars (black horizontal bars for State × Dose interaction)
     if significance and pc_name in significance:
@@ -928,7 +958,7 @@ def _plot_lme_forest_horizontal(ax, lme_results, add_label: bool = True):
     
     Style: horizontal layout with Arousal on top, Valence on bottom,
     each effect in its own mini-panel with shared y-axis labels on left.
-    Significance markers (*, **, ***) are added based on p-values.
+    Significance markers (*, **, ***) are added based on FDR-corrected p-values.
     
     Args:
         ax: matplotlib axis (will be hidden, used for positioning)
@@ -938,7 +968,8 @@ def _plot_lme_forest_horizontal(ax, lme_results, add_label: bool = True):
     
     # Effects to plot - using DMT and Alta as treatment levels
     # Reference: State='RS', Dose='Baja'
-    effect_names = ['State', 'Dose', 'State:Dose', 'State:Time', 'Dose:Time']
+    # Display labels in the notation of Figs. 2-3 and the text (model terms in effect_keys)
+    effect_names = ['State', 'Dose', 'State × Dose', 'State × Time', 'Dose × Time']
     effect_keys = ['state[T.DMT]', 'dose[T.Alta]', 'state[T.DMT]:dose[T.Alta]', 
                    'state[T.DMT]:time_c', 'dose[T.Alta]:time_c']
     
@@ -983,7 +1014,7 @@ def _plot_lme_forest_horizontal(ax, lme_results, add_label: bool = True):
         if effect_key in arousal_model.params:
             beta = arousal_model.params[effect_key]
             ci = arousal_model.conf_int().loc[effect_key]
-            p_val = arousal_model.pvalues[effect_key]
+            p_val = lme_results['arousal']['p_fdr'].get(effect_key, arousal_model.pvalues[effect_key])
             sig_marker = _get_significance_marker(p_val)
             data.append(('Arousal', 1, beta, ci[0], ci[1], COLOR_AROUSAL, sig_marker))
         
@@ -991,7 +1022,7 @@ def _plot_lme_forest_horizontal(ax, lme_results, add_label: bool = True):
         if effect_key in valence_model.params:
             beta = valence_model.params[effect_key]
             ci = valence_model.conf_int().loc[effect_key]
-            p_val = valence_model.pvalues[effect_key]
+            p_val = lme_results['valence']['p_fdr'].get(effect_key, valence_model.pvalues[effect_key])
             sig_marker = _get_significance_marker(p_val)
             data.append(('Valence', 0, beta, ci[0], ci[1], COLOR_VALENCE, sig_marker))
         
@@ -1249,18 +1280,19 @@ def save_results(df, loadings, variance_explained, lme_results):
     lme_rows = []
     for dim_name, result in lme_results.items():
         model = result['model']
-        for effect in model.params.index:
-            if effect != 'Group Var':
-                ci = model.conf_int().loc[effect]
-                p_val = model.pvalues[effect] if effect in model.pvalues else np.nan
-                lme_rows.append({
-                    'dimension': dim_name,
-                    'effect': effect,
-                    'beta': model.params[effect],
-                    'ci_lower': ci[0],
-                    'ci_upper': ci[1],
-                    'p_value': p_val,
-                })
+        p_fdr = result.get('p_fdr', pd.Series(dtype=float))
+        for effect in model.fe_params.index:
+            ci = model.conf_int().loc[effect]
+            p_val = model.pvalues[effect] if effect in model.pvalues else np.nan
+            lme_rows.append({
+                'dimension': dim_name,
+                'effect': effect,
+                'beta': model.params[effect],
+                'ci_lower': ci[0],
+                'ci_upper': ci[1],
+                'p_value': p_val,
+                'p_fdr': p_fdr.get(effect, np.nan),
+            })
     
     lme_df = pd.DataFrame(lme_rows)
     lme_df.to_csv(RESULTS_DIR / 'lme' / 'lme_results.csv', index=False)
@@ -1280,7 +1312,8 @@ def save_results(df, loadings, variance_explained, lme_results):
                 'ci_lower': ci[0],
                 'ci_upper': ci[1],
                 'p_value': p_val,
-                'significant': p_val < 0.05
+                'p_fdr': result['p_fdr'][interaction_key],
+                'significant': result['p_fdr'][interaction_key] < 0.05
             })
     
     if interaction_rows:
@@ -1300,10 +1333,7 @@ def print_paper_results(variance_explained, lme_results, loadings):
     print(f"PC1 (Arousal): {variance_explained[0]*100:.1f}% variance")
     print(f"PC2 (Valence): {variance_explained[1]*100:.1f}% variance")
     print(f"Cumulative (PC1+PC2): {sum(variance_explained[:2])*100:.1f}% variance")
-    
-    # Expected from paper: PC1=41.0%, PC2=31.8%, Total=72.8%
-    print("\n  Expected (paper): PC1=41.0%, PC2=31.8%, Total=72.8%")
-    
+
     # Print loadings summary
     print("\n--- PCA Loadings ---")
     print("PC1 (Arousal) - should load on Intensity, Anxiety, Interoception, Unpleasantness:")
@@ -1334,11 +1364,6 @@ def print_paper_results(variance_explained, lme_results, loadings):
                 sig = "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else ""
                 print(f"  {name.capitalize()}: β = {beta:.2f}, 95% CI [{ci[0]:.2f}, {ci[1]:.2f}], p = {p:.2e} {sig}")
     
-    # Expected from paper
-    print("\n  Expected (paper):")
-    print("    Arousal: β = 0.47, 95% CI [0.32, 0.61], p < .001")
-    print("    Valence: β = −0.50, 95% CI [−0.70, −0.30], p < .001")
-    
     # Individual dimensions
     print("\n--- Individual Dimensions (State × Dose) ---")
     for dim in AFFECTIVE_COLS:
@@ -1352,6 +1377,74 @@ def print_paper_results(variance_explained, lme_results, loadings):
                 print(f"  {dim}: β = {beta:.2f}, 95% CI [{ci[0]:.2f}, {ci[1]:.2f}], p = {p:.2e} {sig}")
     
     print("\n" + "="*80)
+
+
+def report_pc_time_course_landmarks(df, out_path=None):
+    """
+    Print and save the temporal landmarks of the PC1/PC2 group-mean time courses
+    during DMT and the correlation between them, as cited in the manuscript
+    (Results, Affective dynamics; Discussion, first affect paragraph):
+
+    - Under High dose (group mean per 4-s bin): PC1 peak (~3 min, 3.2), PC2
+      minimum (immediately after inhalation, 0.07 min), first bin at which PC2
+      becomes >= 0 (~6 min, 5.87) and PC2 maximum (~14 min, 13.9).
+    - Pearson r between the group-averaged PC1 and PC2 time courses during DMT,
+      averaged over all DMT sessions (both doses), 300 bins: r = -.64, p < .001.
+      Bins are serially autocorrelated, so p is descriptive only. Per-dose values
+      are added for context.
+
+    Works on any frame with columns state, dose, t_sec (or time_min), PC1, PC2
+    (e.g. the in-memory df after compute_pca, or results/tet/pca/pca_scores.csv).
+
+    Writes results/tet/pca/pc_time_course_landmarks.txt (or out_path).
+    """
+    print("\nReporting PC time-course landmarks...")
+    d = df[df['state'] == 'DMT'].copy()
+    if 'time_min' not in d.columns:
+        d['time_min'] = d['t_sec'] / 60
+
+    lines = ['PC1/PC2 TIME-COURSE LANDMARKS (DMT)', '=' * 60, '']
+
+    def _group_mean(sub):
+        return sub.groupby('time_min')[['PC1', 'PC2']].mean()
+
+    # Landmarks under each dose (High is the one cited in the text)
+    for dose, label in [('Alta', 'High'), ('Baja', 'Low')]:
+        g = _group_mean(d[d['dose'] == dose])
+        t = g.index.values
+        pc2 = g['PC2'].values
+        # Sign changes of PC2: report the first bin after each change
+        changes = np.where(np.diff(np.sign(pc2)) != 0)[0]
+        cross = ', '.join(f'{t[i + 1]:.2f} ({"up" if pc2[i + 1] > pc2[i] else "down"})'
+                          for i in changes) or 'none'
+        lines += [
+            f'{label} dose ({len(g)} bins, n subjects = {d[d["dose"] == dose]["subject"].nunique()}):',
+            f'  PC1 maximum at {t[g["PC1"].values.argmax()]:.2f} min '
+            f'(PC1 = {g["PC1"].max():.3f})',
+            f'  PC2 minimum at {t[pc2.argmin()]:.2f} min (PC2 = {pc2.min():.3f})',
+            f'  PC2 zero crossings (first bin after sign change): {cross}',
+            f'  PC2 maximum at {t[pc2.argmax()]:.2f} min (PC2 = {pc2.max():.3f})',
+            '',
+        ]
+
+    # Correlation between group-averaged PC1 and PC2 time courses
+    lines.append('Pearson r between group-averaged PC1 and PC2 time courses:')
+    for label, sub in [('All DMT sessions (cited)', d),
+                       ('High dose', d[d['dose'] == 'Alta']),
+                       ('Low dose', d[d['dose'] == 'Baja'])]:
+        g = _group_mean(sub)
+        r, p = stats.pearsonr(g['PC1'], g['PC2'])
+        lines.append(f'  {label}: r = {r:.3f}, p = {p:.2e}, bins = {len(g)}')
+    lines += ['', '  Note: adjacent bins are autocorrelated, so p is descriptive only.', '']
+
+    if out_path is None:
+        out_path = RESULTS_DIR / 'pca' / 'pc_time_course_landmarks.txt'
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines))
+    print('\n'.join(lines))
+    print(f"  Saved: {out_path}")
+    return out_path
 
 
 def main():
@@ -1395,7 +1488,10 @@ def main():
     
     # Print paper results
     print_paper_results(variance_explained, lme_results, loadings)
-    
+
+    # Temporal landmarks of PC1/PC2 and their correlation (cited in the text)
+    report_pc_time_course_landmarks(df)
+
     print("\n✓ TET analysis complete!")
     print(f"  Composite figure: {fig_path}")
     print(f"  Individual subplots: {len(subplot_paths)} panels saved")

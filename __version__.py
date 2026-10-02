@@ -5,7 +5,7 @@ This codebase accompanies the paper:
   affective dynamics during the acute effects of DMT. (in preparation)
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __author__ = "Tomás Ariel D'Amelio and contributors"
 __email__ = "dameliotomas@gmail.com"
 __license__ = "MIT"

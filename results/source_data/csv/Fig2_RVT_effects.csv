@@ -1,0 +1,6 @@
+label,beta,se,ci_lower,ci_upper,p_raw,p_fdr,significance,family,interpretation
+State (DMT vs RS),-0.0198,0.1589,-0.3312,0.2916,0.9007,0.9759,,State,Non-significant decrease in RSP_RVT
+Dose (High vs Low),0.144,0.1473,-0.1446,0.4327,0.3281,0.3808,,Dose,Non-significant increase in RSP_RVT
+State × Time,0.0003,0.0107,-0.0207,0.0214,0.9759,0.9759,,State,Non-significant increase in RSP_RVT
+Dose × Time,-0.0094,0.0107,-0.0304,0.0116,0.3808,0.3808,,Dose,Non-significant decrease in RSP_RVT
+State × Dose,0.5598,0.3334,-0.0936,1.2133,0.0931,0.0931,,Interaction,Non-significant increase in RSP_RVT

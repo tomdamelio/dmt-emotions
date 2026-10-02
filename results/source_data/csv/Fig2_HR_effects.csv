@@ -1,0 +1,6 @@
+label,beta,se,ci_lower,ci_upper,p_raw,p_fdr,significance,family,interpretation
+State (DMT vs RS),0.6868,0.1137,0.4639,0.9097,0.0,0.0,***,State,Significant increase in HR
+Dose (High vs Low),-0.2716,0.1182,-0.5033,-0.0399,0.0216,0.0431,*,Dose,Significant decrease in HR
+State × Time,-0.0842,0.0078,-0.0996,-0.0689,0.0,0.0,***,State,Significant decrease in HR
+Dose × Time,0.0109,0.0078,-0.0044,0.0263,0.1635,0.1635,,Dose,Non-significant increase in HR
+State × Dose,1.1211,0.1298,0.8668,1.3755,0.0,0.0,***,Interaction,Significant increase in HR

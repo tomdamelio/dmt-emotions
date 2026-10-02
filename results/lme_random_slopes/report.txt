@@ -1,0 +1,148 @@
+==============================================================================
+HR:  792 observations, 11 subjects
+==============================================================================
+  M0_intercept         SINGULAR  loglik=       inf  StateXDose beta=+1.121  SE=0.0908  CI=[+0.943,+1.299]
+  M1_State             SINGULAR  loglik=       inf  StateXDose beta=+1.121  SE=0.0900  CI=[+0.945,+1.297]
+  M2_State_Dose        ok        loglik=    -732.1  StateXDose beta=+1.121  SE=0.0830  CI=[+0.959,+1.284]
+  M3_StateXDose        FAILED    loglik=    -720.7  StateXDose beta=+1.121  SE=0.1298  CI=[+0.867,+1.375]
+  M4_maximal           ok        loglik=    -692.2  StateXDose beta=+1.121  SE=0.1283  CI=[+0.870,+1.373]
+  M4i_maximal_int      ok        loglik=    -652.6  StateXDose beta=+1.121  SE=0.1071  CI=[+0.911,+1.331]
+
+  LRT, each rung against the previous fittable one -- p conservative at the boundary:
+    M0_intercept         degenerate (variance -> 0, loglik = inf)
+    M1_State             degenerate (variance -> 0, loglik = inf)
+    M2_State_Dose    -> M3_StateXDose    chi2( 3) =    22.85   p = 4.333e-05
+    M3_StateXDose    -> M4_maximal       chi2( 4) =    57.00   p = 1.235e-11
+    M4_maximal       -> M4i_maximal_int  chi2( 5) =    79.11   p = 1.285e-15
+
+  prior DMT use ('*' and not ':': with ':' patsy codes State with full dummy
+  coding inside the interaction and returns one coefficient per level, not the contrast)
+    [State]  random: 1 + State_n   UNSTABLE across optimisers (loglik spread 13.93)
+      prior_use_c                              beta=+0.0129  SE=0.0241  p=0.593
+      prior_use_c:State[T.DMT]                 beta=-0.0258  SE=0.0203  p=0.204
+    [StateXDose]  random: 1 + State_n + Dose_n + State_n:Dose_n   stable (loglik spread 0.17)
+      prior_use_c                              beta=+0.0768  SE=0.0354  p=0.030
+      prior_use_c:State[T.DMT]                 beta=-0.0510  SE=0.0278  p=0.066
+      prior_use_c:Dose[T.High]                 beta=-0.1278  SE=0.0725  p=0.078
+      prior_use_c:State[T.DMT]:Dose[T.High]    beta=+0.0505  SE=0.0399  p=0.206
+      [optimiser-free] Spearman(prior use, per-subject State x Dose) = +0.523, p = 0.099, n = 11
+
+  per-participant contrasts (mean across windows; Cohen's d = M / SD of the per-participant contrast)
+    State x Dose       n=11  M=+1.1211  SD=0.3719  d=+3.015  positive 11/11  range [+0.514, +1.649]
+    High - Low in DMT  n=11  M=+0.8495  SD=0.6822  d=+1.245  positive 10/11  range [-0.596, +1.842]
+    High - Low in RS   n=11  M=-0.2716  SD=0.6988  d=-0.389  positive 4/11  range [-1.319, +0.709]
+    rank 1 State x Dose: S08  +1.649  (prior DMT use 5)
+    rank 2 State x Dose: S15  +1.524  (prior DMT use 5)
+==============================================================================
+SMNA:  792 observations, 11 subjects
+==============================================================================
+  M0_intercept         SINGULAR  loglik=       inf  StateXDose beta=+0.630  SE=0.1123  CI=[+0.410,+0.850]
+  M1_State             SINGULAR  loglik=       inf  StateXDose beta=+0.630  SE=0.1110  CI=[+0.412,+0.847]
+  M2_State_Dose        ok        loglik=    -938.6  StateXDose beta=+0.630  SE=0.1087  CI=[+0.417,+0.843]
+  M3_StateXDose        ok        loglik=    -904.9  StateXDose beta=+0.630  SE=0.2771  CI=[+0.087,+1.173]
+  M4_maximal           ok        loglik=    -895.3  StateXDose beta=+0.630  SE=0.2727  CI=[+0.095,+1.164]
+  M4i_maximal_int      ok        loglik=    -890.5  StateXDose beta=+0.630  SE=0.2583  CI=[+0.123,+1.136]
+
+  LRT, each rung against the previous fittable one -- p conservative at the boundary:
+    M0_intercept         degenerate (variance -> 0, loglik = inf)
+    M1_State             degenerate (variance -> 0, loglik = inf)
+    M2_State_Dose    -> M3_StateXDose    chi2( 3) =    67.46   p = 1.495e-14
+    M3_StateXDose    -> M4_maximal       chi2( 4) =    19.07   p = 0.0007612
+    M4_maximal       -> M4i_maximal_int  chi2( 5) =     9.76   p = 0.08233
+
+  prior DMT use ('*' and not ':': with ':' patsy codes State with full dummy
+  coding inside the interaction and returns one coefficient per level, not the contrast)
+    [State]  random: 1 + State_n   UNSTABLE across optimisers (loglik spread 17.01)
+      prior_use_c                              beta=-0.0033  SE=0.0135  p=0.806
+      prior_use_c:State[T.DMT]                 beta=+0.0066  SE=0.0239  p=0.781
+    [StateXDose]  random: 1 + State_n + Dose_n + State_n:Dose_n   UNSTABLE across optimisers (loglik spread 4.03)
+      prior_use_c                              beta=-0.0068  SE=0.0182  p=0.708
+      prior_use_c:State[T.DMT]                 beta=-0.0052  SE=0.0356  p=0.883
+      prior_use_c:Dose[T.High]                 beta=+0.0070  SE=0.0253  p=0.783
+      prior_use_c:State[T.DMT]:Dose[T.High]    beta=+0.0237  SE=0.0603  p=0.694
+      [optimiser-free] Spearman(prior use, per-subject State x Dose) = -0.150, p = 0.659, n = 11
+
+  per-participant contrasts (mean across windows; Cohen's d = M / SD of the per-participant contrast)
+    State x Dose       n=11  M=+0.6298  SD=0.8668  d=+0.727  positive 7/11  range [-1.021, +1.593]
+    High - Low in DMT  n=11  M=+0.5147  SD=0.8721  d=+0.590  positive 7/11  range [-1.020, +1.619]
+    High - Low in RS   n=11  M=-0.1151  SD=0.3638  d=-0.316  positive 4/11  range [-0.535, +0.731]
+    rank 1 State x Dose: S19  +1.593  (prior DMT use 0)
+    rank 2 State x Dose: S13  +1.538  (prior DMT use 15)
+==============================================================================
+RVT:  864 observations, 12 subjects
+==============================================================================
+  M0_intercept         SINGULAR  loglik=       inf  StateXDose beta=+0.560  SE=0.1297  CI=[+0.306,+0.814]
+  M1_State             SINGULAR  loglik=       inf  StateXDose beta=+0.560  SE=0.1276  CI=[+0.310,+0.810]
+  M2_State_Dose        ok        loglik=   -1143.6  StateXDose beta=+0.560  SE=0.1189  CI=[+0.327,+0.793]
+  M3_StateXDose        ok        loglik=   -1097.8  StateXDose beta=+0.560  SE=0.3334  CI=[-0.094,+1.213]
+  M4_maximal           ok        loglik=   -1079.0  StateXDose beta=+0.560  SE=0.3330  CI=[-0.093,+1.212]
+  M4i_maximal_int      SINGULAR  loglik=    -992.7  StateXDose beta=+0.560  SE=0.2950  CI=[-0.018,+1.138]
+
+  LRT, each rung against the previous fittable one -- p conservative at the boundary:
+    M0_intercept         degenerate (variance -> 0, loglik = inf)
+    M1_State             degenerate (variance -> 0, loglik = inf)
+    M2_State_Dose    -> M3_StateXDose    chi2( 3) =    91.70   p = 9.435e-20
+    M3_StateXDose    -> M4_maximal       chi2( 4) =    37.54   p = 1.395e-07
+    M4_maximal       -> M4i_maximal_int  chi2( 5) =   172.62   p = 2.017e-35
+
+  prior DMT use ('*' and not ':': with ':' patsy codes State with full dummy
+  coding inside the interaction and returns one coefficient per level, not the contrast)
+    [State]  random: 1 + State_n   UNSTABLE across optimisers (loglik spread 4.95)
+      prior_use_c                              beta=+0.0113  SE=0.0165  p=0.494
+      prior_use_c:State[T.DMT]                 beta=-0.0225  SE=0.0306  p=0.462
+    [StateXDose]  random: 1 + State_n + Dose_n + State_n:Dose_n   stable (loglik spread 0.10)
+      prior_use_c                              beta=+0.0777  SE=0.0500  p=0.120
+      prior_use_c:State[T.DMT]                 beta=-0.0173  SE=0.0462  p=0.708
+      prior_use_c:Dose[T.High]                 beta=-0.1329  SE=0.0731  p=0.069
+      prior_use_c:State[T.DMT]:Dose[T.High]    beta=-0.0105  SE=0.0743  p=0.887
+      [optimiser-free] Spearman(prior use, per-subject State x Dose) = -0.011, p = 0.974, n = 12
+
+  per-participant contrasts (mean across windows; Cohen's d = M / SD of the per-participant contrast)
+    State x Dose       n=12  M=+0.5598  SD=1.0102  d=+0.554  positive 10/12  range [-1.993, +1.682]
+    High - Low in DMT  n=12  M=+0.7039  SD=1.2641  d=+0.557  positive 9/12  range [-1.813, +2.135]
+    High - Low in RS   n=12  M=+0.1440  SD=1.1219  d=+0.128  positive 6/12  range [-1.263, +2.194]
+    rank 1 State x Dose: S15  +1.682  (prior DMT use 5)
+    rank 2 State x Dose: S04  +1.421  (prior DMT use 2)
+==============================================================================
+Arousal:  504 observations, 7 subjects
+==============================================================================
+  M0_intercept         SINGULAR  loglik=       inf  StateXDose beta=+1.260  SE=0.1395  CI=[+0.986,+1.533]
+  M1_State             SINGULAR  loglik=    -606.2  StateXDose beta=+1.260  SE=0.1393  CI=[+0.987,+1.533]
+  M2_State_Dose        ok        loglik=    -580.7  StateXDose beta=+1.260  SE=0.1302  CI=[+1.005,+1.515]
+  M3_StateXDose        ok        loglik=    -554.5  StateXDose beta=+1.260  SE=0.3792  CI=[+0.517,+2.003]
+  M4_maximal           ok        loglik=    -557.0  StateXDose beta=+1.260  SE=0.5572  CI=[+0.168,+2.352]
+  M4i_maximal_int      ok        loglik=    -520.6  StateXDose beta=+1.260  SE=0.4043  CI=[+0.468,+2.052]
+
+  LRT, each rung against the previous fittable one -- p conservative at the boundary:
+    M0_intercept         degenerate (variance -> 0, loglik = inf)
+    M1_State         -> M2_State_Dose    chi2( 2) =    51.07   p = 8.129e-12
+    M2_State_Dose    -> M3_StateXDose    chi2( 3) =    52.32   p = 2.565e-11
+    M3_StateXDose    -> M4_maximal       chi2( 4) =    -4.99   p = nan
+    M4_maximal       -> M4i_maximal_int  chi2( 5) =    72.88   p = 2.581e-14
+
+  prior DMT use ('*' and not ':': with ':' patsy codes State with full dummy
+  coding inside the interaction and returns one coefficient per level, not the contrast)
+    [State]  random: 1 + State_n   UNSTABLE across optimisers (loglik spread 13.64)
+      prior_use_c                              beta=+0.0491  SE=0.0564  p=0.384
+      prior_use_c:State[T.DMT]                 beta=-0.0982  SE=0.0952  p=0.302
+    [StateXDose]  random: 1 + State_n + Dose_n + State_n:Dose_n   UNSTABLE across optimisers (loglik spread 4.34)
+      prior_use_c                              beta=+0.2866  SE=0.1026  p=0.005
+      prior_use_c:State[T.DMT]                 beta=-0.1394  SE=0.2065  p=0.500
+      prior_use_c:Dose[T.High]                 beta=-0.4750  SE=0.2734  p=0.082
+      prior_use_c:State[T.DMT]:Dose[T.High]    beta=+0.0824  SE=0.3388  p=0.808
+      [optimiser-free] Spearman(prior use, per-subject State x Dose) = -0.193, p = 0.679, n = 7
+
+  per-participant contrasts (mean across windows; Cohen's d = M / SD of the per-participant contrast)
+    State x Dose       n= 7  M=+1.2599  SD=1.1131  d=+1.132  positive 6/7  range [-0.933, +2.424]
+    High - Low in DMT  n= 7  M=+1.4701  SD=1.0305  d=+1.427  positive 7/7  range [+0.208, +3.073]
+    High - Low in RS   n= 7  M=+0.2101  SD=0.7929  d=+0.265  positive 4/7  range [-0.789, +1.421]
+    rank 1 State x Dose: S19  +2.424  (prior DMT use 0)
+    rank 2 State x Dose: S04  +2.156  (prior DMT use 2)
+==============================================================================
+State x Dose SE, M3 (random slopes) / M0 (random intercept)
+==============================================================================
+  HR       SE M0 = 0.0908  SE M3 = 0.1298  ratio = 1.43
+  SMNA     SE M0 = 0.1123  SE M3 = 0.2771  ratio = 2.47
+  RVT      SE M0 = 0.1297  SE M3 = 0.3334  ratio = 2.57
+  Arousal  SE M0 = 0.1395  SE M3 = 0.3792  ratio = 2.72
+  range of ratios: 1.43 to 2.72

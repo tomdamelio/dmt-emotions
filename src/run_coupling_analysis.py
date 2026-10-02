@@ -13,11 +13,24 @@ subjective experience" section of the paper, including:
 5. Publication-ready visualizations (Figure 4, Figure S5)
 
 Results reported in paper:
-- DMT: Emotional Intensity correlates with HR (r=.44), SMNA (r=.36), RVT (r=.43)
-- DMT: Arousal Index explains 30.5% variance in Emotional Intensity (beta=0.32)
+- DMT: Arousal Index explains 30% variance in Emotional Intensity (beta=0.32)
 - RS: Arousal Index does not predict Emotional Intensity (R2=0.4%, p=.294)
-- CCA: DMT shows generalizable coupling (r_oos=.49, p=.008)
-- CCA: RS shows idiosyncratic coupling (r_oos=-.28, fails cross-validation)
+- CCA: DMT shows generalizable coupling (mean r_oos=.42, p=.010)
+- CCA: RS shows idiosyncratic coupling (mean r_oos=-.28, fails cross-validation)
+- Response letter (Reviewer 3): shifting the Emotional Intensity trace by up to
+  one minute (2 windows) changes its correlation with each physiological signal
+  by at most 0.04 (tet_shift_sensitivity.csv)
+
+Definitions used in the outputs:
+- mean r_oos is the arithmetic mean of the per-fold out-of-sample canonical
+  correlations (the value reported in the paper, in both
+  cca_cross_validation_summary.csv and cca_cv_significance.csv). The
+  significance test is a one-tailed one-sample t-test on the Fisher
+  z-transformed fold values. The Fisher back-transformed mean, tanh(mean(z)),
+  is kept only as the separately named column fisher_mean_r_oos.
+- correlations_tet_physio.csv keeps p_fdr as before (Emotional Intensity rows
+  carry the 36-test family, Valence Index rows the 6-test family) and adds
+  p_fdr_index_family6 and p_fdr_dimensions_family36 with both corrections.
 
 Usage:
     python pipelines/run_coupling_analysis.py [--n-permutations N] [--verbose]
@@ -155,24 +168,144 @@ def load_data(logger: logging.Logger) -> pd.DataFrame:
     return merged_df
 
 
+def add_fdr_family_columns(
+    corr_results: pd.DataFrame,
+    tet_affective: list
+) -> pd.DataFrame:
+    """
+    Add the BH-FDR p-values of both families that contain Emotional Intensity.
+
+    - p_fdr_index_family6: Emotional Intensity rows corrected among themselves
+      (6 tests) and Valence Index rows among themselves (6 tests).
+    - p_fdr_dimensions_family36: the 6 affective dimensions x 3 physio x 2
+      states (36 tests).
+    The existing p_fdr column is left unchanged.
+    """
+    corr_results = corr_results.copy()
+    corr_results['p_fdr_index_family6'] = np.nan
+    corr_results['p_fdr_dimensions_family36'] = np.nan
+
+    families = [
+        ('p_fdr_index_family6',
+         corr_results['tet_dimension'] == 'emotional_intensity_z'),
+        ('p_fdr_index_family6',
+         corr_results['tet_dimension'] == 'valence_index_z'),
+        ('p_fdr_dimensions_family36',
+         corr_results['tet_dimension'].isin(tet_affective)),
+    ]
+    for column, mask in families:
+        if mask.sum() > 0:
+            _, p_adj, _, _ = multipletests(
+                corr_results.loc[mask, 'p_value'].values, method='fdr_bh'
+            )
+            corr_results.loc[mask, column] = p_adj
+
+    return corr_results
+
+
+def compute_tet_shift_sensitivity(
+    merged_df: pd.DataFrame,
+    logger: logging.Logger,
+    max_shift: int = 4,
+    state: str = 'DMT',
+    tet_dimension: str = 'emotional_intensity_z'
+) -> pd.DataFrame:
+    """
+    Sensitivity of the physiology-TET correlation to a temporal shift of the trace.
+
+    Backs the response to Reviewer 3: the TET trace is retrospective, so its
+    placement on the time axis is uncertain. The trace is shifted by k 30-s
+    windows (k = -max_shift..+max_shift) within each subject and dose (the TET
+    value of window w moves to window w+k) and the Pearson r with each
+    physiological signal is recomputed. All shifts are evaluated on the same
+    windows: those valid for every k. Ported from scratchpad/tet_shift.py.
+
+    Outputs (results/coupling/):
+    - tet_shift_sensitivity.csv: r per shift and signal, plus the change from k=0
+    - tet_shift_sensitivity_max_change.csv: max |delta r| within +-1 min (2 windows)
+    """
+    logger.info("\n" + "=" * 80)
+    logger.info("STEP 2b: Sensitivity to a temporal shift of the TET trace")
+    logger.info("=" * 80)
+
+    physio = ['HR_z', 'SMNA_AUC_z', 'RVT_z', 'ArousalIndex']
+    keys = ['subject', 'dose', 'window']
+    d = merged_df[merged_df['state'] == state].sort_values(keys).copy()
+
+    shifted = {}
+    common = None
+    for k in range(-max_shift, max_shift + 1):
+        sh = d.copy()
+        sh['tet_shifted'] = sh.groupby(['subject', 'dose'])[tet_dimension].shift(k)
+        shifted[k] = sh
+        valid = set(map(tuple, sh.dropna(subset=['tet_shifted'])[keys].values))
+        common = valid if common is None else common & valid
+
+    rows = []
+    for k, sh in shifted.items():
+        in_common = [tuple(v) in common for v in sh[keys].values]
+        m = sh[in_common]
+        rec = {'shift_windows': k, 'shift_s': 30 * k, 'n_windows': len(m),
+               'n_subjects': m['subject'].nunique()}
+        for p in physio:
+            rec[f'r_{p}'] = stats.pearsonr(m[p], m['tet_shifted'])[0]
+        rows.append(rec)
+    out = pd.DataFrame(rows)
+
+    base = out[out['shift_windows'] == 0].iloc[0]
+    for p in physio:
+        out[f'delta_r_{p}'] = out[f'r_{p}'] - base[f'r_{p}']
+
+    out_path = OUTPUT_DIR / 'tet_shift_sensitivity.csv'
+    out.to_csv(out_path, index=False)
+
+    # Maximum change within +-1 min (2 windows of 30 s)
+    within = out[out['shift_windows'].abs() <= 2]
+    max_change = pd.DataFrame([
+        {'signal': p, 'r_at_0': base[f'r_{p}'],
+         'max_abs_delta_r_within_1min': within[f'delta_r_{p}'].abs().max()}
+        for p in physio
+    ])
+    max_path = OUTPUT_DIR / 'tet_shift_sensitivity_max_change.csv'
+    max_change.to_csv(max_path, index=False)
+
+    logger.info(f"  {state}, {tet_dimension}: {int(base['n_windows'])} common windows, "
+                f"{int(base['n_subjects'])} subjects")
+    for _, row in max_change.iterrows():
+        logger.info(f"    {row['signal']}: r(0) = {row['r_at_0']:.3f}, "
+                    f"max |delta r| within +-1 min = "
+                    f"{row['max_abs_delta_r_within_1min']:.3f}")
+    logger.info(f"  Overall max |delta r| within +-1 min = "
+                f"{max_change['max_abs_delta_r_within_1min'].max():.3f}")
+    logger.info(f"  Saved: {out_path}")
+    logger.info(f"  Saved: {max_path}")
+
+    return out
+
+
 def run_correlation_analysis(
     merged_df: pd.DataFrame, 
     logger: logging.Logger
 ) -> pd.DataFrame:
     """
     Compute correlations between TET dimensions and physiological measures.
-    
-    Paper results:
-    - DMT: Emotional Intensity ~ HR (r=.44), SMNA (r=.36), RVT (r=.43)
-    - DMT: Valence Index ~ HR (r=-.15)
+
+    FDR families (Methods), each corrected with Benjamini-Hochberg separately:
+    1. Emotional Intensity (Affective Arousal Index) ~ 3 physio x 2 states = 6 tests
+    2. Valence Index ~ 3 physio x 2 states = 6 tests
+    3. 6 affective dimensions x 3 physio x 2 states = 36 tests
+    Emotional Intensity belongs to families 1 and 3. The analyzer writes both
+    into p_fdr and the 36-test family overwrites the 6-test one, so p_fdr keeps
+    that behaviour and both corrections are stored in separate columns.
     """
     logger.info("\n" + "=" * 80)
     logger.info("STEP 2: Correlation Analysis")
     logger.info("=" * 80)
-    
+
     analyzer = TETPhysioCorrelationAnalyzer(merged_df)
     corr_results = analyzer.compute_correlations(by_state=True)
-    
+    corr_results = add_fdr_family_columns(corr_results, analyzer.tet_affective)
+
     # Summary statistics
     n_total = len(corr_results)
     n_sig = (corr_results['p_fdr'] < 0.05).sum()
@@ -184,7 +317,7 @@ def run_correlation_analysis(
     logger.info("\n  Key findings (DMT state):")
     dmt_corrs = corr_results[corr_results['state'] == 'DMT']
     
-    for physio in ['HR', 'SMNA_AUC', 'RVT']:
+    for physio in ['HR_z', 'SMNA_AUC_z', 'RVT_z']:
         ei_corr = dmt_corrs[
             (dmt_corrs['tet_dimension'] == 'emotional_intensity_z') &
             (dmt_corrs['physio_measure'] == physio)
@@ -192,12 +325,16 @@ def run_correlation_analysis(
         if len(ei_corr) > 0:
             r = ei_corr['r'].values[0]
             p = ei_corr['p_fdr'].values[0]
-            logger.info(f"    Emotional Intensity ~ {physio}: r = {r:.2f}, p_FDR = {p:.3f}")
+            p6 = ei_corr['p_fdr_index_family6'].values[0]
+            logger.info(
+                f"    Emotional Intensity ~ {physio}: r = {r:.2f}, p_FDR = {p:.3f} "
+                f"(family of 6: {p6:.3g})"
+            )
     
     # Valence-HR correlation
     val_hr = dmt_corrs[
         (dmt_corrs['tet_dimension'] == 'valence_index_z') &
-        (dmt_corrs['physio_measure'] == 'HR')
+        (dmt_corrs['physio_measure'] == 'HR_z')
     ]
     if len(val_hr) > 0:
         r = val_hr['r'].values[0]
@@ -273,8 +410,9 @@ def run_cca_analysis(
     Canonical Correlation Analysis with permutation testing and cross-validation.
     
     Paper results:
-    - RS: r=.85, p_FWER=.014, but cross-validation fails (r_oos=-.28)
-    - DMT: r=.74, p_FWER=.357, but cross-validation succeeds (r_oos=.49, p=.008)
+    - RS: r=.56, p_PERM=.494, cross-validation fails (mean r_oos=-.28)
+    - DMT: r=.67, p_PERM=.118, cross-validation succeeds (mean r_oos=.42, p=.010)
+    mean r_oos = arithmetic mean of the fold values (see module docstring).
     """
     logger.info("\n" + "=" * 80)
     logger.info("STEP 4: Canonical Correlation Analysis")
@@ -371,7 +509,28 @@ def run_cca_analysis(
     
     cv_folds_df = pd.concat(cv_folds_all, ignore_index=True) if cv_folds_all else pd.DataFrame()
     cv_summary_df = pd.concat(cv_summary_all, ignore_index=True)
-    
+
+    # One definition of mean r_oos across outputs: the arithmetic mean of the
+    # fold values, as in cca_cv_significance.csv and the paper. The analyzer's
+    # summary averages in Fisher z and back-transforms; that value is kept
+    # under its own name, and the overfitting index uses the arithmetic mean.
+    fold_means = (
+        cv_folds_df.groupby(['state', 'canonical_variate'])['r_oos']
+        .mean().rename('arith_mean').reset_index()
+    )
+    cv_summary_df = cv_summary_df.rename(columns={'mean_r_oos': 'fisher_mean_r_oos'})
+    cv_summary_df = cv_summary_df.merge(
+        fold_means, on=['state', 'canonical_variate'], how='left'
+    )
+    cv_summary_df.insert(
+        cv_summary_df.columns.get_loc('fisher_mean_r_oos'),
+        'mean_r_oos', cv_summary_df.pop('arith_mean')
+    )
+    cv_summary_df['overfitting_index'] = (
+        (cv_summary_df['in_sample_r'] - cv_summary_df['mean_r_oos'])
+        / cv_summary_df['in_sample_r']
+    )
+
     results['cv_folds'] = cv_folds_df
     results['cv_summary'] = cv_summary_df
     
@@ -483,7 +642,8 @@ def generate_summary_report(
     corr_results: pd.DataFrame,
     reg_results: pd.DataFrame,
     cca_results: dict,
-    logger: logging.Logger
+    logger: logging.Logger,
+    shift_results: pd.DataFrame = None
 ) -> None:
     """Generate a summary report with key statistics for the paper."""
     logger.info("\n" + "=" * 80)
@@ -501,7 +661,7 @@ def generate_summary_report(
     # Correlation results
     dmt_corrs = corr_results[corr_results['state'] == 'DMT']
     
-    for physio in ['HR', 'SMNA_AUC', 'RVT']:
+    for physio in ['HR_z', 'SMNA_AUC_z', 'RVT_z']:
         ei_corr = dmt_corrs[
             (dmt_corrs['tet_dimension'] == 'emotional_intensity_z') &
             (dmt_corrs['physio_measure'] == physio)
@@ -509,7 +669,12 @@ def generate_summary_report(
         if len(ei_corr) > 0:
             r = ei_corr['r'].values[0]
             p = ei_corr['p_fdr'].values[0]
-            report_lines.append(f"- Emotional Intensity ~ {physio}: r = {r:.2f}, p_FDR = {p:.3f}")
+            p6 = ei_corr['p_fdr_index_family6'].values[0]
+            p36 = ei_corr['p_fdr_dimensions_family36'].values[0]
+            report_lines.append(
+                f"- Emotional Intensity ~ {physio}: r = {r:.2f}, p_FDR = {p:.3f} "
+                f"(family of 6: {p6:.3g}; family of 36: {p36:.3g})"
+            )
     
     report_lines.extend(["", "## 2. Regression Analysis (TET ~ Arousal Index)", ""])
     
@@ -563,6 +728,22 @@ def generate_summary_report(
                     f"p = {row['p_value_t_test']:.3f} ({sig})"
                 )
     
+    if shift_results is not None:
+        # Sensitivity to a shift of the TET trace (response to Reviewer 3)
+        report_lines.extend(["", "## 4. TET trace shift (DMT, Emotional Intensity)", ""])
+        base = shift_results[shift_results['shift_windows'] == 0].iloc[0]
+        within = shift_results[shift_results['shift_windows'].abs() <= 2]
+        report_lines.append(f"- Common windows across shifts: {int(base['n_windows'])}")
+        max_all = 0.0
+        for sig in ['HR_z', 'SMNA_AUC_z', 'RVT_z', 'ArousalIndex']:
+            d_max = within[f'delta_r_{sig}'].abs().max()
+            max_all = max(max_all, d_max)
+            report_lines.append(
+                f"- {sig}: r at 0 = {base[f'r_{sig}']:.3f}, "
+                f"max |delta r| within +-1 min = {d_max:.3f}"
+            )
+        report_lines.append(f"- Overall max |delta r| within +-1 min = {max_all:.3f}")
+    
     # Write report
     report_path = OUTPUT_DIR / 'coupling_analysis_summary.md'
     with open(report_path, 'w', encoding='utf-8') as f:
@@ -600,6 +781,9 @@ def main():
         # Step 2: Correlation analysis
         corr_results = run_correlation_analysis(merged_df, logger)
         
+        # Step 2b: Sensitivity to a temporal shift of the TET trace
+        shift_results = compute_tet_shift_sensitivity(merged_df, logger)
+        
         # Step 3: Regression analysis
         reg_results = run_regression_analysis(merged_df, logger)
         
@@ -612,7 +796,9 @@ def main():
         )
         
         # Step 6: Generate summary report
-        generate_summary_report(corr_results, reg_results, cca_results, logger)
+        generate_summary_report(
+            corr_results, reg_results, cca_results, logger, shift_results
+        )
         
         # Done
         end_time = datetime.now()

@@ -11,7 +11,7 @@ Addresses Reviewer Comment 10 (Section 2.7):
 
 Analysis (replicated at 4s native, 20s, and 30s resolutions):
   1. Temporal t-tests:
-       - Dose effect within DMT (High > Low): one-tailed paired t-test + FDR (BH)
+       - Dose effect within DMT (High vs Low): two-tailed paired t-test + FDR (BH)
        - State effect (DMT vs RS): two-tailed paired t-test + FDR (BH)
   2. LME models (same formula as main paper):
        Y ~ state * dose + state * time_c + dose * time_c + (1|subject)
@@ -42,6 +42,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from lme_fit import fit_lbfgs_powell  # noqa: E402
 from scipy import stats
 from statsmodels.stats.multitest import multipletests
 import statsmodels.formula.api as smf
@@ -161,7 +162,7 @@ def run_ttests_at_resolution(df: pd.DataFrame, bin_sec: int) -> dict:
 
     results = {}
     for var in AFFECTIVE_VARS:
-        dose_df  = _apply_fdr(_paired_ttest_series(high, low, var, alternative='greater'))
+        dose_df  = _apply_fdr(_paired_ttest_series(high, low, var, alternative='two-sided'))
         state_df = _apply_fdr(_paired_ttest_series(dmt_avg, rs_avg, var, alternative='two-sided'))
         results[var] = {'dose': dose_df, 'state': state_df}
     return results
@@ -172,14 +173,19 @@ def run_ttests_at_resolution(df: pd.DataFrame, bin_sec: int) -> dict:
 # ---------------------------------------------------------------------------
 
 def _fit_single_lme(df_all: pd.DataFrame, outcome: str):
-    """Fit one LME model matching the main paper formula."""
+    """Fit one LME model matching the main paper model (run_tet_analysis.py):
+    by-subject random intercept and slopes for State, Dose and State x Dose;
+    powell if lbfgs does not converge."""
+    df_all = df_all.copy()
+    df_all['State_n'] = (df_all['state'] == 'DMT').astype(float)
+    df_all['Dose_n'] = (df_all['dose'] == 'Alta').astype(float)
     model = smf.mixedlm(
         f"{outcome} ~ state * dose + state * time_c + dose * time_c",
         df_all,
         groups=df_all['subject'],
-        re_formula='1'
+        re_formula='1 + State_n + Dose_n + State_n:Dose_n'
     )
-    return model.fit(reml=True, method='lbfgs')
+    return fit_lbfgs_powell(model)[0]
 
 
 def run_lme_at_resolution(df: pd.DataFrame, bin_sec: int) -> list:
@@ -285,7 +291,7 @@ def plot_ttest_figure(summary: pd.DataFrame, output_path: Path):
         fontsize=11, fontweight='bold', y=0.99
     )
     effect_info = [
-        ('dose',  'Dose effect (High > Low, DMT)\none-tailed, FDR-corrected'),
+        ('dose',  'Dose effect (High vs Low, DMT)\ntwo-tailed, FDR-corrected'),
         ('state', 'State effect (DMT vs RS)\ntwo-tailed, FDR-corrected'),
     ]
 
@@ -496,7 +502,7 @@ def main():
     print("=" * 70)
 
     print("\n=== T-tests: % significant timepoints (FDR p < .05) ===")
-    for effect_key, effect_label in [('dose', 'Dose (High > Low, DMT, one-tailed)'),
+    for effect_key, effect_label in [('dose', 'Dose (High vs Low, DMT, two-tailed)'),
                                       ('state', 'State (DMT vs RS, two-tailed)')]:
         print(f"\n  {effect_label}")
         sub = ttest_summary[ttest_summary['effect'] == effect_key]
