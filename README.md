@@ -4,7 +4,7 @@ Analysis code accompanying the paper:
 
 > D'Amelio, T. A., Gil Garbagnoli, T., Rodríguez Cuello, J., Lewis-Healey, E., Pallavicini, C., Cavanna, F., Bruno, N. M., De La Fuente, L. A., Müller, S., Copa, D., Bekinschtein, T., Vidaurre, D., Tagliazucchi, E. (2026). *Multimodal autonomic arousal tracks dose-dependent affective dynamics during the acute effects of DMT* (in preparation).
 
-This repository reproduces all main and supplementary figures and statistical results from the paper. The accompanying dataset is archived on Zenodo at [`10.5281/zenodo.19893951`](https://doi.org/10.5281/zenodo.19893951). A citable snapshot of this codebase is at [`10.5281/zenodo.19916527`](https://doi.org/10.5281/zenodo.19916527).
+This repository reproduces all main and supplementary figures and statistical results from the paper. The accompanying dataset is archived on Zenodo at [`10.5281/zenodo.19893950`](https://doi.org/10.5281/zenodo.19893950). A citable snapshot of this codebase is at [`10.5281/zenodo.19916526`](https://doi.org/10.5281/zenodo.19916526).
 
 ---
 
@@ -93,7 +93,7 @@ micromamba activate dmt-emotions
 
 The raw recordings and preprocessed derivatives that this pipeline operates on are released on Zenodo:
 
-> **Dataset DOI:** [`10.5281/zenodo.19893951`](https://doi.org/10.5281/zenodo.19893951) (CC-BY 4.0)
+> **Dataset DOI:** [`10.5281/zenodo.19893950`](https://doi.org/10.5281/zenodo.19893950) (CC-BY 4.0)
 
 After cloning this repository, download `original.zip` and `derivatives.zip` from the Zenodo deposit and unzip them next to the repository so that the directory layout matches:
 
@@ -246,7 +246,7 @@ If you use this code or the associated dataset, please cite both:
                of N,N-dimethyltryptamine (DMT)},
   publisher = {Zenodo},
   year      = {2026},
-  doi       = {10.5281/zenodo.19893951}
+  doi       = {10.5281/zenodo.19893950}
 }
 ```
 
