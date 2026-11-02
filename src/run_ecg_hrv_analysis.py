@@ -43,7 +43,7 @@ Outputs -> results/ecg/hrv/
                                 intervals, change in mean HR from the filter
     hrv_summary.json            the numbers quoted in the manuscript
 
-Figure: make_figure(path) draws the four-panel Supplementary Fig. 4.
+Figure: make_figure(path) draws the four-panel Supplementary Fig. 3.
 Usage:
     micromamba run -n dmt-emotions python src/run_ecg_hrv_analysis.py
 """
@@ -456,7 +456,7 @@ def hrv_descriptives(df: pd.DataFrame, subjects: List[str], say) -> Dict:
 # figure
 # =============================================================================
 def make_figure(out_path: str) -> str:
-    """Supplementary Fig. 4: RMSSD, RMSSD/meanRR, SDNN, HR (bpm); means +- SEM
+    """Supplementary Fig. 3: RMSSD, RMSSD/meanRR, SDNN, HR (bpm); means +- SEM
     with one trace per participant (High in colour, Low grey dashed)."""
     import matplotlib
     matplotlib.use("Agg")
@@ -561,4 +561,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    make_figure(os.path.join(REPO, "results", "figures", "figure_S4.png"))
+    make_figure(os.path.join(REPO, "results", "figures", "figure_S3.png"))

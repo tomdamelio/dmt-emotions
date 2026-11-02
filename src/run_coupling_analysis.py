@@ -10,7 +10,7 @@ subjective experience" section of the paper, including:
 2. Regression analysis: TET dimensions ~ Arousal Index (PC1)
 3. Canonical Correlation Analysis (CCA) with permutation testing
 4. Leave-One-Subject-Out (LOSO) cross-validation
-5. Publication-ready visualizations (Figure 4, Figure S5)
+5. Publication-ready visualizations (Figure 5, Supplementary Fig. 6)
 
 Results reported in paper:
 - DMT: Arousal Index explains 30% variance in Emotional Intensity (beta=0.32)
@@ -583,7 +583,7 @@ def generate_visualizations(
     
     Outputs:
     - Figure 4: CCA combined figure (loadings, CV, scatterplot)
-    - Figure S5: PC1 composite 4-panel (regression scatter plots)
+    - Supplementary Fig. 6: PC1 composite 4-panel (regression scatter plots)
     - Correlation heatmaps
     - Permutation null distributions
     """
@@ -604,8 +604,8 @@ def generate_visualizations(
     except Exception as e:
         logger.warning(f"    Could not generate heatmaps: {e}")
     
-    # PC1 composite 4-panel figure (Figure S5)
-    logger.info("\n  Generating PC1 composite figure (Figure S5)...")
+    # PC1 composite 4-panel figure (Supplementary Fig. 6)
+    logger.info("\n  Generating PC1 composite figure (Supplementary Fig. 6)...")
     try:
         # Create PC1 scores DataFrame
         pc1_scores = merged_df[['subject', 'session_id', 't_bin', 'ArousalIndex']].copy()

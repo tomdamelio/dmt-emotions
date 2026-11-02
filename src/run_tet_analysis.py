@@ -698,7 +698,7 @@ def plot_figure3(df, time_courses, loadings, variance_explained, lme_results,
 # --- Unidad E: individual-data representation, shared by the large-panel and
 # small-panel time series of Figure 4. High dose keeps the modality colour;
 # Low dose is grey (matches the treatment already applied to Figs. 2-3 and
-# Supplementary Figs. 3-4).
+# Supplementary Figs. 2 and 4).
 TRACE_GREY = "#9e9e9e"
 TRACE_GREY_MEAN = "#6b6b6b"
 TRACE_DASH = (0, (2.2, 1.3))

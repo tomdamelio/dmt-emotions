@@ -1,0 +1,6 @@
+label,beta,se,ci_lower,ci_upper,p_raw,p_fdr,significance,family
+State (DMT vs RS),0.9866,0.2167,0.5618,1.4114,0.0,0.0,***,State
+State × Time,-0.1187,0.0117,-0.1417,-0.0956,0.0,0.0,***,State
+Dose (High vs Low),0.2101,0.1694,-0.1219,0.5422,0.2148,0.2148,,Dose
+Dose × Time,0.0319,0.0117,0.0089,0.0549,0.0066,0.0132,*,Dose
+State × Dose,1.2599,0.3792,0.5167,2.0031,0.0009,0.0009,***,Interaction

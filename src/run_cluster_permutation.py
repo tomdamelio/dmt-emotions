@@ -205,7 +205,7 @@ def main() -> None:
 
     # ----------------------------------------------------------------- #
     # extended window (0-19 min, 38 windows, DMT only, one-tailed)
-    # Supplementary Fig. S3 (HR) and S4 (Arousal index)
+    # Supplementary Fig. 2 (HR) and Fig. 4 (Arousal index)
     # ----------------------------------------------------------------- #
     for mod, (H, L, subjects, windows) in load_extended().items():
         res = run_all(H, L, windows, "greater")
